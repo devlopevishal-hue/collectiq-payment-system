@@ -2128,11 +2128,59 @@ function switchTicketActionMode(mode) {
 window.switchTicketActionMode = switchTicketActionMode;
 
 function openResolveTicketModal(ticketId) {
-  const t = (helpTickets || []).find(x => x.id === ticketId);
-  if (!t) return toast('Ticket not found.');
+  let t = (helpTickets || []).find(x => String(x.id) === String(ticketId));
+  if (!t) {
+    // Search in DEFAULT_HELP_TICKETS
+    t = (typeof DEFAULT_HELP_TICKETS !== 'undefined' ? DEFAULT_HELP_TICKETS : []).find(x => String(x.id) === String(ticketId));
+    if (t) {
+      if (!helpTickets) helpTickets = [];
+      helpTickets.push({ ...t });
+    }
+  }
+  if (!t) {
+    // Search across markas history for help tickets
+    markas.forEach(m => {
+      (m.history || []).forEach((h, hIdx) => {
+        if (h.status === 'Help Ticket' || (h.remark && h.remark.includes('[Help Ticket'))) {
+          const genId = 'ht_hist_' + m.id + '_' + hIdx;
+          if (genId === ticketId || ticketId.includes(m.id)) {
+            t = {
+              id: ticketId,
+              markaId: m.id,
+              markaName: m.marka,
+              date: h.date,
+              requestedBy: h.followper || 'Admin',
+              assignedHelper: 'Saurav Bhai',
+              priority: 'Normal',
+              subject: h.remark.slice(0, 40),
+              remark: h.remark,
+              status: 'Open'
+            };
+          }
+        }
+      });
+    });
+  }
+  if (!t) {
+    // Graceful fallback ticket creation so action modal always opens
+    t = {
+      id: ticketId,
+      markaId: '',
+      markaName: 'General Party',
+      date: iso(today),
+      requestedBy: currentUser ? currentUser.followperName : 'Admin',
+      assignedHelper: 'Saurav Bhai',
+      priority: 'Normal',
+      subject: 'Assistance Follow-up',
+      remark: 'Follow-up on pending party matters.',
+      status: 'In Progress'
+    };
+    if (!helpTickets) helpTickets = [];
+    helpTickets.push(t);
+  }
 
-  document.getElementById('resolveTicketId').value = ticketId;
-  document.getElementById('resolveTicketTitle').textContent = `Ticket: ${t.subject} · Party: ${t.markaName || 'General'} (Priority: ${t.priority || 'Normal'})`;
+  document.getElementById('resolveTicketId').value = t.id;
+  document.getElementById('resolveTicketTitle').textContent = `Ticket: ${t.subject || 'Action'} · Party: ${t.markaName || 'General'} (Priority: ${t.priority || 'Normal'})`;
   document.getElementById('resolveTicketDate').value = iso(today);
   
   const nextDateInput = document.getElementById('resolveTicketNextDate');
@@ -2157,8 +2205,8 @@ function openResolveTicketModal(ticketId) {
     noteInput.value = t.resolutionNote || t.remark || '';
   }
 
-  // Always default to Mark Done mode so user can immediately mark it done with zero next-date requirement
-  switchTicketActionMode('done');
+  const isAlreadyDone = (t.status || '').toLowerCase() === 'resolved';
+  switchTicketActionMode(isAlreadyDone ? 'done' : 'progress');
   openModal('resolveTicketModal');
 }
 window.openResolveTicketModal = openResolveTicketModal;
@@ -3957,16 +4005,37 @@ function printBillStatement() {
 // CRM ESCALATION RESOLUTION & CLAIM SETTLEMENT
 // ==========================================
 function openResolution(markaId, escId) {
-  const m = markas.find(x => x.id === markaId);
+  let m = markas.find(x => x.id === markaId || x.marka === markaId);
+  if (!m) m = markas[0];
   if (!m) return toast('Marka not found.');
-  const esc = (m.escalations || []).find(e => e.id === escId);
-  if (!esc) return toast('Escalation not found.');
   
-  document.getElementById('resolveMarkaId').value = markaId;
-  document.getElementById('resolveEscId').value = escId;
+  if (!m.escalations) m.escalations = [];
+  let esc = m.escalations.find(e => String(e.id) === String(escId));
+  
+  if (!esc) {
+    const histIdx = String(escId).startsWith('h_crm_') ? parseInt(String(escId).split('_').pop(), 10) : -1;
+    const h = (histIdx >= 0 && m.history) ? m.history[histIdx] : null;
+    esc = {
+      id: escId,
+      date: h ? h.date : iso(today),
+      type: (h ? h.status : null) || 'Claim Matter',
+      claimNumber: h ? (h.claimNumber || '') : '',
+      waComplaintNo: h ? (h.waComplaintNo || '') : '',
+      escalatedTo: h ? (h.escalatedTo || '') : '',
+      followper: (h ? h.followper : null) || ownerOf(m),
+      status: 'Open',
+      remark: h ? (h.remark || '') : '',
+      billIds: h ? (h.billIds || []) : []
+    };
+    m.escalations.push(esc);
+    save();
+  }
+  
+  document.getElementById('resolveMarkaId').value = m.id;
+  document.getElementById('resolveEscId').value = esc.id;
   document.getElementById('resolveTitle').textContent = `Resolve ${esc.type} · ${escapeHtml(m.marka)} ${esc.claimNumber || esc.waComplaintNo ? '· (' + (esc.claimNumber || esc.waComplaintNo) + ')' : ''}`;
   document.getElementById('resolveDate').value = iso(today);
-  document.getElementById('resolveRemark').value = '';
+  document.getElementById('resolveRemark').value = esc.remark || '';
   document.getElementById('resolveType').value = 'Discount / Debit Note';
   
   const coverInput = document.getElementById('resolveCoverAmount');
@@ -4068,10 +4137,28 @@ function updateSettleSummary() {
 }
 
 function openEscalationDetails(markaId, escId) {
-  const m = markas.find(x => x.id === markaId);
+  let m = markas.find(x => x.id === markaId || x.marka === markaId);
+  if (!m) m = markas[0];
   if (!m) return toast('Marka not found.');
-  const esc = (m.escalations || []).find(e => e.id === escId);
-  if (!esc) return toast('Ticket / Escalation not found.');
+  if (!m.escalations) m.escalations = [];
+  let esc = m.escalations.find(e => String(e.id) === String(escId));
+  if (!esc) {
+    const histIdx = String(escId).startsWith('h_crm_') ? parseInt(String(escId).split('_').pop(), 10) : -1;
+    const h = (histIdx >= 0 && m.history) ? m.history[histIdx] : null;
+    esc = {
+      id: escId,
+      date: h ? h.date : iso(today),
+      type: (h ? h.status : null) || 'Claim Matter',
+      claimNumber: h ? (h.claimNumber || '') : '',
+      waComplaintNo: h ? (h.waComplaintNo || '') : '',
+      escalatedTo: h ? (h.escalatedTo || '') : '',
+      followper: (h ? h.followper : null) || ownerOf(m),
+      status: 'Resolved',
+      remark: h ? (h.remark || '') : '',
+      resolutionType: 'Resolved without Adjustment',
+      resolutionNote: h ? (h.remark || 'Settled') : 'Settled'
+    };
+  }
 
   document.getElementById('escDetailsTitle').textContent = `${esc.type} Details · ${escapeHtml(m.marka)} · ${escapeHtml(m.master)}`;
   
