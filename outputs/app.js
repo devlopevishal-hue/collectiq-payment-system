@@ -369,24 +369,29 @@ function load() {
 
     const storedUsers = localStorage.getItem('collectiq_users_v4');
     if (storedUsers) {
-      users = JSON.parse(storedUsers);
-      DEFAULT_USERS.forEach(defUser => {
-        const existing = users.find(u => u.email.toLowerCase() === defUser.email.toLowerCase());
-        if (existing) {
-          if (existing.password === existing.email || !existing.password) {
-            existing.password = defUser.password;
-          }
-          existing.role = defUser.role;
-          existing.followperName = defUser.followperName;
-        } else {
-          users.push(defUser);
-        }
-      });
-      localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
+      try {
+        users = JSON.parse(storedUsers);
+        if (!Array.isArray(users)) users = [];
+      } catch(e) {
+        users = [];
+      }
     } else {
-      users = [...DEFAULT_USERS];
-      localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
+      users = [];
     }
+
+    DEFAULT_USERS.forEach(defUser => {
+      const existing = users.find(u => u.email.toLowerCase() === defUser.email.toLowerCase());
+      if (existing) {
+        if (existing.password === existing.email || !existing.password || existing.password === 'undefined') {
+          existing.password = defUser.password;
+        }
+        existing.role = defUser.role;
+        existing.followperName = defUser.followperName;
+      } else {
+        users.push({ ...defUser });
+      }
+    });
+    localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
     checkAuth();
   } catch (e) {
     console.error('Error loading data:', e);
