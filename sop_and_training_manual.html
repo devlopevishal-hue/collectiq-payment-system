@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CollectIQ - User Training Manual & Standard Operating Procedures (SOP)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #087454;
+      --primary-dark: #0f382d;
+      --primary-light: #e8f6ef;
+      --accent-lime: #c9f36a;
+      --ink: #14231f;
+      --muted: #5f736b;
+      --line: #e2e8e4;
+      --bg: #f8faf9;
+      --card-bg: #ffffff;
+      --danger: #c44d48;
+      --warning: #e99a3c;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Manrope, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.6;
+      font-size: 14px;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      background: var(--card-bg);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+      padding: 60px 80px;
+    }
+    
+    /* Cover / Header */
+    .header-badge {
+      display: inline-block;
+      background: var(--primary-light);
+      color: var(--primary);
+      font: 700 11px 'DM Mono', monospace;
+      padding: 6px 12px;
+      border-radius: 20px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    h1 {
+      font-size: 32px;
+      font-weight: 800;
+      color: var(--primary-dark);
+      letter-spacing: -1px;
+      margin-bottom: 12px;
+      line-height: 1.2;
+    }
+    .subtitle {
+      font-size: 16px;
+      color: var(--muted);
+      margin-bottom: 30px;
+      font-weight: 500;
+    }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      background: #f4f8f6;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 40px;
+    }
+    .meta-item small {
+      display: block;
+      font: 600 10px 'DM Mono', monospace;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .meta-item strong {
+      font-size: 13px;
+      color: var(--primary-dark);
+    }
+
+    /* Typography & Sections */
+    h2 {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--primary-dark);
+      margin: 40px 0 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--line);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    h2 .num {
+      background: var(--primary);
+      color: #fff;
+      font-size: 12px;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: inline-grid;
+      place-items: center;
+    }
+    h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #1a4237;
+      margin: 24px 0 10px;
+    }
+    p, ul, ol {
+      color: #2c3e38;
+      margin-bottom: 14px;
+    }
+    ul, ol { padding-left: 24px; }
+    li { margin-bottom: 6px; }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0 30px;
+      font-size: 13px;
+    }
+    th, td {
+      padding: 12px 14px;
+      text-align: left;
+      border: 1px solid var(--line);
+    }
+    th {
+      background: #f2f7f4;
+      color: var(--primary-dark);
+      font: 700 11px 'DM Mono', monospace;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    tr:nth-child(even) { background: #fafcfb; }
+    .money { font-family: 'DM Mono', monospace; font-weight: 600; }
+
+    /* Callouts & Badges */
+    .callout {
+      background: #f4faf7;
+      border-left: 4px solid var(--primary);
+      border-radius: 6px;
+      padding: 14px 18px;
+      margin: 20px 0;
+      font-size: 13px;
+    }
+    .callout.warning {
+      background: #fff9ed;
+      border-left-color: var(--warning);
+      color: #7d4d0a;
+    }
+    .callout.danger {
+      background: #fdf2f2;
+      border-left-color: var(--danger);
+      color: #781e1a;
+    }
+    .callout strong { display: block; margin-bottom: 4px; font-weight: 700; }
+
+    .badge {
+      display: inline-block;
+      font: 700 10px 'DM Mono', monospace;
+      padding: 3px 8px;
+      border-radius: 12px;
+      text-transform: uppercase;
+    }
+    .badge.success { background: #e7f6ed; color: #087454; }
+    .badge.danger { background: #fce8e6; color: #c44d48; }
+    .badge.warning { background: #fff3dc; color: #9c6310; }
+    .badge.purple { background: #f0ebfa; color: #512da8; }
+
+    /* Workflow Box */
+    .workflow-step {
+      display: flex;
+      gap: 16px;
+      margin: 16px 0;
+      padding: 16px;
+      background: #f9fbf9;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .step-num {
+      width: 32px;
+      height: 32px;
+      background: var(--primary-light);
+      color: var(--primary);
+      font-weight: 800;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+    .step-content strong { display: block; font-size: 14px; margin-bottom: 4px; color: var(--primary-dark); }
+    .step-content p { margin: 0; font-size: 13px; color: #465952; }
+
+    /* Flowchart / ASCII Diagram */
+    .diagram-box {
+      background: #0f2b23;
+      color: #e3f2eb;
+      font-family: 'DM Mono', monospace;
+      font-size: 12px;
+      padding: 20px 24px;
+      border-radius: 8px;
+      margin: 24px 0;
+      overflow-x: auto;
+      line-height: 1.5;
+    }
+    .diagram-box .highlight { color: #c9f36a; font-weight: 700; }
+
+    /* Print Formatting */
+    @media print {
+      body { background: #fff; padding: 0; font-size: 12px; }
+      .container { border: 0; box-shadow: none; padding: 0; max-width: 100%; }
+      .page-break { page-break-before: always; }
+      .meta-grid { margin-bottom: 20px; }
+      h2 { margin-top: 30px; }
+      .no-print { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- COVER HEADER -->
+  <span class="header-badge">Standard Operating Procedure (SOP) &amp; User Training Manual</span>
+  <h1>CollectIQ — Payment Collection &amp; Receivables Command Center</h1>
+  <p class="subtitle">Complete Operational Guidelines, Daily Follow-up Workflows, FIFO Payment Settlements, Master Accountability &amp; Dispute Escalations</p>
+
+  <div class="meta-grid">
+    <div class="meta-item">
+      <small>System Version</small>
+      <strong>CollectIQ 4.0 Pro</strong>
+    </div>
+    <div class="meta-item">
+      <small>Database</small>
+      <strong>Firebase Cloud DB (Live)</strong>
+    </div>
+    <div class="meta-item">
+      <small>Target Audience</small>
+      <strong>Collection Executives &amp; Accounts</strong>
+    </div>
+    <div class="meta-item">
+      <small>Effective Date</small>
+      <strong>Immediate Deployment</strong>
+    </div>
+  </div>
+
+  <!-- SECTION 1 -->
+  <h2><span class="num">1</span> System Architecture &amp; Cloud Access</h2>
+  <p>CollectIQ is a cloud-synchronized Accounts Receivable &amp; Collection Management system built for high-volume trading accounts. It replaces manual spreadsheets with real-time multi-user synchronization, contractual policy date aging, FIFO bill knock-off, and CRM dispute tracking.</p>
+
+  <div class="diagram-box">
+<span class="highlight">[ GLOBAL LIVE WEB ACCESS ]</span>  https://&lt;your-username&gt;.github.io/&lt;repo&gt;/
+                     │
+         ┌───────────┴───────────┐
+         ▼                       ▼
+<span class="highlight">[ GOOGLE FIREBASE CLOUD DB ]</span>    <span class="highlight">[ OFFLINE BROWSER CACHE ]</span>
+  (Real-Time Multi-User Sync)     (Zero Interruption if Offline)
+         │
+ ┌───────┴──────────────────────────────────────────┐
+ ▼                       ▼                          ▼
+<span class="highlight">1. Scheduled Follow-ups</span>  <span class="highlight">2. Daily Rokad (FIFO)</span>      <span class="highlight">3. CRM Escalations</span>
+  • Policy Due Dates       • Auto Bill Knock-off      • Quality Claims
+  • PTP Auto-Locking       • Part Payment Aging       • WA Dispute Tickets
+  • Accountability         • Audit Ledger             • Debit Note Settlement
+  </div>
+
+  <h3>Access Credentials &amp; URLs</h3>
+  <ul>
+    <li><b>Global Web URL</b>: Hosted on GitHub Pages via secure HTTPS (works on all smartphones, tablets, and laptops).</li>
+    <li><b>Central Cloud Database</b>: Google Firebase Firestore project (<code>collectiq-ba467</code>).</li>
+    <li><b>Multi-User Synchronization</b>: Whenever any Followper logs a call or payment, all connected devices update in real-time without page refresh.</li>
+    <li><b>Offline Guarantee</b>: If internet connectivity drops, the application continues to operate on local browser storage and syncs back upon reconnection.</li>
+  </ul>
+
+  <!-- SECTION 2 -->
+  <div class="page-break"></div>
+  <h2><span class="num">2</span> Master Accountability Matrix</h2>
+  <p>Every customer account (<b>Marka</b>) is linked to a trading group (<b>Master</b>). The system enforces designated primary accountability for collection follow-ups.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Master Account</th>
+        <th>Designated Followper</th>
+        <th>Role &amp; Responsibility</th>
+        <th>Escalation Hierarchy</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>MANISH MASTER</b></td>
+        <td><span class="badge success">Girdharilal</span></td>
+        <td>Primary Collection Specialist</td>
+        <td>Sales HOD / Saurav Bhai</td>
+      </tr>
+      <tr>
+        <td><b>RAJESH MASTER</b></td>
+        <td><span class="badge success">Girdharilal</span></td>
+        <td>Primary Collection Specialist</td>
+        <td>Sales HOD / Saurav Bhai</td>
+      </tr>
+      <tr>
+        <td><b>RIPTESH / RIPETSH MASTER</b></td>
+        <td><span class="badge success">Girdharilal</span></td>
+        <td>Primary Collection Specialist</td>
+        <td>Sales HOD / Saurav Bhai</td>
+      </tr>
+      <tr>
+        <td><b>KUNAL MASTER</b></td>
+        <td><span class="badge success">Mahavir</span></td>
+        <td>Senior Recovery Officer</td>
+        <td>Accounts / Management</td>
+      </tr>
+      <tr>
+        <td><b>GUDDU MASTER</b></td>
+        <td><span class="badge success">Mahavir</span></td>
+        <td>Senior Recovery Officer</td>
+        <td>Accounts / Management</td>
+      </tr>
+      <tr>
+        <td><b>KALPESH MASTER</b></td>
+        <td><span class="badge success">Sajjan</span></td>
+        <td>Collection &amp; Legal Liaison</td>
+        <td>Accounts / Management</td>
+      </tr>
+      <tr>
+        <td><b>BABLU MASTER / BABLU SHERA</b></td>
+        <td><span class="badge success">Surendra</span></td>
+        <td>Field Collection Executive</td>
+        <td>CRM / Sales HOD</td>
+      </tr>
+      <tr>
+        <td><b>11 MASTER</b></td>
+        <td><span class="badge success">Girdharilal</span></td>
+        <td>Key Accounts Lead</td>
+        <td>Saurav Bhai</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <strong>How to Reassign Accountable Followpers:</strong>
+    Go to <b>Marka &amp; Followper</b> in the sidebar &gt; switch to <b>Master Accountability Master</b> tab &gt; click <b>Change Followper</b> on the target Master. Check the option <i>"Update all existing Markas under this Master"</i> to bulk-transfer existing accounts.
+  </div>
+
+  <!-- SECTION 3 -->
+  <div class="page-break"></div>
+  <h2><span class="num">3</span> Daily Follow-Up Execution Workflow (SOP)</h2>
+
+  <div class="workflow-step">
+    <div class="step-num">1</div>
+    <div class="step-content">
+      <strong>Step 1: Check Morning Attention Banner &amp; Schedule</strong>
+      <p>Open the dashboard. Review the top <b>Control Alert Banner</b>. Navigate to <b>Follow-up Schedule</b> and select your name from the <b>Followper</b> dropdown. Click the <b>Due today</b> or <b>Overdue</b> tab.</p>
+    </div>
+  </div>
+
+  <div class="workflow-step">
+    <div class="step-num">2</div>
+    <div class="step-content">
+      <strong>Step 2: Review Customer Balances &amp; Bill Breakdown</strong>
+      <p>Click <b>Bills</b> to view individual invoice dates, policy due dates, and aging breakdown. Click <b>History</b> to review previous conversation notes before calling.</p>
+    </div>
+  </div>
+
+  <div class="workflow-step">
+    <div class="step-num">3</div>
+    <div class="step-content">
+      <strong>Step 3: Call Customer &amp; Log Actual Interaction</strong>
+      <p>Click <b>Update</b>. Verify <b>Actual follow-up date</b> (defaults to today). Enter <b>Contact Person</b>, choose <b>Contact Mode</b> (Phone call / WhatsApp / Email / In person), and select the appropriate <b>Action Status</b>.</p>
+    </div>
+  </div>
+
+  <h3>Action Status Reference Guide:</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Action Status</th>
+        <th>When to Use</th>
+        <th>System Behavior &amp; Rules</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>Promise to Pay (PTP)</b></td>
+        <td>Party commits to pay on an exact future date.</td>
+        <td><b>Mandatory Fields</b>: Expected Amount (₹) &amp; Promise Date. <br><i>Next Follow-up date is automatically locked to the PTP date.</i></td>
+      </tr>
+      <tr>
+        <td><b>Payment Delayed</b></td>
+        <td>Party requests a few days grace period.</td>
+        <td>Enter conversation remark and set a new follow-up date (default +2 days).</td>
+      </tr>
+      <tr>
+        <td><b>Not Responding</b></td>
+        <td>Phone unanswered, switched off, or party unavailable.</td>
+        <td>Schedules next follow-up call within 24–48 hours.</td>
+      </tr>
+      <tr>
+        <td><b>Dispute</b></td>
+        <td>Commercial dispute regarding rates, discount or terms.</td>
+        <td>Requires descriptive remark; flagged for management review.</td>
+      </tr>
+      <tr>
+        <td><b>Claim Matter</b></td>
+        <td>Quality dispute, damaged goods, or material return.</td>
+        <td><b>Mandatory</b>: Claim / Complaint Number. Creates ticket in <b>CRM Escalations</b>.</td>
+      </tr>
+      <tr>
+        <td><b>WhatsApp Complaint</b></td>
+        <td>Issue raised by customer via WhatsApp support.</td>
+        <td><b>Mandatory</b>: WhatsApp Complaint Number / Reason. Creates ticket in <b>CRM Escalations</b>.</td>
+      </tr>
+      <tr>
+        <td><b>Escalated</b></td>
+        <td>Account uncooperative or requires senior intervention.</td>
+        <td><b>Mandatory</b>: Select target (<b>Saurav Bhai</b>, <b>Sales HOD</b>, <b>Accounts</b>, <b>CRM</b>, or <b>Masters</b>). Account ownership transfers immediately to the target manager.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- SECTION 4 -->
+  <div class="page-break"></div>
+  <h2><span class="num">4</span> Daily Rokad &amp; FIFO Payment Settlement (SOP)</h2>
+  <p>All received payments must be entered through <b>Daily Rokad</b>. The system strictly applies the <b>FIFO (First-In, First-Out) Principle</b> to settle the oldest outstanding invoices first.</p>
+
+  <div class="workflow-step">
+    <div class="step-num">1</div>
+    <div class="step-content">
+      <strong>Step 1: Open Daily Rokad Entry</strong>
+      <p>Navigate to <b>Daily Rokad</b> in the sidebar &gt; click <b>+ Record payment</b>.</p>
+    </div>
+  </div>
+
+  <div class="workflow-step">
+    <div class="step-num">2</div>
+    <div class="step-content">
+      <strong>Step 2: Enter Transaction Details</strong>
+      <p>Fill in: <b>Received Date</b>, <b>Payment Mode</b> (Bank transfer / Cheque / UPI / Cash), <b>Receipt / UTR Number</b>, and <b>Total Received Amount (₹)</b>.</p>
+    </div>
+  </div>
+
+  <div class="workflow-step">
+    <div class="step-num">3</div>
+    <div class="step-content">
+      <strong>Step 3: Select Marka &amp; Review FIFO Allocation</strong>
+      <p>Select the paying Marka from the dropdown. The system automatically calculates invoice settlement:</p>
+      <ul>
+        <li><span class="badge success">SETTLED ✓</span>: Oldest bill fully paid and balance becomes ₹0.</li>
+        <li><span class="badge warning">PART ◐</span>: Bill partially cleared with remaining balance carried forward.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="workflow-step">
+    <div class="step-num">4</div>
+    <div class="step-content">
+      <strong>Step 4: Post Payment to Cloud Database</strong>
+      <p>Click <b>Post to Rokad</b>. The system updates bill balances, records the transaction in Daily Rokad, adds a payment timeline entry to the Marka's ledger, and reschedules follow-up for remaining balances.</p>
+    </div>
+  </div>
+
+  <!-- SECTION 5 -->
+  <div class="page-break"></div>
+  <h2><span class="num">5</span> GP Lock Policy &amp; Credit Control</h2>
+
+  <div class="callout danger">
+    <strong>GP Lock Trigger Rule:</strong>
+    Any Marka whose scheduled follow-up remains overdue by <b>19 days or more</b> is automatically placed in <b>GP Lock (Hold)</b>.
+  </div>
+
+  <h3>Operational Restrictions under GP Lock:</h3>
+  <ol>
+    <li><b>Immediate Billing &amp; Gate Pass Freeze</b>: No new dispatches, billings, or goods release are permitted under any circumstances.</li>
+    <li><b>Schedule Isolation</b>: Account is removed from the active daily schedule and moved to the dedicated <b>GP Lock List</b> (<code>#gplock</code>).</li>
+    <li><b>Management Authorization</b>: Release from GP Lock requires direct approval from <b>Saurav Bhai</b> or <b>Accounts HOD</b> upon payment receipt or formal written guarantee.</li>
+  </ol>
+
+  <!-- SECTION 6 -->
+  <h2><span class="num">6</span> CRM Claims &amp; Dispute Resolution (SOP)</h2>
+  <p>When a Followper logs a <b>Claim Matter</b> or <b>WhatsApp Complaint</b>, a ticket is created in the <b>CRM Escalations</b> module.</p>
+
+  <div class="workflow-step">
+    <div class="step-num">1</div>
+    <div class="step-content">
+      <strong>Step 1: Open CRM Escalations Log</strong>
+      <p>Navigate to <b>CRM Escalations</b> in sidebar &gt; find the open claim &gt; click <b>Resolve &amp; Settle</b>.</p>
+    </div>
+  </div>
+
+  <div class="workflow-step">
+    <div class="step-num">2</div>
+    <div class="step-content">
+      <strong>Step 2: Select Resolution Mode</strong>
+      <p>Choose: <b>Discount / Debit Note</b>, <b>Goods Return / Credit Note</b>, <b>Mutual Settlement</b>, or <b>Rejected</b>.</p>
+    </div>
+  </div>
+
+  <div class="workflow-step">
+    <div class="step-num">3</div>
+    <div class="step-content">
+      <strong>Step 3: Select Affected Invoices &amp; Settle</strong>
+      <p>Check the box for the specific bill(s) against which the claim amount is deducted. Enter the discount amount &gt; click <b>Confirm &amp; Resolve Ticket</b>. The bill balance is deducted immediately, and an audit trail is logged.</p>
+    </div>
+  </div>
+
+  <!-- SECTION 7 -->
+  <div class="page-break"></div>
+  <h2><span class="num">7</span> Outstanding Data Synchronization &amp; Exports</h2>
+
+  <h3>Periodic Outstanding CSV Sync</h3>
+  <ol>
+    <li>Export outstanding report from Tally / BUSY / ERP as a CSV file.</li>
+    <li>Navigate to <b>Sync outstanding</b> in the sidebar &gt; click <b>Choose CSV file</b>.</li>
+    <li>The system matches existing Markas by name, updates new bill balances, and <b>preserves 100% of historical conversation logs and PTP promises</b>.</li>
+  </ol>
+
+  <h3>Reports &amp; Customer Statement Exports</h3>
+  <ul>
+    <li><b>Master 22-Column Excel Export</b>: Click <b>Export to Excel</b> in top header for complete receivables registry.</li>
+    <li><b>Party Bill Statement of Accounts</b>: Open Marka &gt; <b>Bills</b> &gt; <b>Print Statement</b> (for PDF) or <b>Excel (Bills)</b>.</li>
+    <li><b>Party Payment Ledger</b>: Open Marka &gt; <b>₹ Payments</b> &gt; <b>Print</b> or <b>Export Excel (Ledger)</b>.</li>
+  </ul>
+
+  <!-- FOOTER -->
+  <div style="margin-top: 50px; padding-top: 20px; border-top: 1px solid var(--line); text-align: center; color: var(--muted); font-size: 11px;">
+    <strong>CollectIQ Receivables Management System</strong> &bull; Production Release 4.0 &bull; Confidential Internal Operations Manual
+  </div>
+
+</div>
+
+</body>
+</html>

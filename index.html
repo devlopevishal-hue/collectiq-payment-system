@@ -1,0 +1,1270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CollectIQ - Payment Collection System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=5.0.5">
+  <script>
+    function toggleMobileMenu(e) {
+      if (e) {
+        if (typeof e.stopPropagation === 'function') e.stopPropagation();
+      }
+      var sidebar = document.querySelector('.sidebar') || document.querySelector('aside');
+      var overlay = document.getElementById('sidebarOverlay');
+      if (!sidebar) return;
+      
+      var isOpen = sidebar.classList.contains('open') || sidebar.style.left === '0px';
+      if (isOpen) {
+        sidebar.classList.remove('open');
+        sidebar.style.setProperty('left', '-280px', 'important');
+        if (overlay) {
+          overlay.classList.remove('open');
+          overlay.style.display = 'none';
+        }
+      } else {
+        sidebar.classList.add('open');
+        sidebar.style.setProperty('left', '0px', 'important');
+        if (overlay) {
+          overlay.classList.add('open');
+          overlay.style.display = 'block';
+        }
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="loginOverlay" class="login-overlay" style="display:none;">
+    <div class="login-card">
+      <h2>CollectIQ Login</h2>
+      <form onsubmit="handleLoginSubmit(event)">
+        <label>Email Address or Username
+          <input type="text" id="loginEmail" required placeholder="e.g. surendra or user@collectiq.com">
+        </label>
+        <label>Password
+          <div class="password-input-wrap">
+            <input type="password" id="loginPassword" required placeholder="••••••••">
+            <button type="button" class="pwd-toggle-btn" onclick="togglePasswordVisibility('loginPassword', this)" title="Show/Hide Password">👁</button>
+          </div>
+        </label>
+        <button class="btn primary" type="submit">Sign In</button>
+      </form>
+    </div>
+  </div>
+
+  <div id="sidebarOverlay" class="sidebar-overlay" onclick="toggleMobileMenu(event)"></div>
+
+  <aside class="sidebar">
+    <button class="sidebar-close" onclick="toggleMobileMenu(event)">×</button>
+    <div class="brand">
+      <div class="mark">C</div>
+      <span>collect<span>IQ</span></span>
+    </div>
+    <div class="workspace">MARKA COLLECTIONS</div>
+    <nav>
+      <button class="nav active" data-view="dashboard"><i>▦</i> Dashboard</button>
+      <button class="nav" data-view="schedule"><i>✓</i> Follow-up schedule <b id="scheduleBadge">0</b></button>
+      <button class="nav" data-view="fms"><i>⏱</i> FMS Pre-planned <b id="fmsBadge" style="background:#087454;">0</b></button>
+      <button class="nav" data-view="visits"><i>📍</i> Field Visits & Logs <b id="visitsBadge" style="background:#205e4b;">0</b></button>
+      <button class="nav" data-view="helpTickets"><i>💬</i> Help Tickets <b id="helpBadge" style="background:#317260;">0</b></button>
+      <button class="nav" data-view="crmEscalations"><i>⚡</i> CRM Escalations <b id="escalationBadge">0</b></button>
+      <button class="nav" data-view="gplock"><i>⊘</i> GP lock list <b id="lockBadge">0</b></button>
+      <button class="nav" data-view="analysis"><i>↗</i> Analysis & reports</button>
+    </nav>
+    <div class="lower" id="setupSection">
+      <div class="workspace">SETUP</div>
+      <nav>
+        <button class="nav" data-view="markas"><i>◎</i> Marka & Followper</button>
+        <button class="nav" data-view="import"><i>⇧</i> Sync outstanding</button>
+        <button class="nav" data-view="users" id="navUsers" style="display:none;"><i>👤</i> Manage Users</button>
+        <button class="nav" onclick="openCloudModal()"><i>☁</i> Cloud Database</button>
+      </nav>
+    </div>
+    <div class="user-card">
+      <div class="avatar" id="userAvatar" onclick="openChangePassword()" style="cursor:pointer;" title="Click to Change Password">CC</div>
+      <div style="flex:1; min-width:0;">
+        <strong id="userEmail" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block;">Collections Control</strong>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;">
+          <button type="button" onclick="openChangePassword()" style="background:none; border:none; color:#c9f36a; padding:0; font-size:10px; font-weight:700; cursor:pointer; font-family:Manrope,sans-serif; display:inline-flex; align-items:center; gap:3px;">🔑 Change Password</button>
+          <button class="logout-btn" onclick="logout()">Logout</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <main>
+    <header>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <button id="menuToggle" class="menu-toggle-btn" onclick="toggleMobileMenu(event)">☰</button>
+        <div>
+          <p class="eyebrow" id="todayLabel"></p>
+          <h1 id="pageTitle">Collection command center</h1>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="btn secondary" onclick="exportExcel()">Export to Excel</button>
+        <button class="btn secondary" onclick="window.print()">Print PDF</button>
+        <button id="resetBillsBtn" class="btn secondary" style="background:#faeceb;color:#c44d48;border-color:#f2c0be;display:none;" onclick="clearAllData()">🗑️ Reset / Clear Bills</button>
+        <button class="btn primary" onclick="openPayment()">+ Record Payment</button>
+        <button class="btn primary" onclick="openFollowup()">+ Update follow-up</button>
+      </div>
+    </header>
+
+    <section id="dashboard" class="view active">
+      <div id="attention" class="attention" style="display:none;"></div>
+      <div id="metrics" class="metrics"></div>
+      <div class="grid main-grid">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Next scheduled actions</h2>
+          </div>
+          <div id="priorityList"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Risk & GP lock</h2>
+          </div>
+          <div id="riskList"></div>
+        </div>
+      </div>
+      <div class="grid bottom-grid">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Action scoring</h2>
+          </div>
+          <div id="scoreList"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Follow-up history</h2>
+          </div>
+          <div id="activityList"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="schedule" class="view">
+      <div id="filterBar" class="filterbar"></div>
+      <div class="panel table-panel">
+        <div class="toolbar">
+          <div class="tabs">
+            <button class="tab active" data-filter="all">All</button>
+            <button class="tab" data-filter="due">Due today</button>
+            <button class="tab" data-filter="overdue">Overdue</button>
+            <button class="tab" data-filter="upcoming">Upcoming</button>
+          </div>
+          <span id="scheduleSummary" class="table-note"></span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th class="sortable" onclick="sortTable('schedule', 'marka')">MARKA <span class="sort-icon" id="sort_schedule_marka">▲</span></th>
+              <th class="sortable" onclick="sortTable('schedule', 'master')">MASTER <span class="sort-icon" id="sort_schedule_master">⇅</span></th>
+              <th class="sortable" onclick="sortTable('schedule', 'oldestDue')">DUE DATE (POLICY) <span class="sort-icon" id="sort_schedule_oldestDue">⇅</span></th>
+              <th class="sortable" onclick="sortTable('schedule', 'alreadyDue')">ALREADY DUE <span class="sort-icon" id="sort_schedule_alreadyDue">⇅</span></th>
+              <th class="sortable" onclick="sortTable('schedule', 'balance')">TOTAL OUTSTANDING <span class="sort-icon" id="sort_schedule_balance">⇅</span></th>
+              <th class="sortable" onclick="sortTable('schedule', 'owner')">FOLLOWPER <span class="sort-icon" id="sort_schedule_owner">⇅</span></th>
+              <th class="sortable" onclick="sortTable('schedule', 'count')">FOLLOW-UPS <span class="sort-icon" id="sort_schedule_count">⇅</span></th>
+              <th class="sortable" onclick="sortTable('schedule', 'nextDate')">NEXT FOLLOW-UP <span class="sort-icon" id="sort_schedule_nextDate">⇅</span></th>
+              <th class="sortable" onclick="sortTable('schedule', 'lastDate')">LAST CONTACT (ACTUAL) <span class="sort-icon" id="sort_schedule_lastDate">⇅</span></th>
+              <th class="sortable" onclick="sortTable('schedule', 'status')">STATUS <span class="sort-icon" id="sort_schedule_status">⇅</span></th>
+              <th>ACTIONS</th>
+            </tr>
+          </thead>
+          <tbody id="scheduleTable"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="gplock" class="view">
+      <div class="section-top">
+        <div>
+          <p class="eyebrow">BILLING & DISPATCH HOLD</p>
+          <h2>GP lock list</h2>
+        </div>
+        <div class="attention" style="margin:0; padding:8px 12px;">
+          <strong>Follow-up suspended</strong>
+        </div>
+      </div>
+      <p>Cases listed here are under GP Lock. Follow-ups are suspended until resolved.</p>
+      <div id="lockFilters" class="filterbar"></div>
+      <div class="panel table-panel">
+        <table>
+          <thead>
+            <tr>
+              <th class="sortable" onclick="sortTable('gplock', 'marka')">MARKA / MASTER <span class="sort-icon" id="sort_gplock_marka">⇅</span></th>
+              <th class="sortable" onclick="sortTable('gplock', 'oldest')">DUE DATE (POLICY) <span class="sort-icon" id="sort_gplock_oldest">⇅</span></th>
+              <th class="sortable" onclick="sortTable('gplock', 'days')">OVERDUE DAYS <span class="sort-icon" id="sort_gplock_days">▼</span></th>
+              <th class="sortable" onclick="sortTable('gplock', 'balance')">OUTSTANDING <span class="sort-icon" id="sort_gplock_balance">⇅</span></th>
+              <th class="sortable" onclick="sortTable('gplock', 'owner')">FOLLOWPER <span class="sort-icon" id="sort_gplock_owner">⇅</span></th>
+              <th class="sortable" onclick="sortTable('gplock', 'lastDate')">LAST CONVERSATION <span class="sort-icon" id="sort_gplock_lastDate">⇅</span></th>
+              <th>ACTIONS</th>
+            </tr>
+          </thead>
+          <tbody id="lockTable"></tbody>
+        </table>
+      </div>
+    </section>
+
+
+
+
+    <section id="fms" class="view">
+      <div class="section-top">
+        <div>
+          <p class="eyebrow">FLOW MANAGEMENT SYSTEM (FMS)</p>
+          <h2>Pre-Planned Collection Milestones &amp; Planned vs Actual Adherence</h2>
+        </div>
+        <div class="header-actions">
+          <button class="btn secondary" onclick="exportFmsExcel()">Export FMS Excel</button>
+        </div>
+      </div>
+      <div id="fmsFilters" class="filterbar"></div>
+      <div id="fmsMetrics" class="metrics mini"></div>
+      <div class="panel table-panel">
+        <table>
+          <thead>
+            <tr>
+              <th class="sortable" onclick="sortTable('fms', 'marka')">MARKA / MASTER <span class="sort-icon" id="sort_fms_marka">▲</span></th>
+              <th class="sortable" onclick="sortTable('fms', 'dueDate')">DUE DATE (POLICY) <span class="sort-icon" id="sort_fms_dueDate">⇅</span></th>
+              <th class="sortable" onclick="sortTable('fms', 'balance')">OUTSTANDING <span class="sort-icon" id="sort_fms_balance">⇅</span></th>
+              <th class="sortable" onclick="sortTable('fms', 'taskCode')">TASK MILESTONE (WHAT) <span class="sort-icon" id="sort_fms_taskCode">⇅</span></th>
+              <th class="sortable" onclick="sortTable('fms', 'role')">RESPONSIBLE (WHO) <span class="sort-icon" id="sort_fms_role">⇅</span></th>
+              <th class="sortable" onclick="sortTable('fms', 'plannedDate')">PLANNED (WHEN) <span class="sort-icon" id="sort_fms_plannedDate">⇅</span></th>
+              <th class="sortable" onclick="sortTable('fms', 'actualDate')">ACTUAL DATE <span class="sort-icon" id="sort_fms_actualDate">⇅</span></th>
+              <th class="sortable" onclick="sortTable('fms', 'delay')">DELAY (DAYS) <span class="sort-icon" id="sort_fms_delay">⇅</span></th>
+              <th class="sortable" onclick="sortTable('fms', 'score')">SCORE <span class="sort-icon" id="sort_fms_score">⇅</span></th>
+              <th class="sortable" onclick="sortTable('fms', 'status')">STATUS <span class="sort-icon" id="sort_fms_status">⇅</span></th>
+              <th>ACTION</th>
+            </tr>
+          </thead>
+          <tbody id="fmsTable"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="visits" class="view">
+      <div class="section-top">
+        <div>
+          <p class="eyebrow">FIELD VISITS &amp; FOLLOW-UP HUB</p>
+          <h2>Daily Field Visit Log &amp; Party-wise Follow-up Reports</h2>
+        </div>
+        <div class="header-actions">
+          <button class="btn secondary" onclick="exportVisitsExcel()">Export Visits Excel</button>
+          <button class="btn secondary" onclick="exportPartyMatrixExcel()">Export Party Matrix Excel</button>
+          <button class="btn secondary" onclick="exportDailySummaryExcel()">Export Summary Excel</button>
+        </div>
+      </div>
+      
+      <div class="toolbar" style="margin-bottom:14px;">
+        <div class="tabs">
+          <button class="tab active" id="tabVisitLog" onclick="switchVisitSubtab('log')">📅 Daily Visit Log (Visit-wise)</button>
+          <button class="tab" id="tabPartyMatrix" onclick="switchVisitSubtab('matrix')">🏢 Party-wise (Marka-wise) Matrix</button>
+          <button class="tab" id="tabDailySummary" onclick="switchVisitSubtab('summary')">📊 Daily Activity Summary</button>
+        </div>
+        <span id="visitSummaryInfo" style="font:11px 'DM Mono';color:#75847e;"></span>
+      </div>
+
+      <div id="visitFilters" class="filterbar"></div>
+      <div id="visitMetrics" class="metrics mini"></div>
+
+      <div id="visitSubtabLog" class="panel table-panel">
+        <table>
+          <thead>
+            <tr>
+              <th class="sortable" onclick="sortTable('visits', 'date')">VISIT DATE <span class="sort-icon" id="sort_visits_date">▼</span></th>
+              <th class="sortable" onclick="sortTable('visits', 'followper')">DOER (VISITOR) <span class="sort-icon" id="sort_visits_followper">⇅</span></th>
+              <th class="sortable" onclick="sortTable('visits', 'marka')">MARKA / PARTY <span class="sort-icon" id="sort_visits_marka">⇅</span></th>
+              <th class="sortable" onclick="sortTable('visits', 'master')">MASTER <span class="sort-icon" id="sort_visits_master">⇅</span></th>
+              <th class="sortable" onclick="sortTable('visits', 'contact')">PERSON MET <span class="sort-icon" id="sort_visits_contact">⇅</span></th>
+              <th class="sortable" onclick="sortTable('visits', 'purpose')">VISIT PURPOSE <span class="sort-icon" id="sort_visits_purpose">⇅</span></th>
+              <th>OUTCOME / REMARKS</th>
+              <th class="sortable" onclick="sortTable('visits', 'status')">RESULT <span class="sort-icon" id="sort_visits_status">⇅</span></th>
+              <th>ACTION</th>
+            </tr>
+          </thead>
+          <tbody id="visitTable"></tbody>
+        </table>
+      </div>
+
+      <div id="visitSubtabMatrix" class="panel table-panel" style="display:none;">
+        <table>
+          <thead>
+            <tr>
+              <th>MARKA / PARTY</th>
+              <th>MASTER</th>
+              <th>ASSIGNED DOER</th>
+              <th>TOTAL VISITS</th>
+              <th>TOTAL CALLS</th>
+              <th>TOTAL WA</th>
+              <th>LAST VISIT DATE</th>
+              <th>LAST FOLLOW-UP</th>
+              <th>PTP COUNT</th>
+              <th>TOTAL OUTSTANDING</th>
+              <th>ACTION</th>
+            </tr>
+          </thead>
+          <tbody id="partyMatrixTable"></tbody>
+        </table>
+      </div>
+
+      <div id="visitSubtabSummary" class="panel table-panel" style="display:none;">
+        <table>
+          <thead>
+            <tr>
+              <th>DOER / SALES PERSON</th>
+              <th>ASSIGNED MARKAS</th>
+              <th>TODAY'S VISITS</th>
+              <th>TODAY'S CALLS</th>
+              <th>TODAY'S WA</th>
+              <th>TODAY'S PTPS</th>
+              <th>TOTAL VISITS LOGGED</th>
+              <th>TOTAL ACTIONS LOGGED</th>
+            </tr>
+          </thead>
+          <tbody id="dailySummaryTable"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="analysis" class="view">
+      <div class="section-top">
+        <div>
+          <p class="eyebrow">PERFORMANCE SCORECARD &amp; LEADERBOARD</p>
+          <h2>All Doer Performance Dashboard &amp; Task Adherence Scorecard</h2>
+        </div>
+        <div class="header-actions">
+          <button class="btn secondary" onclick="exportDoerAnalysisExcel()">Export Scorecard Excel</button>
+        </div>
+      </div>
+      <div id="analysisFilters" class="filterbar"></div>
+      <div id="analysisMetrics" class="metrics mini"></div>
+      <div class="panel table-panel" style="margin-bottom:20px;">
+        <div class="panel-head" style="padding:14px 18px; border-bottom:1px solid #e1ebe6;">
+          <h2 style="margin:0; font-size:15px; display:flex; align-items:center; gap:8px;">🏆 All Doer Performance Leaderboard</h2>
+        </div>
+        <div id="doerLeaderboardContainer"></div>
+      </div>
+      <div class="grid bottom-grid">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>FMS Milestone Adherence Breakdown (Step-wise)</h2>
+          </div>
+          <div id="ownerReport"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Follow-up Action Distribution &amp; Outcomes</h2>
+          </div>
+          <div id="actionReport"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="helpTickets" class="view">
+      <div class="section-top">
+        <div>
+          <p class="eyebrow">INTERNAL TEAM ASSISTANCE</p>
+          <h2>Help Tickets &amp; Helper Delegation Log</h2>
+        </div>
+        <div class="header-actions">
+          <button class="btn secondary" onclick="exportHelpTicketsExcel()">Export Tickets Excel</button>
+          <button class="btn primary" onclick="openHelpTicketModal()">+ Create Help Ticket</button>
+        </div>
+      </div>
+      <div id="helpTicketFilters" class="filterbar"></div>
+      <div id="helpTicketMetrics" class="metrics mini"></div>
+      <div class="panel table-panel">
+        <table>
+          <thead>
+            <tr>
+              <th class="sortable" onclick="sortTable('helpTickets', 'date')">DATE <span class="sort-icon" id="sort_helpTickets_date">▼</span></th>
+              <th class="sortable" onclick="sortTable('helpTickets', 'marka')">MARKA / PARTY <span class="sort-icon" id="sort_helpTickets_marka">⇅</span></th>
+              <th class="sortable" onclick="sortTable('helpTickets', 'priority')">PRIORITY <span class="sort-icon" id="sort_helpTickets_priority">⇅</span></th>
+              <th>SUBJECT &amp; DETAILS</th>
+              <th class="sortable" onclick="sortTable('helpTickets', 'requestedBy')">REQUESTED BY <span class="sort-icon" id="sort_helpTickets_requestedBy">⇅</span></th>
+              <th class="sortable" onclick="sortTable('helpTickets', 'assignedHelper')">ASSIGNED HELPER <span class="sort-icon" id="sort_helpTickets_assignedHelper">⇅</span></th>
+              <th class="sortable" onclick="sortTable('helpTickets', 'status')">STATUS <span class="sort-icon" id="sort_helpTickets_status">⇅</span></th>
+              <th>ACTION</th>
+            </tr>
+          </thead>
+          <tbody id="helpTicketTable"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="crmEscalations" class="view">
+      <div class="section-top">
+        <div>
+          <p class="eyebrow">CRM ESCALATION &amp; COMPLAINT LOG</p>
+          <h2>Customer Claims, WA Complaints &amp; Management Escalations</h2>
+        </div>
+        <div class="header-actions">
+          <button class="btn secondary" onclick="exportEscalationsExcel()">Export CRM Excel</button>
+        </div>
+      </div>
+      <div id="crmEscFilters" class="filterbar"></div>
+      <div id="crmEscMetrics" class="metrics mini"></div>
+      <div class="panel table-panel">
+        <table>
+          <thead>
+            <tr>
+              <th class="sortable" onclick="sortTable('crmEscalations', 'date')">DATE <span class="sort-icon" id="sort_crmEscalations_date">▼</span></th>
+              <th class="sortable" onclick="sortTable('crmEscalations', 'marka')">MARKA / PARTY <span class="sort-icon" id="sort_crmEscalations_marka">⇅</span></th>
+              <th class="sortable" onclick="sortTable('crmEscalations', 'type')">TYPE <span class="sort-icon" id="sort_crmEscalations_type">⇅</span></th>
+              <th class="sortable" onclick="sortTable('crmEscalations', 'ref')">CLAIM / COMPLAINT REF <span class="sort-icon" id="sort_crmEscalations_ref">⇅</span></th>
+              <th class="sortable" onclick="sortTable('crmEscalations', 'followper')">CREATED BY <span class="sort-icon" id="sort_crmEscalations_followper">⇅</span></th>
+              <th class="sortable" onclick="sortTable('crmEscalations', 'escalatedTo')">ESCALATED TO <span class="sort-icon" id="sort_crmEscalations_escalatedTo">⇅</span></th>
+              <th class="sortable" onclick="sortTable('crmEscalations', 'status')">STATUS <span class="sort-icon" id="sort_crmEscalations_status">⇅</span></th>
+              <th>RESOLUTION AUDIT</th>
+              <th>ACTION</th>
+            </tr>
+          </thead>
+          <tbody id="crmEscTable"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="markas" class="view">
+      <div class="section-top">
+        <div>
+          <p class="eyebrow">ACCOUNTABILITY MASTER</p>
+          <h2>Marka &amp; Master Followper assignment</h2>
+        </div>
+        <div class="header-actions">
+          <button class="btn secondary" onclick="exportMarkasExcel()">Export Markas Excel</button>
+          <button class="btn secondary" onclick="exportMastersExcel()">Export Masters Excel</button>
+        </div>
+      </div>
+      
+      <div class="toolbar" style="margin-bottom:14px;">
+        <div class="tabs">
+          <button class="tab active" id="tabMarkaView" onclick="switchMarkaSubtab('markas')">Marka-wise Assignment</button>
+          <button class="tab" id="tabMasterView" onclick="switchMarkaSubtab('masters')">Master Accountability Master</button>
+        </div>
+        <span id="accountabilitySummary" style="font:11px 'DM Mono';color:#75847e;"></span>
+      </div>
+
+      <div id="markaSubtabMarkas">
+        <div id="markaFilters" class="filterbar"></div>
+        <div class="panel table-panel">
+          <table>
+            <thead>
+              <tr>
+                <th class="sortable" onclick="sortTable('markas', 'marka')">MARKA <span class="sort-icon" id="sort_markas_marka">▲</span></th>
+                <th class="sortable" onclick="sortTable('markas', 'master')">MASTER <span class="sort-icon" id="sort_markas_master">⇅</span></th>
+                <th class="sortable" onclick="sortTable('markas', 'oldest')">DUE DATE (POLICY) <span class="sort-icon" id="sort_markas_oldest">⇅</span></th>
+                <th class="sortable" onclick="sortTable('markas', 'alreadyDue')">ALREADY DUE <span class="sort-icon" id="sort_markas_alreadyDue">⇅</span></th>
+                <th class="sortable" onclick="sortTable('markas', 'balance')">TOTAL OUTSTANDING <span class="sort-icon" id="sort_markas_balance">⇅</span></th>
+                <th class="sortable" onclick="sortTable('markas', 'bills')">ACTIVE BILLS <span class="sort-icon" id="sort_markas_bills">⇅</span></th>
+                <th class="sortable" onclick="sortTable('markas', 'owner')">FOLLOWPER <span class="sort-icon" id="sort_markas_owner">⇅</span></th>
+                <th>ACTION</th>
+              </tr>
+            </thead>
+            <tbody id="markaTable"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="markaSubtabMasters" style="display:none;">
+        <div class="panel table-panel">
+          <table>
+            <thead>
+              <tr>
+                <th>MASTER NAME</th>
+                <th>DEFAULT ACCOUNTABLE PERSON (FOLLOWPER)</th>
+                <th>ACTIVE MARKAS</th>
+                <th>ALREADY DUE AMOUNT</th>
+                <th>TOTAL OUTSTANDING</th>
+                <th>ACTION</th>
+              </tr>
+            </thead>
+            <tbody id="masterTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="import" class="view">
+      <div class="import-hero">
+        <p class="eyebrow">DATA SYNCHRONIZATION</p>
+        <h2>Sync outstanding report</h2>
+        <p>Keep your collection data up to date by importing the latest outstanding bills report. Upload directly in <strong>Excel format (.xlsx / .xls)</strong> or <strong>CSV</strong>. The system will automatically map bills to Markas and calculate aging using Policy Date as the actual due date.</p>
+        <div class="import-guide">
+          <p><strong>Recognised columns:</strong></p>
+          <code>Marka / Group</code><code>Bill Date</code><code>Balance</code><code>Master</code><code>Collection Person</code><code>Bill No</code><code>PolicyDate (Due Date)</code><code>PolicyName</code>
+          <p>Existing Marka cases will retain their follow-up history.</p>
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:20px;">
+          <button class="btn primary" onclick="document.querySelector('#importModal').classList.add('open')">Upload Excel / CSV Data</button>
+          <button class="btn" style="background:#d85a54;color:#fff;border:none;" onclick="clearAllData()">🗑️ Clear All Current Data (Start Fresh)</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="users" class="view">
+      <div class="section-top">
+        <div>
+          <p class="eyebrow">DOER & ACCESS CONTROL</p>
+          <h2>Manage user credentials & roles</h2>
+        </div>
+      </div>
+      <p style="margin-bottom:16px;">Create and manage login accounts. Standard users only see their own assigned Markas, while superusers have full access.</p>
+      
+      <div class="grid main-grid">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Add New User</h2>
+          </div>
+          <form onsubmit="handleCreateUser(event)" style="display:grid; gap:12px;">
+            <label>Email Address / Username
+              <input type="text" id="newUserEmail" required placeholder="e.g. vishal@collectiq.com or rahul" style="width:100%; padding:8px; border:1px solid #dbe5e0; border-radius:6px; margin-top:4px; font-family:inherit;">
+            </label>
+            <label>Password
+              <div class="password-input-wrap" style="margin-top:4px;">
+                <input type="password" id="newUserPassword" required placeholder="e.g. 1234" style="width:100%; padding:8px; border:1px solid #dbe5e0; border-radius:6px; font-family:inherit;">
+                <button type="button" class="pwd-toggle-btn" onclick="togglePasswordVisibility('newUserPassword', this)" title="Show/Hide Password">👁</button>
+              </div>
+            </label>
+            <label>Role / Access Level
+              <select id="newUserRole" onchange="onUserRoleChange()" style="width:100%; padding:8px; border:1px solid #dbe5e0; border-radius:6px; margin-top:4px; font-family:inherit;">
+                <option value="user">User (Standard Access — Own Markas Only)</option>
+                <option value="superuser">Superuser (Full Access & Reports)</option>
+                <option value="admin">Admin User (Full Control & User Management)</option>
+              </select>
+            </label>
+            <div id="newUserFollowperContainer">
+              <label style="display:block; font-weight:600; margin-bottom:4px;">Sales Person / Doer Name
+                <input type="text" id="newUserFollowper" list="doersDatalist" required placeholder="Type new name or select existing sales person..." style="width:100%; padding:9px 12px; border:1px solid #dbe5e0; border-radius:6px; margin-top:4px; font-family:inherit; font-size:13px;">
+                <datalist id="doersDatalist"></datalist>
+              </label>
+              <p style="font-size:11px; color:#5b7067; margin:4px 0 0 0;">✨ You can select an existing name or type a completely new Sales Person name. New names will automatically register as a Doer across the whole system (for assign, reassign, follow-ups, filters, and help tickets).</p>
+            </div>
+            <button class="btn primary" type="submit" style="margin-top:8px;">Create Account</button>
+          </form>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Existing Accounts & Passwords</h2>
+          </div>
+          <div class="table-panel" style="padding:0;">
+            <table>
+              <thead>
+                <tr>
+                  <th>EMAIL</th>
+                  <th>PASSWORD</th>
+                  <th>ROLE</th>
+                  <th>LINKED DOER</th>
+                  <th>ACTION</th>
+                </tr>
+              </thead>
+              <tbody id="usersTableBody">
+                <!-- User rows rendered dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <div class="modal-backdrop" id="followupModal">
+    <form class="modal wide" onsubmit="saveFollowup(event)">
+      <button type="button" class="close" onclick="closeModal('followupModal')">×</button>
+      <p class="eyebrow">MARKA FOLLOW-UP</p>
+      <h2 id="followTitle">Update conversation</h2>
+      <input type="hidden" id="markaId">
+      <div class="form-grid">
+        <label>Planned follow-up date<input id="plannedDate" type="date" readonly></label>
+        <label>Actual follow-up date<input id="followDate" type="date" required></label>
+        <label>Followper<select id="followper" required></select></label>
+        <label>Contact person<input id="contactPerson"></label>
+        <label>Contact mode
+          <select id="contactMode" onchange="toggleConditionalFields()">
+            <option value="Phone call">Phone call</option>
+            <option value="WhatsApp">WhatsApp</option>
+            <option value="Email">Email</option>
+            <option value="In person (Field Visit)">In person (Field Visit)</option>
+          </select>
+        </label>
+        <label>Action / status
+          <select id="actionStatus" onchange="toggleConditionalFields()">
+            <option value="Payment Received">Payment Received</option>
+            <option value="Promise to Pay">Promise to Pay</option>
+            <option value="Not Responding">Not Responding</option>
+            <option value="WhatsApp Complaint / Claim Matter">WhatsApp Complaint / Claim Matter</option>
+            <option value="Internal Help Ticket">Internal Help Ticket (Request Helper Assistance)</option>
+          </select>
+        </label>
+        <label>Expected amount (₹)<input id="expected" type="number" min="0"></label>
+        <div id="promiseGroup"><label>Promise date<input id="promiseDate" type="date" onchange="enforcePtpDate()"></label></div>
+        <label>Next planned follow-up date<input id="nextDate" type="date" required></label>
+      </div>
+      <!-- Field Visit Details Group -->
+      <div id="visitDetailsGroup" style="display:none;" class="conditional-field">
+        <p class="eyebrow" style="margin-bottom:8px; color:#087454; font-weight:700;">FIELD VISIT DETAILS</p>
+        <div class="form-grid" style="margin-bottom:8px;">
+          <label>Visit Purpose
+            <select id="visitPurpose">
+              <option value="Payment Collection">Payment Collection</option>
+              <option value="Statement Sign">Statement Sign</option>
+              <option value="Dispute Discussion">Dispute Discussion</option>
+              <option value="Cheque Collection">Cheque Collection</option>
+              <option value="Master Meeting">Master Meeting</option>
+              <option value="Relationship Visit">Relationship Visit</option>
+            </select>
+          </label>
+          <label>Person Met (Party Representative)<input id="visitPersonMet" placeholder="e.g. Owner / Cashier / Manager"></label>
+        </div>
+        <label>Visit Notes / Location<input id="visitNotes" placeholder="e.g. Visited shop/office, discussed overdue bills"></label>
+      </div>
+      <!-- Customer Complaint & Dispute Field Group -->
+      <div id="complaintGroup" style="display:none; background:#fdf8f7; border:1px solid #f2d4ce; border-radius:8px; padding:12px; margin-bottom:12px;" class="conditional-field">
+        <p class="eyebrow" style="margin:0 0 8px 0; color:#c44d48; font-weight:800;">⚡ CUSTOMER COMPLAINT / DISPUTE DETAILS</p>
+        <div class="form-grid" style="margin-bottom:8px;">
+          <label>Complaint / Claim Number / WA Ref
+            <input id="claimNumber" type="text" placeholder="e.g. Rate dispute, Goods return, WA-8834, CLM-102...">
+          </label>
+          <label>Escalate Complaint To (Management Target)
+            <select id="escalateTo">
+              <option value="">Select Management Escalate Target...</option>
+            </select>
+          </label>
+        </div>
+        <div id="claimComplaintInvoicesContainer" style="margin-top:8px;">
+          <p class="eyebrow" style="margin-bottom:4px; font-size:10px; color:#5b7067;">Select Invoices Affected by this Complaint / Dispute (Optional)</p>
+          <div id="claimComplaintBillList" class="pay-bill-list" style="max-height:140px; overflow-y:auto;"></div>
+        </div>
+      </div>
+      <!-- Internal Team Help Ticket Field Group -->
+      <div id="helpTicketGroup" style="display:none; background:#f5faf7; border:1px solid #cbe7da; border-radius:8px; padding:12px; margin-bottom:12px;" class="conditional-field">
+        <p class="eyebrow" style="margin:0 0 8px 0; color:#087454; font-weight:800;">🎟️ INTERNAL TEAM HELP TICKET (HELPER DELEGATION)</p>
+        <div class="form-grid" style="margin-bottom:8px;">
+          <label>Assign Helper (Team Member)
+            <select id="helpTicketHelper">
+              <option value="">Select Helper Person...</option>
+            </select>
+          </label>
+          <label>Helper Priority
+            <select id="helpTicketPriority">
+              <option value="Normal">Normal</option>
+              <option value="High">High</option>
+              <option value="Critical">Critical</option>
+            </select>
+          </label>
+        </div>
+        <label>Help Task Summary / Subject
+          <input id="helpTicketSubject" placeholder="e.g. Need assistance with statement signing / cheque collection">
+        </label>
+      </div>
+      <!-- Payment Received / Part Payment Field Group -->
+      <div id="followPaymentGroup" style="display:none;" class="conditional-field">
+        <p class="eyebrow" style="margin-bottom:8px; color:#087454; font-weight:700;">PAYMENT SETTLEMENT DETAILS</p>
+        <div class="form-grid" style="margin-bottom:12px;">
+          <label>Payment Type
+            <select id="followPayType" onchange="onFollowPayTypeChange()">
+              <option value="Part Payment">Part Payment</option>
+              <option value="Full Payment">Full Payment</option>
+            </select>
+          </label>
+          <label>Payment Mode
+            <select id="followPayMode" onchange="onFollowPayModeChange()">
+              <option value="cheque">cheque</option>
+              <option value="RTGS">RTGS</option>
+              <option value="cash">cash</option>
+              <option value="NEFT">NEFT</option>
+            </select>
+          </label>
+          <label id="followPayRefLabel">Cheque No / UTR / Txn ID
+            <input id="followPayRef" placeholder="Enter Cheque / UTR / Txn ID">
+          </label>
+          <label>Total Received Amount (₹)
+            <input id="followPayAmount" type="number" min="1" placeholder="Amount received" oninput="updateFollowPayAllocations('amount')">
+          </label>
+        </div>
+        <div id="followPayBillsContainer">
+          <div class="allocation-head" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <h3 style="font-size:12px; font-weight:700; text-transform:uppercase; margin:0;">Invoices Allocation (FIFO Auto-selected, Editable)</h3>
+            <span id="followAllocationSummary" style="font-size:11px; font-family:'DM Mono', monospace; color:#087454;"></span>
+          </div>
+          <div id="followPayBillsList" class="pay-bill-list" style="max-height:220px; overflow-y:auto;"></div>
+        </div>
+      </div>
+      <!-- FMS Milestone Checklist Widget -->
+      <div id="followFmsMilestonesGroup" style="margin-bottom:12px; background:#f5faf7; border:1px solid #cce8dc; border-radius:8px; padding:10px 12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <p class="eyebrow" style="margin:0; color:#087454; font-weight:800;">📋 FMS PRE-PLANNED MILESTONES (DUE DATE BASED)</p>
+          <span id="followFmsSummaryBadge" style="font:600 10px 'DM Mono', monospace; background:#d5efe3; color:#087454; padding:2px 6px; border-radius:4px;"></span>
+        </div>
+        <div id="followFmsList" style="display:flex; flex-direction:column; gap:6px;"></div>
+      </div>
+      <label>Conversation / remark<textarea id="remark" required></textarea></label>
+      <div class="modal-footer">
+        <span>Planned date is locked. Actual date records when follow-up was completed.</span>
+        <button class="btn primary">Save & schedule</button>
+      </div>
+      <div class="history-box">
+        <p class="eyebrow">CONVERSATION HISTORY</p>
+        <div id="modalHistory"></div>
+      </div>
+    </form>
+  </div>
+
+  <div class="modal-backdrop" id="paymentModal">
+    <form class="modal wide" onsubmit="savePayment(event)">
+      <button type="button" class="close" onclick="closeModal('paymentModal')">×</button>
+      <p class="eyebrow">RECORD RECEIVED PAYMENT</p>
+      <h2>Record Payment & Settle Invoices</h2>
+      <div class="form-grid">
+        <label>Received date<input id="payDate" type="date" required></label>
+        <label>Payment Type
+          <select id="payType" onchange="onPayTypeChange()">
+            <option value="Part">Part Payment</option>
+            <option value="Full">Full Payment</option>
+          </select>
+        </label>
+        <label>Mode
+          <select id="payMode" onchange="onPayModeChange()">
+            <option value="cheque">cheque</option>
+            <option value="RTGS">RTGS</option>
+            <option value="cash">cash</option>
+            <option value="NEFT">NEFT</option>
+          </select>
+        </label>
+        <label id="payRefLabel">Cheque No<input id="payRef" required></label>
+        <label>Total received (₹)<input id="payAmount" type="number" min="1" required oninput="updatePayAllocations('amount')"></label>
+      </div>
+      <label>Select Marka
+        <select id="payMarkaSelect" onchange="onPayMarkaSelectChange()" class="full">
+          <option value="">Choose Marka...</option>
+        </select>
+      </label>
+      <div id="payBillsContainer" style="margin-top:14px; display:none;">
+        <div class="allocation-head">
+          <h3>Select Invoices & Enter Allocations</h3>
+          <span id="allocationSummary"></span>
+        </div>
+        <div id="payBillsList" class="pay-bill-list"></div>
+      </div>
+      <div class="modal-footer">
+        <span>Allocations will reduce the selected bills' outstanding balance.</span>
+        <button class="btn primary">Post Payment</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="modal-backdrop" id="billModal">
+    <div class="modal wide">
+      <button type="button" class="close" onclick="closeModal('billModal')">×</button>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
+        <div>
+          <p class="eyebrow">BILL DETAILS</p>
+          <h2 id="billTitle">Bill Details</h2>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="btn secondary btn-sm" onclick="exportMarkaBillsExcel()"><i style="font-style:normal;">⇩</i> Excel</button>
+          <button type="button" class="btn secondary btn-sm" onclick="printBillStatement()"><i style="font-style:normal;">⎙</i> Print</button>
+          <button type="button" class="btn primary btn-sm" onclick="openPaymentHistoryFromBills()">₹ Payment History</button>
+          <button type="button" class="btn primary btn-sm" onclick="openPaymentFromBills()">+ Record Payment</button>
+        </div>
+      </div>
+      <div class="panel table-panel">
+        <table>
+          <thead>
+            <tr>
+              <th class="sortable" onclick="sortTable('bills', 'firstDate')">BILL DATE <span class="sort-icon" id="sort_bills_firstDate">▲</span></th>
+              <th class="sortable" onclick="sortTable('bills', 'policyDate')">DUE DATE (POLICY) <span class="sort-icon" id="sort_bills_policyDate">⇅</span></th>
+              <th class="sortable" onclick="sortTable('bills', 'policyName')">POLICY <span class="sort-icon" id="sort_bills_policyName">⇅</span></th>
+              <th>BILL NOS</th>
+              <th class="sortable" onclick="sortTable('bills', 'sourceAmount')">ORIGINAL AMOUNT <span class="sort-icon" id="sort_bills_sourceAmount">⇅</span></th>
+              <th class="sortable" onclick="sortTable('bills', 'balance')">CURRENT BALANCE <span class="sort-icon" id="sort_bills_balance">⇅</span></th>
+              <th class="sortable" onclick="sortTable('bills', 'status')">STATUS <span class="sort-icon" id="sort_bills_status">⇅</span></th>
+            </tr>
+          </thead>
+          <tbody id="billTable"></tbody>
+        </table>
+      </div>
+      <div id="billSummary"></div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="paymentHistoryModal">
+    <div class="modal wide">
+      <button type="button" class="close" onclick="closeModal('paymentHistoryModal')">×</button>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
+        <div>
+          <p class="eyebrow">DAILY ROKAD & PAYMENT LEDGER</p>
+          <h2 id="payHistTitle">Payment History</h2>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="btn secondary btn-sm" onclick="exportMarkaPaymentExcel()"><i style="font-style:normal;">⇩</i> Excel</button>
+          <button type="button" class="btn secondary btn-sm" onclick="window.print()"><i style="font-style:normal;">⎙</i> Print</button>
+        </div>
+      </div>
+      <div id="payHistMetrics" class="metrics mini" style="margin-top:14px;"></div>
+      <div class="panel table-panel" style="margin-top:14px;">
+        <table>
+          <thead>
+            <tr>
+              <th>DATE</th>
+              <th>RECEIPT / UTR</th>
+              <th>MODE</th>
+              <th>AMOUNT RECEIVED</th>
+              <th>BILL ALLOCATIONS</th>
+              <th>STATUS</th>
+            </tr>
+          </thead>
+          <tbody id="payHistTable"></tbody>
+        </table>
+      </div>
+      <div class="history-box">
+        <p class="eyebrow">CHRONOLOGICAL PAYMENT TIMELINE</p>
+        <div id="payHistTimeline"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="historyModal">
+    <div class="modal wide">
+      <button type="button" class="close" onclick="closeModal('historyModal')">×</button>
+      <p class="eyebrow">CONVERSATION HISTORY</p>
+      <h2 id="historyTitle">History</h2>
+      <div id="historyTimeline"></div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="resolveModal">
+    <form class="modal wide" onsubmit="saveResolution(event)">
+      <button type="button" class="close" onclick="closeModal('resolveModal')">×</button>
+      <p class="eyebrow">CRM ESCALATION RESOLUTION</p>
+      <h2 id="resolveTitle">Resolve Claim / Complaint</h2>
+      <input type="hidden" id="resolveMarkaId">
+      <input type="hidden" id="resolveEscId">
+      
+      <div class="form-grid">
+        <label>Resolution Date
+          <input id="resolveDate" type="date" required>
+        </label>
+        <label>Resolution Mode
+          <select id="resolveType" onchange="toggleResolutionType()">
+            <option value="Discount / Debit Note">Discount / Debit Note (Settle against bills)</option>
+            <option value="Goods Return / Credit Note">Goods Return / Credit Note (Settle against bills)</option>
+            <option value="Quality Claim Settlement">Quality Claim Settlement (Waiver / Adjustment)</option>
+            <option value="Settled with Payment">Settled with Payment (Settle against bills)</option>
+            <option value="Bad Debt / Write-off">Bad Debt / Write-off</option>
+            <option value="Direct Refund">Direct Refund</option>
+            <option value="Resolved without Adjustment">Resolved without Adjustment (Retracted / Satisfied)</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="settleBillsContainer" style="margin-top:14px;">
+        <div style="background:#f4faf7; border:1px solid #c8e8db; border-radius:8px; padding:10px 12px; margin-bottom:12px;">
+          <label style="font-weight:700; color:#087454; font-size:12px; display:block; margin-bottom:4px;">
+            ⚡ Cover Amount / Lump-Sum Dispute Settlement (₹)
+            <input id="resolveCoverAmount" type="number" min="0" placeholder="e.g. 20000 (auto-fills FIFO across checked bills)" oninput="onResolveCoverAmountInput()" style="margin-top:4px; font-weight:700; font-family:'DM Mono',monospace;">
+          </label>
+          <small style="color:#597067; font-size:11px; display:block;">Enter a lump-sum amount to auto-fill FIFO across bills, or manually check and edit amounts per bill below.</small>
+        </div>
+
+        <div class="allocation-head">
+          <h3>Select Invoices &amp; Edit Settlement Amounts</h3>
+          <div>
+            <button type="button" class="btn-sm row-action" onclick="selectAllSettleBills(true)">Select All</button>
+            <button type="button" class="btn-sm row-action" onclick="selectAllSettleBills(false)">Clear</button>
+          </div>
+        </div>
+        <p class="modal-copy" style="margin-bottom:8px;">Check the bills to apply settlement/discount against. You can edit the amount per bill.</p>
+        <div id="settleBillList" class="settle-bill-list"></div>
+        <span id="settleSummary" class="settle-summary"></span>
+      </div>
+
+      <label style="margin-top:14px;">Resolution Remarks / Settlement Notes
+        <textarea id="resolveRemark" placeholder="Enter resolution details, debit note reference, authorization..." required></textarea>
+      </label>
+
+      <div class="modal-footer">
+        <span>Settlement amounts will reduce the selected bills' outstanding balance.</span>
+        <button class="btn primary">Confirm & Resolve</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="modal-backdrop" id="assignmentModal">
+    <form class="modal" onsubmit="saveAssignment(event)">
+      <button type="button" class="close" onclick="closeModal('assignmentModal')">×</button>
+      <p class="eyebrow">MARKA ACCOUNTABILITY</p>
+      <h2 id="assignmentTitle">Assign Followper</h2>
+      <input type="hidden" id="assignmentMarka">
+      <label>Followper<select id="assignmentFollowper" required></select></label>
+      <div class="modal-footer">
+        <span>Applies to every current and future case for this Marka.</span>
+        <button class="btn primary">Save assignment</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="modal-backdrop" id="masterAssignmentModal">
+    <form class="modal" onsubmit="saveMasterAssignment(event)">
+      <button type="button" class="close" onclick="closeModal('masterAssignmentModal')">×</button>
+      <p class="eyebrow">MASTER ACCOUNTABILITY</p>
+      <h2 id="masterAssignmentTitle">Assign Accountable Person</h2>
+      <input type="hidden" id="assignmentMasterName">
+      <p class="modal-copy" id="masterAssignmentCopy"></p>
+      <label>Accountable Followper
+        <select id="masterAssignmentFollowper" required></select>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;cursor:pointer;">
+        <input type="checkbox" id="syncMasterMarkas" checked>
+        Update all existing Markas under this Master to this Followper
+      </label>
+      <div class="modal-footer">
+        <span>Applies as default followper for all new and existing cases for this Master.</span>
+        <button class="btn primary">Save Master Assignment</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="modal-backdrop" id="importModal">
+    <div class="modal">
+      <button type="button" class="close" onclick="closeModal('importModal')">×</button>
+      <p class="eyebrow">SYNC OUTSTANDING REPORT</p>
+      <h2>Update Marka balances</h2>
+      <p class="modal-copy">Upload your Excel file (.xlsx, .xls) or CSV with Marka/Group, Bill Date, Balance, Master, and Policy Date. Existing Marka cases retain history.</p>
+      <label class="dropzone">⇧<strong>Choose Excel (.xlsx / .xls) or CSV file</strong><small>or drop it here</small>
+        <input type="file" accept=".xlsx,.xls,.csv" onchange="importFile(event)">
+      </label>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="escDetailsModal">
+    <div class="modal wide" style="max-width:800px;">
+      <button type="button" class="close" onclick="closeModal('escDetailsModal')">×</button>
+      <p class="eyebrow">TICKET & RESOLUTION AUDIT TRAIL</p>
+      <h2 id="escDetailsTitle">Ticket Details & Action History</h2>
+      
+      <div id="escDetailsBody" style="margin-top:14px;"></div>
+      
+      <div class="history-box" style="margin-top:20px;">
+        <p class="eyebrow">COMPLETE MARKA CONVERSATION & FOLLOW-UP TIMELINE</p>
+        <div id="escDetailsTimeline"></div>
+      </div>
+      
+      <div class="modal-footer" style="margin-top:18px;">
+        <div id="escDetailsFooterActions" style="display:flex;gap:10px;"></div>
+        <button type="button" class="btn secondary" onclick="closeModal('escDetailsModal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="helpTicketModal">
+    <form class="modal" onsubmit="saveHelpTicket(event)">
+      <button type="button" class="close" onclick="closeModal('helpTicketModal')">×</button>
+      <p class="eyebrow">INTERNAL TEAM ASSISTANCE</p>
+      <h2>Create Help Ticket</h2>
+      <div class="form-grid">
+        <label>Date<input id="htDate" type="date" required></label>
+        <label>Priority
+          <select id="htPriority">
+            <option value="Normal">Normal</option>
+            <option value="High">High</option>
+            <option value="Critical">Critical</option>
+          </select>
+        </label>
+      </div>
+      <label>Select Party / Marka
+        <select id="htMarka" class="full" required>
+          <option value="">Select Marka...</option>
+        </select>
+      </label>
+      <div class="form-grid">
+        <label>Requested By<input id="htRequestedBy" readonly style="background:#f4f7f6;"></label>
+        <label>Assign Helper To
+          <select id="htAssignedHelper" required>
+            <option value="">Select Helper...</option>
+          </select>
+        </label>
+      </div>
+      <label>Subject / Summary<input id="htSubject" placeholder="e.g. Need assistance with master verification / physical visit" required></label>
+      <label>Details / Request Note<textarea id="htRemark" placeholder="Explain what help is needed..." required></textarea></label>
+      <div class="modal-footer">
+        <span>This ticket will notify and assign the helper for task assistance.</span>
+        <button class="btn primary" type="submit">Create Ticket</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="modal-backdrop" id="resolveTicketModal">
+    <form class="modal wide" onsubmit="saveResolveTicket(event)">
+      <button type="button" class="close" onclick="closeModal('resolveTicketModal')">×</button>
+      <p class="eyebrow">HELP TICKET ACTION &amp; RESOLUTION</p>
+      <h2>Help Ticket Action &amp; Follow-up</h2>
+      <input type="hidden" id="resolveTicketId">
+      <input type="hidden" id="resolveTicketActionMode" value="done">
+      <p id="resolveTicketTitle" style="font-weight:600; color:#182e25; margin-bottom:12px; font-size:13px;"></p>
+      
+      <!-- Action Mode Selector Tabs -->
+      <div style="display:flex; gap:8px; margin-bottom:14px; background:#e8f0ec; padding:6px; border-radius:8px;">
+        <button type="button" id="btnTicketModeDone" class="ticket-mode-btn active" style="flex:1; text-align:center; padding:10px; font-weight:800; font-size:13px; border-radius:6px; cursor:pointer;" onclick="switchTicketActionMode('done')">
+          ✓ Mark Done (Representative Action)
+        </button>
+        <button type="button" id="btnTicketModeProgress" class="ticket-mode-btn" style="flex:1; text-align:center; padding:10px; font-weight:800; font-size:13px; border-radius:6px; cursor:pointer;" onclick="switchTicketActionMode('progress')">
+          ⏳ In-Progress (Follow-up &amp; Next Date)
+        </button>
+      </div>
+      <p id="ticketModeHelpText" style="font-size:12px; margin-top:-6px; margin-bottom:12px; font-weight:600; color:#087454;">
+        ✓ Ticket will be marked as <b>COMPLETED / DONE</b>. No next follow-up date needed.
+      </p>
+
+      <div class="form-grid" style="margin-bottom:10px;">
+        <label>Action / Follow-up Date
+          <input id="resolveTicketDate" type="date" required>
+        </label>
+        <label>Doer / Performed By
+          <select id="resolveTicketBy" required>
+            <option value="">Select Representative / Doer...</option>
+          </select>
+        </label>
+      </div>
+
+      <!-- Mode Done Container -->
+      <div id="ticketDoneFields">
+        <label>Representative Action Taken (Completed)
+          <select id="resolveTicketActionType">
+            <option value="Physical Field Visit & Discussion Completed">Physical Field Visit & Discussion Completed</option>
+            <option value="Statement Signed & Verified with Master">Statement Signed & Verified with Master</option>
+            <option value="Cheque / Payment Collected">Cheque / Payment Collected</option>
+            <option value="PDC / Online Payment Commitment Secured">PDC / Online Payment Commitment Secured</option>
+            <option value="Payment / Accounts Reconciled">Payment / Accounts Reconciled</option>
+            <option value="Master Meeting Conducted">Master Meeting Conducted</option>
+            <option value="Other Representative Action">Other Representative Action</option>
+          </select>
+        </label>
+      </div>
+
+      <!-- Mode In-Progress Container -->
+      <div id="ticketProgressFields" style="display:none; background:#fffbeb; padding:10px; border-radius:6px; border:1px solid #fef08a; margin-bottom:10px;">
+        <label style="color:#92400e; font-weight:700;">Next Follow-up Date for Ticket (Re-plan)
+          <input id="resolveTicketNextDate" type="date">
+        </label>
+      </div>
+
+      <label style="margin-top:10px;" id="lblTicketNote">Action Details / Resolution Remarks
+        <textarea id="resolveTicketNote" placeholder="Explain the specific action taken..." required></textarea>
+      </label>
+
+      <label style="display:flex; align-items:center; gap:8px; margin-top:10px; font-size:12px; cursor:pointer;">
+        <input type="checkbox" id="resolveTicketLogToHistory" checked>
+        <b>Log this action / follow-up into Party conversation history timeline</b>
+      </label>
+
+      <div class="modal-footer" style="margin-top:14px;">
+        <button class="btn secondary" type="button" onclick="closeModal('resolveTicketModal')">Cancel</button>
+        <button class="btn primary" type="submit" id="btnSubmitTicketAction" style="font-weight:800; font-size:13px; padding:8px 18px;">Mark Done &amp; Save Action ✓</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="modal-backdrop" id="resolveEscModal">
+    <form class="modal" onsubmit="saveResolveEscalation(event)">
+      <button type="button" class="close" onclick="closeModal('resolveEscModal')">×</button>
+      <p class="eyebrow">CRM ESCALATION RESOLUTION</p>
+      <h2>Resolve Customer Complaint / Dispute</h2>
+      <input type="hidden" id="resolveEscMarkaId">
+      <input type="hidden" id="resolveEscId">
+      <p id="resolveEscTitle" style="font-weight:600; color:#182e25; margin-bottom:12px; font-size:13px;"></p>
+      <div class="form-grid">
+        <label>Resolution Type
+          <select id="resolveEscType">
+            <option value="Resolved">Resolved / Agreed</option>
+            <option value="Discount Applied">Discount / Credit Note Applied</option>
+            <option value="Goods Return Accepted">Goods Return Accepted</option>
+            <option value="Settled with Payment">Settled with Payment</option>
+            <option value="Closed (No Merit)">Closed (No Merit)</option>
+          </select>
+        </label>
+        <label>Settled Amount (₹ if any)<input id="resolveEscAmount" type="number" min="0" value="0"></label>
+      </div>
+      <label>Resolved By<input id="resolveEscBy" readonly style="background:#f4f7f6;"></label>
+      <label>Resolution Audit Note / Terms<textarea id="resolveEscNote" placeholder="Document agreed resolution, discount terms, or settlement..." required></textarea></label>
+      <div class="modal-footer">
+        <button class="btn secondary" type="button" onclick="closeModal('resolveEscModal')">Cancel</button>
+        <button class="btn primary" type="submit">Complete &amp; Settle Complaint ✓</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="modal-backdrop" id="fmsModal">
+    <form class="modal" onsubmit="saveFmsTask(event)">
+      <button type="button" class="close" onclick="closeModal('fmsModal')">×</button>
+      <p class="eyebrow">FLOW MANAGEMENT SYSTEM (FMS)</p>
+      <h2 id="fmsModalTitle">Complete Pre-Planned Milestone</h2>
+      <input type="hidden" id="fmsMarkaId">
+      <input type="hidden" id="fmsTaskCode">
+      <input type="hidden" id="fmsDueDate">
+      <input type="hidden" id="fmsOffsetDays">
+      <div id="fmsTaskInfo" style="margin-bottom:12px; background:#f5faf7; border:1px solid #cbe7da; border-radius:6px; padding:10px;"></div>
+      <div class="form-grid">
+        <label>Planned Date<input id="fmsPlannedDate" type="date" readonly style="background:#f0f4f2;"></label>
+        <label>Actual Completion Date<input id="fmsActualDate" type="date" required onchange="updateFmsScorePreview()"></label>
+        <label>Responsible Role<input id="fmsResponsibleRole" readonly style="background:#f0f4f2;"></label>
+        <label>Completed By<input id="fmsCompletedBy" required placeholder="Name of person completing"></label>
+      </div>
+      <div id="fmsScorePreview" style="margin:10px 0; padding:8px 12px; border-radius:6px; font-weight:700; font-size:13px; background:#edf7f2; color:#087454; border:1px solid #c0e7d5;">
+        Score: 1.0 point (On-Time completion)
+      </div>
+      <label>Completion Note / Remark<textarea id="fmsRemark" placeholder="Enter details (e.g. Master signed, bank verified, HOD updated)..." required></textarea></label>
+      <div class="modal-footer">
+        <span>Scoring rule: On-Time = 1.0 point, Delayed = 0.5 points</span>
+        <button class="btn primary" type="submit">Mark Done &amp; Save</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="modal-backdrop" id="cloudModal">
+    <div class="modal wide">
+      <button type="button" class="close" onclick="closeModal('cloudModal')">×</button>
+      <p class="eyebrow">MULTI-USER CLOUD SYNC</p>
+      <h2>Cloud Database Setup (GitHub Pages / Firebase)</h2>
+      <p class="modal-copy">Connect a free Google Firebase Firestore database so multiple team members on different laptops and mobile phones see real-time updates when hosted on GitHub Pages.</p>
+      
+      <div style="background:#f4faf7;border:1px solid #d2ebe0;border-radius:8px;padding:12px 16px;margin:14px 0;font-size:12px;color:#1d533f;">
+        <strong>How to get free Firebase Config (Takes 1 minute):</strong>
+        <ol style="margin:6px 0 0;padding-left:18px;line-height:1.5;">
+          <li>Go to <a href="https://console.firebase.google.com/" target="_blank" style="color:#087454;font-weight:700;">Firebase Console</a> and create a free project.</li>
+          <li>Click <b>Firestore Database</b> &gt; <b>Create database</b> (Start in test mode).</li>
+          <li>Click Project Settings (gear icon) &gt; Add Web App (<code>&lt;/&gt;</code>) &gt; Copy the <code>firebaseConfig</code> JSON.</li>
+        </ol>
+      </div>
+
+      <label>Firebase Config JSON
+        <textarea id="firebaseConfigInput" placeholder='{\n  "apiKey": "AIzaSy...",\n  "authDomain": "...",\n  "projectId": "...",\n  "storageBucket": "...",\n  "messagingSenderId": "...",\n  "appId": "..."\n}' style="height:120px;font-family:'DM Mono',monospace;font-size:11px;"></textarea>
+      </label>
+
+      <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;">
+        <button class="btn primary" onclick="saveCloudConfig()">Connect &amp; Sync Cloud DB</button>
+        <button class="btn secondary" onclick="pushToCloud()">Upload Local Data to Cloud</button>
+        <button class="btn secondary" onclick="disconnectCloud()" style="color:#c44d48;">Disconnect Cloud</button>
+      </div>
+
+      <div class="modal-footer" style="margin-top:16px;">
+        <span id="cloudStatusText">Status: Standalone / Local Database</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Change Password Modal -->
+  <div class="modal-backdrop" id="changePasswordModal">
+    <form class="modal" onsubmit="handleChangePasswordSubmit(event)" style="max-width:440px;">
+      <button type="button" class="close" onclick="closeModal('changePasswordModal')">×</button>
+      <p class="eyebrow">SECURITY SETTINGS</p>
+      <h2 id="changePasswordModalTitle">Change Password</h2>
+      <input type="hidden" id="changePasswordTargetEmail">
+      <input type="hidden" id="changePasswordIsAdminReset" value="false">
+      
+      <p id="changePasswordUserLabel" style="font-size:12px; color:#5b7067; margin:6px 0 14px 0; font-weight:600;"></p>
+
+      <div id="currentPasswordGroup" style="margin-bottom:12px;">
+        <label style="display:block; font-weight:600; margin-bottom:4px; font-size:12px;">Current Password
+          <div class="password-input-wrap" style="margin-top:4px;">
+            <input type="password" id="currentPasswordInput" placeholder="Enter current password" style="width:100%; padding:9px 12px; border:1px solid #dbe5e0; border-radius:6px; font-family:inherit; font-size:13px;">
+            <button type="button" class="pwd-toggle-btn" onclick="togglePasswordVisibility('currentPasswordInput', this)" title="Show/Hide Password">👁</button>
+          </div>
+        </label>
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <label style="display:block; font-weight:600; margin-bottom:4px; font-size:12px;">New Password
+          <div class="password-input-wrap" style="margin-top:4px;">
+            <input type="password" id="newPasswordInput" required placeholder="Enter new password (min. 4 characters)" style="width:100%; padding:9px 12px; border:1px solid #dbe5e0; border-radius:6px; font-family:inherit; font-size:13px;">
+            <button type="button" class="pwd-toggle-btn" onclick="togglePasswordVisibility('newPasswordInput', this)" title="Show/Hide Password">👁</button>
+          </div>
+        </label>
+      </div>
+
+      <div style="margin-bottom:14px;">
+        <label style="display:block; font-weight:600; margin-bottom:4px; font-size:12px;">Confirm New Password
+          <div class="password-input-wrap" style="margin-top:4px;">
+            <input type="password" id="confirmNewPasswordInput" required placeholder="Re-enter new password" style="width:100%; padding:9px 12px; border:1px solid #dbe5e0; border-radius:6px; font-family:inherit; font-size:13px;">
+            <button type="button" class="pwd-toggle-btn" onclick="togglePasswordVisibility('confirmNewPasswordInput', this)" title="Show/Hide Password">👁</button>
+          </div>
+        </label>
+      </div>
+
+      <div class="modal-footer" style="margin-top:16px;">
+        <span>Updated password takes effect immediately across all sessions.</span>
+        <button class="btn primary" type="submit">Save New Password</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Mobile Floating Action Button (FAB) -->
+  <div class="mobile-fab-container" id="mobileFabContainer">
+    <div class="mobile-fab-menu" id="mobileFabMenu">
+      <button class="fab-action" onclick="openFollowup(); closeMobileFab();">
+        <i>✓</i> <span>New Follow-up</span>
+      </button>
+      <button class="fab-action" onclick="openPayment(); closeMobileFab();">
+        <i>₹</i> <span>Record Payment</span>
+      </button>
+      <button class="fab-action" onclick="openHelpTicketModal(); closeMobileFab();">
+        <i>🎟️</i> <span>Help Ticket</span>
+      </button>
+    </div>
+    <button class="mobile-fab-main" id="mobileFabBtn" onclick="toggleMobileFab()">
+      <span id="fabIcon">+</span>
+    </button>
+  </div>
+
+  <!-- Mobile Bottom Navigation Bar (Phone App Shell) -->
+  <nav class="mobile-bottom-nav">
+    <button class="b-nav active" data-view="dashboard" onclick="switchView('dashboard')">
+      <i>▦</i>
+      <span>Home</span>
+    </button>
+    <button class="b-nav" data-view="schedule" onclick="switchView('schedule')">
+      <i>✓</i>
+      <span>Followup</span>
+      <b id="mobScheduleBadge" class="mob-badge">0</b>
+    </button>
+    <button class="b-nav" data-view="fms" onclick="switchView('fms')">
+      <i>📋</i>
+      <span>FMS</span>
+      <b id="mobFmsBadge" class="mob-badge">0</b>
+    </button>
+    <button class="b-nav" data-view="helpTickets" onclick="switchView('helpTickets')">
+      <i>🎟️</i>
+      <span>Help</span>
+      <b id="mobHelpBadge" class="mob-badge">0</b>
+    </button>
+    <button class="b-nav" data-view="crmEscalations" onclick="switchView('crmEscalations')">
+      <i>⚡</i>
+      <span>CRM</span>
+      <b id="mobCrmBadge" class="mob-badge">0</b>
+    </button>
+    <button class="b-nav" data-view="visits" onclick="switchView('visits')">
+      <i>🚗</i>
+      <span>Visits</span>
+    </button>
+    <button class="b-nav" onclick="toggleMobileMenu(event)">
+      <i>☰</i>
+      <span>Menu</span>
+    </button>
+  </nav>
+
+  <div id="toast"></div>
+
+  <!-- SheetJS Library for Direct Excel (.xlsx/.xls) File Parsing -->
+  <script src="xlsx.full.min.js"></script>
+  <!-- Firebase Compatibility Libraries for Real-time Cloud DB -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <script src="latest-report-data.js"></script>
+  <script src="app.js?v=5.0.6"></script>
+</body>
+</html>

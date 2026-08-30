@@ -1,0 +1,21 @@
+{
+  "name": "collectiq-payment-collection-system",
+  "version": "4.0.0",
+  "description": "Production Payment Collection & Follow-up Command Center",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "payment-collection",
+    "accounts-receivable",
+    "daily-rokad",
+    "follow-up"
+  ],
+  "author": "CollectIQ",
+  "license": "ISC",
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}
