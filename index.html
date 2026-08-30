@@ -6,7 +6,7 @@
   <title>CollectIQ - Payment Collection System</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="styles.css?v=5.1.1">
+  <link rel="stylesheet" href="styles.css?v=5.2.0">
   <script>
     function toggleMobileMenu(e) {
       if (e) {
@@ -46,7 +46,9 @@
         <label>Password
           <div class="password-input-wrap">
             <input type="password" id="loginPassword" required placeholder="••••••••">
-            <button type="button" class="pwd-toggle-btn" onclick="togglePasswordVisibility('loginPassword', this)" title="Show/Hide Password">👁</button>
+            <button type="button" class="pwd-toggle-btn" onclick="togglePasswordVisibility('loginPassword', this)" title="Show/Hide Password">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            </button>
           </div>
         </label>
         <button class="btn primary" type="submit">Sign In</button>
@@ -64,22 +66,22 @@
     </div>
     <div class="workspace">MARKA COLLECTIONS</div>
     <nav>
-      <button class="nav active" data-view="dashboard"><i>▦</i> Dashboard</button>
-      <button class="nav" data-view="schedule"><i>✓</i> Follow-up schedule <b id="scheduleBadge">0</b></button>
-      <button class="nav" data-view="fms"><i>⏱</i> FMS Pre-planned <b id="fmsBadge" style="background:#087454;">0</b></button>
-      <button class="nav" data-view="visits"><i>📍</i> Field Visits & Logs <b id="visitsBadge" style="background:#205e4b;">0</b></button>
-      <button class="nav" data-view="helpTickets"><i>💬</i> Help Tickets <b id="helpBadge" style="background:#317260;">0</b></button>
-      <button class="nav" data-view="crmEscalations"><i>⚡</i> CRM Escalations <b id="escalationBadge">0</b></button>
-      <button class="nav" data-view="gplock"><i>⊘</i> GP lock list <b id="lockBadge">0</b></button>
-      <button class="nav" data-view="analysis"><i>↗</i> Analysis & reports</button>
+      <button class="nav active" data-view="dashboard"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg></i> Dashboard</button>
+      <button class="nav" data-view="schedule"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg></i> Follow-up schedule <b id="scheduleBadge">0</b></button>
+      <button class="nav" data-view="fms"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></i> FMS Pre-planned <b id="fmsBadge" style="background:#087454;">0</b></button>
+      <button class="nav" data-view="visits"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg></i> Field Visits & Logs <b id="visitsBadge" style="background:#205e4b;">0</b></button>
+      <button class="nav" data-view="helpTickets"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></i> Help Tickets <b id="helpBadge" style="background:#317260;">0</b></button>
+      <button class="nav" data-view="crmEscalations"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg></i> CRM Escalations <b id="escalationBadge">0</b></button>
+      <button class="nav" data-view="gplock"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></i> GP lock list <b id="lockBadge">0</b></button>
+      <button class="nav" data-view="analysis"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg></i> Analysis & reports</button>
     </nav>
     <div class="lower" id="setupSection">
       <div class="workspace">SETUP</div>
       <nav>
-        <button class="nav" data-view="markas"><i>◎</i> Marka & Followper</button>
-        <button class="nav" data-view="import"><i>⇧</i> Sync outstanding</button>
-        <button class="nav" data-view="users" id="navUsers" style="display:none;"><i>👤</i> Manage Users</button>
-        <button class="nav" onclick="openCloudModal()"><i>☁</i> Cloud Database</button>
+        <button class="nav" data-view="markas"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg></i> Marka & Followper</button>
+        <button class="nav" data-view="import"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg></i> Sync outstanding</button>
+        <button class="nav" data-view="users" id="navUsers" style="display:none;"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></i> Manage Users</button>
+        <button class="nav" onclick="openCloudModal()"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path></svg></i> Cloud Database</button>
       </nav>
     </div>
     <div class="user-card">
@@ -87,7 +89,10 @@
       <div style="flex:1; min-width:0;">
         <strong id="userEmail" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block;">Collections Control</strong>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;">
-          <button type="button" onclick="openChangePassword()" style="background:none; border:none; color:#c9f36a; padding:0; font-size:10px; font-weight:700; cursor:pointer; font-family:Manrope,sans-serif; display:inline-flex; align-items:center; gap:3px;">🔑 Change Password</button>
+          <button type="button" onclick="openChangePassword()" style="background:none; border:none; color:#c9f36a; padding:0; font-size:10px; font-weight:700; cursor:pointer; font-family:Manrope,sans-serif; display:inline-flex; align-items:center; gap:3px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-1.5 1.5L14 9m-2 2l-4 4m-2 2L2 21l3-3m2-2l4-4m2-2l3.5-3.5M19 5l-2-2"></path><circle cx="15.5" cy="8.5" r="4.5"></circle></svg>
+            Change Password
+          </button>
           <button class="logout-btn" onclick="logout()">Logout</button>
         </div>
       </div>
@@ -106,8 +111,11 @@
       <div class="header-actions">
         <button class="btn secondary" onclick="exportExcel()">Export to Excel</button>
         <button class="btn secondary" onclick="window.print()">Print PDF</button>
-        <button id="resetBillsBtn" class="btn secondary" style="background:#faeceb;color:#c44d48;border-color:#f2c0be;display:none;" onclick="clearAllData()">🗑️ Reset / Clear Bills</button>
+        <button id="resetBillsBtn" class="btn secondary" style="background:#faeceb;color:#c44d48;border-color:#f2c0be;display:none;" onclick="clearAllData()">Reset / Clear Bills</button>
         <button class="btn primary" onclick="openPayment()">+ Record Payment</button>
+        <button class="btn primary" onclick="openFollowup()">+ Update follow-up</button>
+      </div>
+    </header>
         <button class="btn primary" onclick="openFollowup()">+ Update follow-up</button>
       </div>
     </header>
@@ -504,7 +512,7 @@
       </div>
     </section>
 
-    <section id="users" class="view">
+    <section id="userManagement" class="view">
       <div class="section-top">
         <div>
           <p class="eyebrow">DOER & ACCESS CONTROL</p>
@@ -516,33 +524,35 @@
       <div class="grid main-grid">
         <div class="panel">
           <div class="panel-head">
-            <h2>Add New User</h2>
+            <h2>Add / Register User</h2>
           </div>
           <form onsubmit="handleCreateUser(event)" style="display:grid; gap:12px;">
             <label>Email Address / Username
-              <input type="text" id="newUserEmail" required placeholder="e.g. vishal@collectiq.com or rahul" style="width:100%; padding:8px; border:1px solid #dbe5e0; border-radius:6px; margin-top:4px; font-family:inherit;">
+              <input type="text" id="newUserEmail" required placeholder="e.g. saurav@bhaskarsilkmills.in or vishal" style="width:100%; padding:9px 12px; border:1px solid #dbe5e0; border-radius:6px; margin-top:4px; font-family:inherit;">
             </label>
             <label>Password
               <div class="password-input-wrap" style="margin-top:4px;">
-                <input type="password" id="newUserPassword" required placeholder="e.g. 1234" style="width:100%; padding:8px; border:1px solid #dbe5e0; border-radius:6px; font-family:inherit;">
-                <button type="button" class="pwd-toggle-btn" onclick="togglePasswordVisibility('newUserPassword', this)" title="Show/Hide Password">👁</button>
+                <input type="password" id="newUserPassword" required placeholder="e.g. 1234" style="width:100%; padding:9px 12px; border:1px solid #dbe5e0; border-radius:6px; font-family:inherit;">
+                <button type="button" class="pwd-toggle-btn" onclick="togglePasswordVisibility('newUserPassword', this)" title="Show/Hide Password">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                </button>
               </div>
             </label>
             <label>Role / Access Level
-              <select id="newUserRole" onchange="onUserRoleChange()" style="width:100%; padding:8px; border:1px solid #dbe5e0; border-radius:6px; margin-top:4px; font-family:inherit;">
-                <option value="user">User (Standard Access — Own Markas Only)</option>
-                <option value="superuser">Superuser (Full Access & Reports)</option>
-                <option value="admin">Admin User (Full Control & User Management)</option>
+              <select id="newUserRole" onchange="onUserRoleChange()" style="width:100%; padding:9px 12px; border:1px solid #dbe5e0; border-radius:6px; margin-top:4px; font-family:inherit;">
+                <option value="user">Standard Doer (Own Markas, Tasks & Scores Only)</option>
+                <option value="superuser">Super Doer / Superuser (Full Visibility, Cross-Doer Delegation & Reports)</option>
+                <option value="admin">Admin (Full Control, Scoring & User Management)</option>
               </select>
             </label>
             <div id="newUserFollowperContainer">
-              <label style="display:block; font-weight:600; margin-bottom:4px;">Sales Person / Doer Name
-                <input type="text" id="newUserFollowper" list="doersDatalist" required placeholder="Type new name or select existing sales person..." style="width:100%; padding:9px 12px; border:1px solid #dbe5e0; border-radius:6px; margin-top:4px; font-family:inherit; font-size:13px;">
+              <label style="display:block; font-weight:600; margin-bottom:4px;">Linked Sales Person / Doer Name
+                <input type="text" id="newUserFollowper" list="doersDatalist" placeholder="Select existing sales person or type new name..." style="width:100%; padding:9px 12px; border:1px solid #dbe5e0; border-radius:6px; margin-top:4px; font-family:inherit; font-size:13px;">
                 <datalist id="doersDatalist"></datalist>
               </label>
-              <p style="font-size:11px; color:#5b7067; margin:4px 0 0 0;">✨ You can select an existing name or type a completely new Sales Person name. New names will automatically register as a Doer across the whole system (for assign, reassign, follow-ups, filters, and help tickets).</p>
+              <p style="font-size:11px; color:#5b7067; margin:4px 0 0 0;">You can select an existing name or type a new Sales Person name to register them as a Doer across the whole system.</p>
             </div>
-            <button class="btn primary" type="submit" style="margin-top:8px;">Create Account</button>
+            <button class="btn primary" type="submit" style="margin-top:8px;">Create / Save Account</button>
           </form>
         </div>
 
@@ -1190,7 +1200,9 @@
         <label style="display:block; font-weight:600; margin-bottom:4px; font-size:12px;">Confirm New Password
           <div class="password-input-wrap" style="margin-top:4px;">
             <input type="password" id="confirmNewPasswordInput" required placeholder="Re-enter new password" style="width:100%; padding:9px 12px; border:1px solid #dbe5e0; border-radius:6px; font-family:inherit; font-size:13px;">
-            <button type="button" class="pwd-toggle-btn" onclick="togglePasswordVisibility('confirmNewPasswordInput', this)" title="Show/Hide Password">👁</button>
+            <button type="button" class="pwd-toggle-btn" onclick="togglePasswordVisibility('confirmNewPasswordInput', this)" title="Show/Hide Password">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            </button>
           </div>
         </label>
       </div>
@@ -1202,17 +1214,56 @@
     </form>
   </div>
 
+  <!-- Edit User Access & Credentials Modal -->
+  <div class="modal-backdrop" id="editUserModal">
+    <div class="modal" style="max-width:480px;">
+      <button type="button" class="close" onclick="closeModal('editUserModal')">×</button>
+      <p class="eyebrow">ACCESS & CREDENTIALS</p>
+      <h2 id="editUserModalTitle">Edit User Access & Password</h2>
+      <form onsubmit="handleSaveEditUser(event)" style="display:grid; gap:12px; margin-top:12px;">
+        <input type="hidden" id="editUserOriginalEmail">
+        <label style="display:block; font-weight:600; font-size:12px;">Email Address / Username
+          <input type="text" id="editUserEmail" required style="width:100%; padding:9px 12px; border:1px solid #dbe5e0; border-radius:6px; margin-top:4px; font-family:inherit; font-size:13px;">
+        </label>
+        <label style="display:block; font-weight:600; font-size:12px;">Role / Access Level
+          <select id="editUserRole" onchange="onEditUserRoleChange()" style="width:100%; padding:9px 12px; border:1px solid #dbe5e0; border-radius:6px; margin-top:4px; font-family:inherit; font-size:13px;">
+            <option value="user">Standard Doer (Own Markas, Tasks & Scores Only)</option>
+            <option value="superuser">Super Doer / Superuser (Full Visibility, Cross-Doer Delegation & Reports)</option>
+            <option value="admin">Admin (Full Control, Scoring & User Management)</option>
+          </select>
+        </label>
+        <div id="editUserFollowperContainer">
+          <label style="display:block; font-weight:600; font-size:12px;">Linked Sales Person / Doer Name
+            <input type="text" id="editUserFollowper" list="doersDatalist" style="width:100%; padding:9px 12px; border:1px solid #dbe5e0; border-radius:6px; margin-top:4px; font-family:inherit; font-size:13px;">
+          </label>
+        </div>
+        <label style="display:block; font-weight:600; font-size:12px;">Password
+          <div class="password-input-wrap" style="margin-top:4px;">
+            <input type="password" id="editUserPassword" required placeholder="Enter password" style="width:100%; padding:9px 12px; border:1px solid #dbe5e0; border-radius:6px; font-family:inherit; font-size:13px;">
+            <button type="button" class="pwd-toggle-btn" onclick="togglePasswordVisibility('editUserPassword', this)" title="Show/Hide Password">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            </button>
+          </div>
+        </label>
+        <div class="modal-footer" style="margin-top:16px;">
+          <button type="button" class="btn secondary" onclick="closeModal('editUserModal')">Cancel</button>
+          <button class="btn primary" type="submit">Save User Settings</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Mobile Floating Action Button (FAB) -->
   <div class="mobile-fab-container" id="mobileFabContainer">
     <div class="mobile-fab-menu" id="mobileFabMenu">
       <button class="fab-action" onclick="openFollowup(); closeMobileFab();">
-        <i>✓</i> <span>New Follow-up</span>
+        <i><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg></i> <span>New Follow-up</span>
       </button>
       <button class="fab-action" onclick="openPayment(); closeMobileFab();">
-        <i>₹</i> <span>Record Payment</span>
+        <i><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></i> <span>Record Payment</span>
       </button>
       <button class="fab-action" onclick="openHelpTicketModal(); closeMobileFab();">
-        <i>🎟️</i> <span>Help Ticket</span>
+        <i><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></i> <span>Help Ticket</span>
       </button>
     </div>
     <button class="mobile-fab-main" id="mobileFabBtn" onclick="toggleMobileFab()">
@@ -1223,35 +1274,35 @@
   <!-- Mobile Bottom Navigation Bar (Phone App Shell) -->
   <nav class="mobile-bottom-nav">
     <button class="b-nav active" data-view="dashboard" onclick="switchView('dashboard')">
-      <i>▦</i>
+      <i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg></i>
       <span>Home</span>
     </button>
     <button class="b-nav" data-view="schedule" onclick="switchView('schedule')">
-      <i>✓</i>
+      <i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg></i>
       <span>Followup</span>
       <b id="mobScheduleBadge" class="mob-badge">0</b>
     </button>
     <button class="b-nav" data-view="fms" onclick="switchView('fms')">
-      <i>📋</i>
+      <i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></i>
       <span>FMS</span>
       <b id="mobFmsBadge" class="mob-badge">0</b>
     </button>
     <button class="b-nav" data-view="helpTickets" onclick="switchView('helpTickets')">
-      <i>🎟️</i>
+      <i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></i>
       <span>Help</span>
       <b id="mobHelpBadge" class="mob-badge">0</b>
     </button>
     <button class="b-nav" data-view="crmEscalations" onclick="switchView('crmEscalations')">
-      <i>⚡</i>
+      <i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg></i>
       <span>CRM</span>
       <b id="mobCrmBadge" class="mob-badge">0</b>
     </button>
     <button class="b-nav" data-view="visits" onclick="switchView('visits')">
-      <i>🚗</i>
+      <i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg></i>
       <span>Visits</span>
     </button>
     <button class="b-nav" onclick="toggleMobileMenu(event)">
-      <i>☰</i>
+      <i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg></i>
       <span>Menu</span>
     </button>
   </nav>
@@ -1263,7 +1314,7 @@
   <!-- Firebase Compatibility Libraries for Real-time Cloud DB -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-  <script src="latest-report-data.js?v=5.1.1"></script>
-  <script src="app.js?v=5.1.1"></script>
+  <script src="latest-report-data.js?v=5.2.0"></script>
+  <script src="app.js?v=5.2.0"></script>
 </body>
 </html>

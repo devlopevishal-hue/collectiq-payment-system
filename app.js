@@ -107,27 +107,30 @@ function getMasterFollowper(masterName) {
 let markas = [];
 let payments = [];
 let helpTickets = [];
+let users = [];
+let currentUser = null;
 let tab = 'all';
 let markaSubtab = 'markas';
 let F = { followper: 'all', master: 'all', marka: '', min: '', max: '', minCount: '', maxCount: '', from: '', to: '' };
 
 // User Access Control & Auth State
 const DEFAULT_USERS = [
-  { email: 'admin@collectiq.com', password: '1234', role: 'admin', followperName: 'all' },
   { email: 'devlope.vishal@gmail.com', password: '1234', role: 'admin', followperName: 'all' },
+  { email: 'admin@collectiq.com', password: '1234', role: 'admin', followperName: 'all' },
   { email: 'accounts@collectiq.com', password: '1234', role: 'user', followperName: 'Account Team' },
   { email: 'crm@collectiq.com', password: '1234', role: 'user', followperName: 'CRM' },
-  { email: 'sales.hod@collectiq.com', password: '1234', role: 'user', followperName: 'Sales HOD' },
+  { email: 'sales.hod@collectiq.com', password: '1234', role: 'superuser', followperName: 'Sales HOD' },
+  { email: 'saurav@collectiq.com', password: '1234', role: 'superuser', followperName: 'Saurav Bhai' },
+  { email: 'saurav@bhaskarsilkmills.in', password: '1234', role: 'superuser', followperName: 'Saurav Bhai' },
+  { email: 'bhavesh@collectiq.com', password: '1234', role: 'superuser', followperName: 'Bhavesh Bhai' },
+  { email: 'pc@collectiq.com', password: '1234', role: 'user', followperName: 'Process Coordinator (PC)' },
   { email: 'surendra@collectiq.com', password: '1234', role: 'user', followperName: 'Surendra' },
   { email: 'mahavir@collectiq.com', password: '1234', role: 'user', followperName: 'Mahavir' },
   { email: 'girdharilal@collectiq.com', password: '1234', role: 'user', followperName: 'Girdharilal' },
   { email: 'sajjan@collectiq.com', password: '1234', role: 'user', followperName: 'Sajjan' },
   { email: 'anil.sharma@collectiq.com', password: '1234', role: 'user', followperName: 'Anil Sharma' },
   { email: 'manish.agarwal@collectiq.com', password: '1234', role: 'user', followperName: 'Manish Agarwal' },
-  { email: 'ravi.sharma@collectiq.com', password: '1234', role: 'user', followperName: 'Ravi Kant Sharma' },
-  { email: 'saurav@collectiq.com', password: '1234', role: 'user', followperName: 'Saurav Bhai' },
-  { email: 'bhavesh@collectiq.com', password: '1234', role: 'user', followperName: 'Bhavesh Bhai' },
-  { email: 'pc@collectiq.com', password: '1234', role: 'user', followperName: 'Process Coordinator (PC)' }
+  { email: 'ravi.sharma@collectiq.com', password: '1234', role: 'user', followperName: 'Ravi Kant Sharma' }
 ];
 
 function isLocalServer() {
@@ -235,6 +238,7 @@ window.logout = logout;
 function save() {
   window.markas = markas;
   window.helpTickets = helpTickets;
+  window.users = users;
   localStorage.setItem('collectiq_markas_v4', JSON.stringify(markas));
   localStorage.setItem('collectiq_rokad_v4', JSON.stringify(payments));
   localStorage.setItem('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
@@ -392,6 +396,7 @@ function load() {
       }
     });
     localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
+    window.users = users;
     checkAuth();
   } catch (e) {
     console.error('Error loading data:', e);
@@ -5123,15 +5128,23 @@ window.exportMastersExcel = exportMastersExcel;
 // ==========================================
 // USER ACCOUNTS & CREDENTIALS MANAGEMENT
 // ==========================================
+const SVG_EYE = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+const SVG_EYE_OFF = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`;
+
 function usersView() {
-  const container = document.getElementById('users');
+  const container = document.getElementById('userManagement') || document.getElementById('users');
   if (!container) return;
   
   const tbody = document.getElementById('usersTableBody');
   if (tbody) {
-    tbody.innerHTML = users.map(u => {
+    tbody.innerHTML = (users || []).map(u => {
       const isPrimaryAdmin = u.email === 'admin@collectiq.com' || u.email === 'devlope.vishal@gmail.com';
-      const roleBadge = u.role === 'admin' ? '<span class="status overdue">ADMIN</span>' : u.role === 'superuser' ? '<span class="status closed">SUPERUSER</span>' : '<span class="status active">USER</span>';
+      const roleBadge = u.role === 'admin' ? 
+        '<span class="status overdue" style="font-weight:800; padding:2px 8px;">ADMIN</span>' : 
+        (u.role === 'superuser' || u.role === 'super doer') ? 
+        '<span class="status closed" style="background:#fef3c7; color:#92400e; font-weight:800; border:1px solid #fde68a; padding:2px 8px;">SUPER DOER</span>' : 
+        '<span class="status active" style="font-weight:700; padding:2px 8px;">DOER</span>';
+      
       return `
         <tr>
           <td><b>${escapeHtml(u.email)}</b></td>
@@ -5139,7 +5152,7 @@ function usersView() {
           <td>${roleBadge}</td>
           <td><b style="color:#087454;">${escapeHtml(u.followperName || '—')}</b></td>
           <td>
-            <button onclick="openChangePassword('${escapeHtml(u.email)}')" class="row-action" style="background:#087454;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;margin-right:4px;" title="Change / Reset Password">Edit Password</button>
+            <button onclick="openEditUser('${escapeHtml(u.email)}')" class="row-action" style="background:#087454;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;margin-right:4px;" title="Edit Access & Password">Edit Access & Pwd</button>
             ${isPrimaryAdmin 
               ? '<span style="color:#75847e; font-size:11px;">Primary Admin</span>' 
               : `<button onclick="deleteUser('${escapeHtml(u.email)}')" class="row-action" style="background:#d85a54;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;">Delete</button>`}
@@ -5149,7 +5162,6 @@ function usersView() {
     }).join('');
   }
   
-  // Populate datalist for Add New User autocomplete
   const dList = document.getElementById('doersDatalist');
   if (dList) {
     dList.innerHTML = allFollowpers().filter(f => f !== 'Unassigned').map(d => `<option value="${escapeHtml(d)}">`).join('');
@@ -5162,12 +5174,89 @@ function togglePasswordVisibility(inputId, btnEl) {
   const isPass = input.type === 'password';
   input.type = isPass ? 'text' : 'password';
   if (btnEl) {
-    btnEl.textContent = isPass ? '🙈' : '👁';
-    btnEl.style.color = isPass ? '#087454' : '#71807b';
+    btnEl.innerHTML = isPass ? SVG_EYE_OFF : SVG_EYE;
+    btnEl.style.color = isPass ? '#087454' : '#64748b';
     btnEl.title = isPass ? 'Hide Password' : 'Show Password';
   }
 }
 window.togglePasswordVisibility = togglePasswordVisibility;
+
+function openEditUser(email) {
+  const user = (users || []).find(u => u.email.toLowerCase() === email.toLowerCase());
+  if (!user) return toast('User not found.');
+
+  document.getElementById('editUserOriginalEmail').value = user.email;
+  document.getElementById('editUserEmail').value = user.email;
+  document.getElementById('editUserRole').value = user.role || 'user';
+  document.getElementById('editUserFollowper').value = user.followperName === 'all' ? '' : (user.followperName || '');
+  document.getElementById('editUserPassword').value = user.password || '1234';
+  
+  onEditUserRoleChange();
+  openModal('editUserModal');
+}
+window.openEditUser = openEditUser;
+
+function onEditUserRoleChange() {
+  const role = document.getElementById('editUserRole').value;
+  const container = document.getElementById('editUserFollowperContainer');
+  if (container) {
+    container.style.display = (role === 'admin') ? 'none' : 'block';
+  }
+}
+window.onEditUserRoleChange = onEditUserRoleChange;
+
+async function handleSaveEditUser(e) {
+  if (e && typeof e.preventDefault === 'function') e.preventDefault();
+  const origEmail = document.getElementById('editUserOriginalEmail').value.trim().toLowerCase();
+  const email = (document.getElementById('editUserEmail').value || '').trim().toLowerCase();
+  const role = document.getElementById('editUserRole').value;
+  const fName = document.getElementById('editUserFollowper') ? document.getElementById('editUserFollowper').value.trim() : '';
+  const password = document.getElementById('editUserPassword').value.trim();
+
+  if (!email) return toast('Email is required.');
+  if (!password) return toast('Password is required.');
+
+  const userIdx = users.findIndex(u => u.email.toLowerCase() === origEmail);
+  if (userIdx < 0) return toast('User not found.');
+
+  const linkedDoer = (role === 'admin') ? 'all' : (fName || email.split('@')[0]);
+
+  users[userIdx] = {
+    email,
+    password,
+    role,
+    followperName: linkedDoer
+  };
+
+  localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
+
+  if (currentUser && currentUser.email.toLowerCase() === origEmail) {
+    currentUser.email = email;
+    currentUser.role = role;
+    currentUser.followperName = linkedDoer;
+    currentUser.password = password;
+    localStorage.setItem('collectiq_current_user', JSON.stringify(currentUser));
+  }
+
+  if (isOnlineMode()) {
+    try {
+      await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(users[userIdx])
+      });
+      await syncWithDatabase();
+    } catch(err) {
+      console.warn('API sync error:', err);
+    }
+  }
+
+  save();
+  closeModal('editUserModal');
+  renderAll();
+  toast(`User "${email}" access & password updated successfully!`);
+}
+window.handleSaveEditUser = handleSaveEditUser;
 
 function openChangePassword(targetEmail) {
   const isAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superuser');
@@ -5208,9 +5297,8 @@ function openChangePassword(targetEmail) {
     confirmInput.type = 'password';
   }
 
-  // Reset toggle buttons
   document.querySelectorAll('#changePasswordModal .pwd-toggle-btn').forEach(btn => {
-    btn.textContent = '👁';
+    btn.innerHTML = SVG_EYE;
     btn.style.color = '#71807b';
   });
 
@@ -5236,9 +5324,24 @@ async function handleChangePasswordSubmit(e) {
     return toast('New password and confirmation do not match.');
   }
 
+  const userObj = users.find(u => u.email.toLowerCase() === targetEmail.toLowerCase());
+  if (!userObj) return toast('User not found.');
+
+  if (!isAdminReset && userObj.password !== currentPassword && userObj.password !== '1234' && currentPassword !== '1234') {
+    return toast('Current password is incorrect.');
+  }
+
+  userObj.password = newPassword;
+  localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
+
+  if (currentUser && currentUser.email.toLowerCase() === targetEmail.toLowerCase()) {
+    currentUser.password = newPassword;
+    localStorage.setItem('collectiq_current_user', JSON.stringify(currentUser));
+  }
+
   if (isOnlineMode()) {
     try {
-      const res = await fetch('/api/users/change-password', {
+      await fetch('/api/users/change-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -5248,49 +5351,15 @@ async function handleChangePasswordSubmit(e) {
           isAdmin: isAdminReset
         })
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        // Update local state if changing own password
-        const userObj = users.find(u => u.email.toLowerCase() === targetEmail.toLowerCase());
-        if (userObj) userObj.password = newPassword;
-        localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
-
-        if (currentUser && currentUser.email.toLowerCase() === targetEmail.toLowerCase()) {
-          currentUser.password = newPassword;
-          localStorage.setItem('collectiq_current_user', JSON.stringify(currentUser));
-        }
-
-        closeModal('changePasswordModal');
-        await syncWithDatabase();
-        renderAll();
-        toast('Password updated successfully in SQLite database!');
-      } else {
-        toast('Error: ' + (data.error || 'Failed to update password.'));
-      }
+      await syncWithDatabase();
     } catch (err) {
-      toast('API error: ' + err.message);
+      console.warn('API error:', err);
     }
-  } else {
-    // Local / offline fallback
-    const userObj = users.find(u => u.email.toLowerCase() === targetEmail.toLowerCase());
-    if (!userObj) return toast('User not found.');
-
-    if (!isAdminReset && userObj.password !== currentPassword && userObj.password !== '1234' && currentPassword !== '1234') {
-      return toast('Current password is incorrect.');
-    }
-
-    userObj.password = newPassword;
-    localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
-
-    if (currentUser && currentUser.email.toLowerCase() === targetEmail.toLowerCase()) {
-      currentUser.password = newPassword;
-      localStorage.setItem('collectiq_current_user', JSON.stringify(currentUser));
-    }
-
-    closeModal('changePasswordModal');
-    renderAll();
-    toast('Password updated successfully!');
   }
+
+  closeModal('changePasswordModal');
+  renderAll();
+  toast('Password updated successfully!');
 }
 window.handleChangePasswordSubmit = handleChangePasswordSubmit;
 
@@ -5298,70 +5367,64 @@ function onUserRoleChange() {
   const role = document.getElementById('newUserRole').value;
   const container = document.getElementById('newUserFollowperContainer');
   if (container) {
-    container.style.display = (role === 'superuser' || role === 'admin') ? 'none' : 'block';
+    container.style.display = (role === 'admin') ? 'none' : 'block';
   }
 }
+window.onUserRoleChange = onUserRoleChange;
 
 async function handleCreateUser(e) {
-  e.preventDefault();
-  const email = document.getElementById('newUserEmail').value.trim().toLowerCase();
-  const password = document.getElementById('newUserPassword') ? document.getElementById('newUserPassword').value.trim() : email;
+  if (e && typeof e.preventDefault === 'function') e.preventDefault();
+  const email = (document.getElementById('newUserEmail').value || '').trim().toLowerCase();
+  const password = document.getElementById('newUserPassword') ? document.getElementById('newUserPassword').value.trim() : '1234';
   const role = document.getElementById('newUserRole').value;
   const fName = document.getElementById('newUserFollowper') ? document.getElementById('newUserFollowper').value.trim() : '';
   
   if (!email) {
-    return toast('Email address is required.');
+    return toast('Email address or username is required.');
   }
   if (!password) {
     return toast('Password is required.');
   }
-  if (role === 'user' && !fName) {
-    return toast('Please enter a Sales Person / Doer name for this standard user.');
-  }
-  
-  if (users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
-    return toast('A user with this email already exists.');
-  }
+
+  const linkedDoer = (role === 'admin') ? 'all' : (fName || email.split('@')[0]);
 
   const payload = {
     email,
     password,
     role,
-    followperName: (role === 'superuser' || role === 'admin') ? (fName || 'all') : fName
+    followperName: linkedDoer
   };
+
+  const existingIdx = users.findIndex(u => u.email.toLowerCase() === email.toLowerCase());
+  if (existingIdx >= 0) {
+    users[existingIdx] = payload;
+  } else {
+    users.push(payload);
+  }
+
+  localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
 
   if (isOnlineMode()) {
     try {
-      const res = await fetch('/api/users', {
+      await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      if (res.ok) {
-        await syncWithDatabase();
-        document.getElementById('newUserEmail').value = '';
-        if (document.getElementById('newUserPassword')) document.getElementById('newUserPassword').value = '';
-        if (document.getElementById('newUserFollowper')) document.getElementById('newUserFollowper').value = '';
-        toast(`User "${email}" created successfully in SQLite!`);
-        renderAll();
-      } else {
-        const err = await res.json();
-        toast('Error: ' + err.error);
-      }
+      await syncWithDatabase();
     } catch (err) {
-      toast('API error: ' + err.message);
+      console.warn('API warning:', err);
     }
-  } else {
-    users.push(payload);
-    localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
-    save();
-    document.getElementById('newUserEmail').value = '';
-    if (document.getElementById('newUserPassword')) document.getElementById('newUserPassword').value = '';
-    if (document.getElementById('newUserFollowper')) document.getElementById('newUserFollowper').value = '';
-    renderAll();
-    toast(`User "${email}" created with Doer name "${payload.followperName}". Available everywhere!`);
   }
+
+  save();
+  document.getElementById('newUserEmail').value = '';
+  if (document.getElementById('newUserPassword')) document.getElementById('newUserPassword').value = '';
+  if (document.getElementById('newUserFollowper')) document.getElementById('newUserFollowper').value = '';
+  renderAll();
+  toast(`User "${email}" saved with role "${role === 'superuser' ? 'Super Doer' : role === 'admin' ? 'Admin' : 'Doer'}".`);
 }
+window.handleCreateUser = handleCreateUser;
 
 async function deleteUser(email) {
   if (email === 'admin@collectiq.com') return toast('Cannot delete system administrator account.');
@@ -5409,7 +5472,8 @@ function switchView(id) {
     if (x.dataset.view === id) x.classList.add('active');
     else x.classList.remove('active');
   });
-  const viewEl = document.getElementById(id);
+  const targetId = (id === 'users') ? 'userManagement' : id;
+  const viewEl = document.getElementById(targetId) || document.getElementById(id);
   if (viewEl) viewEl.classList.add('active');
   
   if (id === 'visits') visitsView();
@@ -5421,7 +5485,7 @@ function switchView(id) {
   else if (id === 'gplock') locks();
   else if (id === 'analysis') analysis();
   else if (id === 'markas') markaView();
-  else if (id === 'users') usersView();
+  else if (id === 'users' || id === 'userManagement') usersView();
   
   const titles = {
     dashboard: 'Collection command center',
