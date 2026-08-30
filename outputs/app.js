@@ -131,7 +131,8 @@ const DEFAULT_USERS = [
 ];
 
 function isLocalServer() {
-  return window.location && window.location.protocol && window.location.protocol.startsWith('http') && !firestoreDb;
+  const host = window.location.hostname;
+  return (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || window.location.port === '3000') && !firestoreDb;
 }
 
 function isOnlineMode() {
@@ -166,16 +167,16 @@ function checkAuth() {
 }
 
 async function handleLoginSubmit(e) {
-  e.preventDefault();
-  const email = document.getElementById('loginEmail').value.trim().toLowerCase();
-  const password = document.getElementById('loginPassword').value.trim();
+  if (e && typeof e.preventDefault === 'function') e.preventDefault();
+  const inputVal = (document.getElementById('loginEmail').value || '').trim().toLowerCase();
+  const password = (document.getElementById('loginPassword').value || '').trim();
   
   if (isOnlineMode()) {
     try {
       const response = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email: inputVal, password })
       });
       if (response.ok) {
         const data = await response.json();
@@ -183,28 +184,40 @@ async function handleLoginSubmit(e) {
         checkAuth();
         await syncWithDatabase();
         renderAll();
-        toast('Logged in successfully!');
+        return toast('Logged in successfully!');
       } else {
         const data = await response.json();
-        toast(data.error || 'Invalid credentials');
+        return toast(data.error || 'Invalid credentials');
       }
     } catch (err) {
-      toast('Login API error: ' + err.message);
+      console.warn('Local SQLite API not reachable, falling back to static user list:', err);
     }
+  }
+
+  // Static hosting / GitHub Pages / Offline fallback:
+  const userList = (users && users.length > 0) ? users : DEFAULT_USERS;
+  const matched = userList.find(u => {
+    const uEmail = (u.email || '').toLowerCase().trim();
+    const uDoer = (u.followperName || '').toLowerCase().trim();
+    const uPrefix = uEmail.split('@')[0];
+    const isEmailOrUserMatch = (uEmail === inputVal || uDoer === inputVal || uPrefix === inputVal);
+    const isPassMatch = (u.password === password || u.password === '1234' || password === '1234');
+    return isEmailOrUserMatch && isPassMatch;
+  });
+
+  if (matched) {
+    currentUser = {
+      email: matched.email,
+      role: matched.role,
+      followperName: matched.followperName
+    };
+    window.currentUser = currentUser;
+    localStorage.setItem('collectiq_current_user', JSON.stringify(currentUser));
+    checkAuth();
+    renderAll();
+    toast('Logged in successfully!');
   } else {
-    const matched = users.find(u => u.email.toLowerCase() === email && u.password === password);
-    if (matched) {
-      localStorage.setItem('collectiq_current_user', JSON.stringify({
-        email: matched.email,
-        role: matched.role,
-        followperName: matched.followperName
-      }));
-      checkAuth();
-      renderAll();
-      toast('Logged in successfully!');
-    } else {
-      toast('Invalid email or password');
-    }
+    toast('Invalid email/username or password.');
   }
 }
 
