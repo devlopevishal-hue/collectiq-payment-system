@@ -169,64 +169,154 @@ function checkAuth() {
   }
 }
 
+function showLoginAlert(type, title, message) {
+  const alertEl = document.getElementById('loginAlert');
+  if (!alertEl) return;
+  alertEl.className = 'login-alert ' + (type || 'error');
+  
+  const icon = type === 'warning' ? `
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+  ` : type === 'info' ? `
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+  ` : `
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+  `;
+
+  alertEl.innerHTML = `${icon}<div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(message)}</span></div>`;
+  alertEl.style.display = 'flex';
+}
+window.showLoginAlert = showLoginAlert;
+
+function clearLoginAlert() {
+  const alertEl = document.getElementById('loginAlert');
+  if (alertEl) {
+    alertEl.style.display = 'none';
+    alertEl.innerHTML = '';
+  }
+}
+window.clearLoginAlert = clearLoginAlert;
+
 async function handleLoginSubmit(e) {
   if (e && typeof e.preventDefault === 'function') e.preventDefault();
+  clearLoginAlert();
+
   const inputVal = (document.getElementById('loginEmail').value || '').trim().toLowerCase();
   const password = (document.getElementById('loginPassword').value || '').trim();
   
+  if (!inputVal) {
+    showLoginAlert('error', 'Username or Email Required', 'Please enter your registered email address or username.');
+    return toast('Please enter your email or username.');
+  }
+  if (!password) {
+    showLoginAlert('error', 'Password Required', 'Please enter your account password.');
+    return toast('Please enter your password.');
+  }
+
+  // Generate or retrieve current device session ID
+  let currentDeviceId = localStorage.getItem('collectiq_device_id');
+  if (!currentDeviceId) {
+    currentDeviceId = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 6);
+    localStorage.setItem('collectiq_device_id', currentDeviceId);
+  }
+
+  // 1. Try local SQLite Backend if available
   if (isOnlineMode()) {
     try {
       const response = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: inputVal, password })
+        body: JSON.stringify({ email: inputVal, password, deviceId: currentDeviceId })
       });
       if (response.ok) {
         const data = await response.json();
-        localStorage.setItem('collectiq_current_user', JSON.stringify(data.user));
+        currentUser = { ...data.user, deviceId: currentDeviceId };
+        window.currentUser = currentUser;
+        localStorage.setItem('collectiq_current_user', JSON.stringify(currentUser));
         checkAuth();
         await syncWithDatabase();
         renderAll();
         return toast('Logged in successfully!');
       } else {
         const data = await response.json();
-        return toast(data.error || 'Invalid credentials');
+        const errMsg = data.error || 'Authentication failed.';
+        if (errMsg.toLowerCase().includes('not exist') || errMsg.toLowerCase().includes('not found')) {
+          showLoginAlert('error', 'User Account Not Found', `No user exists with username or email "${inputVal}". Please verify your credentials.`);
+        } else if (errMsg.toLowerCase().includes('password')) {
+          showLoginAlert('error', 'Incorrect Password', 'The password you entered does not match our records. Please try again.');
+        } else {
+          showLoginAlert('error', 'Login Failed', errMsg);
+        }
+        return toast(errMsg);
       }
     } catch (err) {
-      console.warn('Local SQLite API not reachable, falling back to static user list:', err);
+      console.warn('Local SQLite API unreachable, checking cloud / memory accounts:', err);
     }
   }
 
-  // Static hosting / GitHub Pages / Offline fallback:
+  // 2. Client & Cloud Database Auth Evaluation
   const userList = (users && users.length > 0) ? users : DEFAULT_USERS;
-  const matched = userList.find(u => {
+
+  // Find user by email, prefix, or Doer name
+  const matchedUser = userList.find(u => {
     const uEmail = (u.email || '').toLowerCase().trim();
     const uDoer = (u.followperName || '').toLowerCase().trim();
     const uPrefix = uEmail.split('@')[0];
-    const isEmailOrUserMatch = (uEmail === inputVal || uDoer === inputVal || uPrefix === inputVal);
-    const isPassMatch = (u.password === password || u.password === '1234' || password === '1234');
-    return isEmailOrUserMatch && isPassMatch;
+    return (uEmail === inputVal || uDoer === inputVal || uPrefix === inputVal);
   });
 
-  if (matched) {
-    currentUser = {
-      email: matched.email,
-      role: matched.role,
-      followperName: matched.followperName
-    };
-    window.currentUser = currentUser;
-    localStorage.setItem('collectiq_current_user', JSON.stringify(currentUser));
-    checkAuth();
-    renderAll();
-    toast('Logged in successfully!');
+  // CASE 1: User does not exist
+  if (!matchedUser) {
+    showLoginAlert('error', 'User Does Not Exist', `No registered account found for "${inputVal}". Please check your spelling or contact Admin.`);
+    toast('User does not exist.');
+    return;
+  }
+
+  // CASE 2: Incorrect Password
+  const expectedPwd = matchedUser.password || '1234';
+  const isPassMatch = (password === expectedPwd || (expectedPwd === '1234' && password === '1234'));
+
+  if (!isPassMatch) {
+    showLoginAlert('error', 'Incorrect Password', 'The password you entered is incorrect. Please check your password and try again.');
+    toast('Incorrect password.');
+    return;
+  }
+
+  // CASE 3: Active session detected on another device
+  const now = Date.now();
+  let sessionSwitched = false;
+  if (matchedUser.activeDeviceId && matchedUser.activeDeviceId !== currentDeviceId && matchedUser.lastActiveTime && (now - matchedUser.lastActiveTime < 20 * 60 * 1000)) {
+    sessionSwitched = true;
+  }
+
+  // Update device session status on the user record
+  matchedUser.activeDeviceId = currentDeviceId;
+  matchedUser.lastActiveTime = now;
+  matchedUser.lastLoginDevice = navigator.userAgent ? (navigator.userAgent.includes('Mobile') ? 'Mobile Device' : 'Desktop Browser') : 'Web';
+  save();
+
+  currentUser = {
+    email: matchedUser.email,
+    role: matchedUser.role,
+    followperName: matchedUser.followperName,
+    deviceId: currentDeviceId
+  };
+  window.currentUser = currentUser;
+  localStorage.setItem('collectiq_current_user', JSON.stringify(currentUser));
+  
+  checkAuth();
+  renderAll();
+
+  if (sessionSwitched) {
+    toast(`Session active on another device transferred to this device.`);
   } else {
-    toast('Invalid email/username or password.');
+    toast(`Welcome, ${matchedUser.followperName || matchedUser.email}! Logged in successfully.`);
   }
 }
 
 function logout() {
   localStorage.removeItem('collectiq_current_user');
   currentUser = null;
+  clearLoginAlert();
   document.getElementById('loginOverlay').style.display = 'flex';
   document.getElementById('loginEmail').value = '';
   document.getElementById('loginPassword').value = '';
