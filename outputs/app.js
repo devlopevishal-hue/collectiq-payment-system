@@ -5773,6 +5773,28 @@ function initFirebase() {
       if (!doc.exists) {
         console.log('⚡ Initializing Firebase Cloud database with initial dataset...');
         saveCloud();
+      } else {
+        const d = doc.data();
+        if (d) {
+          if (Array.isArray(d.users) && d.users.length > 0) {
+            users = d.users;
+            window.users = users;
+            localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
+          }
+          if (Array.isArray(d.markas) && d.markas.length > 0) {
+            markas = d.markas;
+            localStorage.setItem('collectiq_markas_v4', JSON.stringify(markas));
+          }
+          if (Array.isArray(d.payments)) {
+            payments = d.payments;
+            localStorage.setItem('collectiq_rokad_v4', JSON.stringify(payments));
+          }
+          if (Array.isArray(d.helpTickets)) {
+            helpTickets = d.helpTickets;
+            localStorage.setItem('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
+          }
+          renderAll();
+        }
       }
     }).catch(err => console.warn('Firestore initial check:', err));
 
@@ -5780,24 +5802,33 @@ function initFirebase() {
     firestoreDb.collection('collectiq').doc('main').onSnapshot(doc => {
       if (doc.exists) {
         const d = doc.data();
-        if (d && Array.isArray(d.markas) && d.markas.length > 0) {
-          markas = d.markas;
-          markas.forEach(m => {
-            if (!m.escalations) m.escalations = [];
-            if (!m.history) m.history = [];
-            if (!m.bills) m.bills = [];
-          });
-          payments = d.payments || [];
+        if (d) {
+          if (Array.isArray(d.markas) && d.markas.length > 0) {
+            markas = d.markas;
+            markas.forEach(m => {
+              if (!m.escalations) m.escalations = [];
+              if (!m.history) m.history = [];
+              if (!m.bills) m.bills = [];
+            });
+            localStorage.setItem('collectiq_markas_v4', JSON.stringify(markas));
+          }
+          if (Array.isArray(d.payments)) {
+            payments = d.payments;
+            localStorage.setItem('collectiq_rokad_v4', JSON.stringify(payments));
+          }
+          if (Array.isArray(d.helpTickets)) {
+            helpTickets = d.helpTickets;
+            localStorage.setItem('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
+          }
           if (d.masterFollowpers) {
             masterFollowpers = { ...DEFAULT_MASTER_FOLLOWPERS, ...d.masterFollowpers };
+            localStorage.setItem('collectiq_master_followpers_v4', JSON.stringify(masterFollowpers));
           }
-          if (d.users) {
+          if (Array.isArray(d.users) && d.users.length > 0) {
             users = d.users;
+            window.users = users;
             localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
           }
-          localStorage.setItem('collectiq_markas_v4', JSON.stringify(markas));
-          localStorage.setItem('collectiq_rokad_v4', JSON.stringify(payments));
-          localStorage.setItem('collectiq_master_followpers_v4', JSON.stringify(masterFollowpers));
           renderAll();
           updateDbStatusBadge('firebase');
         }
@@ -5822,8 +5853,9 @@ async function saveCloud() {
         payments,
         masterFollowpers,
         users,
+        helpTickets,
         updatedAt: new Date().toISOString()
-      });
+      }, { merge: true });
     } catch (err) {
       console.error('Error writing to Firestore:', err);
     }
@@ -5914,6 +5946,7 @@ async function syncWithDatabase() {
           }
           if (Array.isArray(data.users)) {
             users = data.users;
+            window.users = users;
             localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
           }
           isServerConnected = true;
@@ -5985,5 +6018,6 @@ function updateDbStatusBadge(mode) {
 
 // Start
 load();
+initFirebase();
 renderAll();
 syncWithDatabase();
