@@ -428,8 +428,22 @@ function migrateV3(oldCases) {
   return newMarkas;
 }
 
+const APP_STORAGE_VERSION = 'v5_fresh_start_2026_09_02';
+
 function load() {
   try {
+    if (localStorage.getItem('collectiq_storage_ver') !== APP_STORAGE_VERSION) {
+      localStorage.removeItem('collectiq_markas_v4');
+      localStorage.removeItem('collectiq_rokad_v4');
+      localStorage.removeItem('collectiq_markas_v3');
+      localStorage.removeItem('collectiq_rojkad_v3');
+      localStorage.removeItem('collectiq_help_tickets_v4');
+      localStorage.setItem('collectiq_storage_ver', APP_STORAGE_VERSION);
+      markas = [];
+      payments = [];
+      helpTickets = [];
+    }
+
     const mf = localStorage.getItem('collectiq_master_followpers_v4');
     if (mf) {
       masterFollowpers = { ...DEFAULT_MASTER_FOLLOWPERS, ...JSON.parse(mf) };
@@ -6408,9 +6422,13 @@ function initFirebase() {
     
     // Auto-seed cloud database if document does not exist yet on first boot
     firestoreDb.collection('collectiq').doc('main').get().then(doc => {
-      if (!doc.exists) {
-        console.log('⚡ Initializing Firebase Cloud database with initial dataset...');
+      if (!doc.exists || (doc.data() && doc.data().version !== APP_STORAGE_VERSION)) {
+        console.log('⚡ Initializing Firebase Cloud database with fresh clean state...');
+        markas = [];
+        payments = [];
+        helpTickets = [];
         saveCloud();
+        renderAll();
       } else {
         const d = doc.data();
         if (d) {
@@ -6496,6 +6514,7 @@ async function saveCloud() {
         masterFollowpers,
         users,
         helpTickets,
+        version: APP_STORAGE_VERSION,
         updatedAt: new Date().toISOString()
       }, { merge: true });
     } catch (err) {
