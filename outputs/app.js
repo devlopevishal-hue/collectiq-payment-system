@@ -134,12 +134,12 @@ const DEFAULT_USERS = [
 ];
 
 function isLocalServer() {
-  const host = window.location.hostname;
-  return (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || window.location.port === '3000') && !firestoreDb;
+  if (firestoreDb) return false;
+  return Boolean(window.location && window.location.protocol && window.location.protocol.startsWith('http'));
 }
 
 function isOnlineMode() {
-  return isLocalServer();
+  return isLocalServer() || Boolean(firestoreDb);
 }
 
 function checkAuth() {
@@ -6513,10 +6513,15 @@ function disconnectCloud() {
   toast('Cloud DB disconnected. Reverted to local storage.');
 }
 
+let isSyncing = false;
+
 async function syncWithDatabase() {
-  // If running on local Node.js server (localhost / 127.0.0.1), always use SQLite backend
+  if (isSyncing) return;
+
+  // If connected via HTTP, sync directly with SQLite database as single source of truth
   if (isLocalServer()) {
     try {
+      isSyncing = true;
       const res = await fetch('/api/data');
       if (res.ok) {
         const data = await res.json();
@@ -6549,6 +6554,8 @@ async function syncWithDatabase() {
       }
     } catch (e) {
       console.warn('Backend SQLite server offline; using local cache.', e);
+    } finally {
+      isSyncing = false;
     }
     updateDbStatusBadge('local');
     return;
@@ -6557,36 +6564,6 @@ async function syncWithDatabase() {
   // 1. Try Firebase if configured (for GitHub Pages / Web deployment)
   if (initFirebase()) {
     return;
-  }
-
-  // 2. Try Node SQLite Server if served via HTTP elsewhere
-  if (window.location && window.location.protocol && window.location.protocol.startsWith('http')) {
-    try {
-      const res = await fetch('/api/data');
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.markas)) {
-          markas = data.markas;
-          payments = data.payments || [];
-          masterFollowpers = { ...DEFAULT_MASTER_FOLLOWPERS, ...(data.masterFollowpers || {}) };
-          if (Array.isArray(data.helpTickets)) {
-            helpTickets = data.helpTickets;
-            localStorage.setItem('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
-          }
-          if (Array.isArray(data.users)) {
-            users = data.users;
-            localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
-          }
-          isServerConnected = true;
-          save();
-          renderAll();
-          updateDbStatusBadge('sqlite');
-          return;
-        }
-      }
-    } catch (e) {
-      console.warn('Backend SQLite server offline; using local cache.', e);
-    }
   }
 }
 
@@ -6597,11 +6574,11 @@ function updateDbStatusBadge(mode) {
       el.innerHTML = '<span style="color:#4ba779;">●</span> Cloud DB (Firebase)';
       el.title = 'Connected to Firebase Firestore Cloud DB (Real-time sync on GitHub Pages)';
     } else if (mode === 'sqlite' || mode === true) {
-      el.innerHTML = '<span style="color:#4ba779;">●</span> SQLite DB (Server)';
-      el.title = 'Connected to local Node.js SQLite server';
+      el.innerHTML = '<span style="color:#4ba779;">●</span> SQLite DB (Live Connected)';
+      el.title = 'Direct Live Connection to SQLite Database (Multi-user real-time sync)';
     } else {
       el.innerHTML = '<span style="color:#e99a3c;">●</span> Local Browser Cache';
-      el.title = 'Running on browser storage. Click "Cloud Database" in sidebar to enable live multi-user sync.';
+      el.title = 'Running on browser storage. Start the Node.js server to enable live multi-user database sync.';
     }
   }
 }
@@ -6611,3 +6588,10 @@ load();
 initFirebase();
 renderAll();
 syncWithDatabase();
+
+// Live auto-polling every 3 seconds for real-time direct database sync across all users & devices
+setInterval(() => {
+  if (isLocalServer() && !document.hidden) {
+    syncWithDatabase();
+  }
+}, 3000);

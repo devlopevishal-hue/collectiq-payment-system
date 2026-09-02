@@ -147,10 +147,27 @@ db.exec(`
     subject TEXT NOT NULL,
     remark TEXT NOT NULL,
     status TEXT DEFAULT 'Open',
+  CREATE TABLE IF NOT EXISTS help_tickets (
+    id TEXT PRIMARY KEY,
+    marka_id TEXT NOT NULL,
+    marka_name TEXT NOT NULL,
+    date TEXT NOT NULL,
+    requested_by TEXT NOT NULL,
+    assigned_helper TEXT NOT NULL,
+    priority TEXT DEFAULT 'Normal',
+    subject TEXT NOT NULL,
+    remark TEXT NOT NULL,
+    status TEXT DEFAULT 'Open',
     resolution_note TEXT DEFAULT '',
     resolved_by TEXT DEFAULT '',
     resolved_at TEXT,
     created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS system_config (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
 `);
@@ -250,9 +267,10 @@ insertOrUpdateUser.run('bhavesh@collectiq.com', '1234', 'user', 'Bhavesh Bhai', 
 insertOrUpdateUser.run('pc@collectiq.com', '1234', 'user', 'Process Coordinator (PC)', nowTime);
 console.log('✓ Seeded and verified all default user accounts in SQLite.');
 
-// Seed Markas and Bills from latest-report-data.js if database is fresh
-const markaCountStmt = db.prepare('SELECT COUNT(*) AS c FROM markas');
-if (markaCountStmt.get().c === 0) {
+// Seed Markas and Bills only on initial creation
+const isDbInitializedStmt = db.prepare("SELECT value FROM system_config WHERE key = 'db_initialized'");
+const isInitialized = isDbInitializedStmt.get();
+if (!isInitialized) {
   const reportDataFile = path.join(STATIC_DIR, 'latest-report-data.js');
   if (fs.existsSync(reportDataFile)) {
     try {
@@ -262,7 +280,7 @@ if (markaCountStmt.get().c === 0) {
       const rawCases = fakeWindow.latestReportCases || [];
       
       if (rawCases.length > 0) {
-        console.log(`⚡ Seeding ${rawCases.length} raw invoices into SQLite database...`);
+        console.log(`⚡ Initial database setup: Seeding ${rawCases.length} raw invoices into SQLite database...`);
         const markaMap = new Map();
         
         rawCases.forEach(c => {
@@ -341,6 +359,7 @@ if (markaCountStmt.get().c === 0) {
       console.error('Error auto-seeding report data:', err);
     }
   }
+  db.prepare("INSERT OR REPLACE INTO system_config (key, value, updated_at) VALUES ('db_initialized', '1', ?)").run(new Date().toISOString());
 }
 
 // Helpers to load full dataset from SQLite
