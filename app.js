@@ -3072,6 +3072,7 @@ function visitsView() {
     `;
   }
 
+  const activeMarkaList = filtered(activeMarkas());
   let allVisits = [];
   const todayIso = iso(today);
 
@@ -5116,30 +5117,30 @@ function processImportedRows(rawRows, fileName = 'Imported File') {
   let totalRows = 0;
 
   rawRows.forEach(rawRow => {
-    // Normalize keys: lowercase without special characters
+    // Normalize keys: lowercase without special characters or dots
     const row = {};
     for (const [k, v] of Object.entries(rawRow)) {
-      const cleanKey = k.toLowerCase().trim().replace(/[\s\-_/\\+]+/g, '');
+      const cleanKey = k.toLowerCase().trim().replace(/[\s\-_/\\+.]+/g, '');
       row[cleanKey] = v;
     }
 
     const markaName = (
-      row['markagroup'] || row['marka'] || row['group'] || row['party'] ||
-      row['partyname'] || row['customername'] || row['accountname'] || row['particulars'] ||
+      row['markagroup'] || row['markagrou'] || row['marka'] || row['group'] || row['party'] ||
+      row['partyname'] || row['accaddr'] || row['accaddress'] || row['customername'] || row['accountname'] || row['particulars'] ||
       row['ledger'] || row['name'] || row['markaname'] || ''
     ).trim();
 
     const rawBillDate = row['billdate'] || row['date'] || row['firstdate'] || row['invoicedate'] || row['voucherdate'] || row['invdate'] || row['docdate'] || '';
     const billDate = parseCsvDate(rawBillDate) || iso(today);
 
-    const rawBalance = row['balance'] !== undefined ? row['balance'] : (
+    const rawBalance = (row['balance'] !== undefined && row['balance'] !== '') ? row['balance'] : (
       row['outstanding'] || row['balamt'] || row['netbalance'] || row['billamt'] ||
       row['debit'] || row['dramount'] || row['closingbalance'] || row['amount'] || row['billamount'] || 0
     );
     const balance = parseAmount(rawBalance);
 
-    const master = (row['master'] || row['mastername'] || row['agent'] || row['broker'] || row['salesmaster'] || 'Unassigned Master').trim();
-    const own = (row['collectionperson'] || row['collectionp'] || row['followper'] || row['doer'] || row['salesperson'] || row['assignedto'] || row['executive'] || '').trim();
+    const master = (row['master'] || row['mastername'] || row['salesmaster'] || row['agent'] || row['broker'] || 'Unassigned Master').trim();
+    const own = (row['collectionperson'] || row['collectionp'] || row['collection'] || row['followper'] || row['doer'] || row['salesperson'] || row['assignedto'] || row['executive'] || '').trim();
     const billNo = String(row['billno'] || row['invoiceno'] || row['vchno'] || row['refno'] || row['billnumber'] || row['invno'] || '').trim();
 
     const rawPolicyDate = row['policydate'] || row['duedate'] || row['policyduedate'] || row['dueon'] || '';
