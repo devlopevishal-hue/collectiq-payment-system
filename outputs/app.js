@@ -809,26 +809,73 @@ function filtered(list = activeMarkas()) {
     const uName = (currentUser.followperName || '').toLowerCase().trim();
     list = list.filter(m => (ownerOf(m) || '').toLowerCase().trim() === uName);
   }
-  return list.filter(m =>
-    (F.followper === 'all' || (ownerOf(m) || '').toLowerCase().trim() === (F.followper || '').toLowerCase().trim()) &&
-    (F.master === 'all' || m.master === F.master) &&
-    (!F.marka || m.marka.toLowerCase().includes(F.marka.toLowerCase())) &&
-    (!F.min || totalOutstanding(m) >= +F.min) &&
-    (!F.max || totalOutstanding(m) <= +F.max) &&
-    (!F.minCount || followUpCount(m) >= +F.minCount) &&
-    (!F.maxCount || followUpCount(m) <= +F.maxCount) &&
-    (!F.from || oldestDueDate(m) >= F.from) &&
-    (!F.to || oldestDueDate(m) <= F.to)
-  );
+  return list.filter(m => {
+    // 1. Followper filter
+    if (F.followper && F.followper !== 'all') {
+      const fName = (F.followper || '').toLowerCase().trim();
+      const mOwner = (ownerOf(m) || '').toLowerCase().trim();
+      if (mOwner !== fName) return false;
+    }
+
+    // 2. Master filter
+    if (F.master && F.master !== 'all') {
+      const mMaster = (m.master || '').toLowerCase().trim();
+      const fMaster = F.master.toLowerCase().trim();
+      if (mMaster !== fMaster) return false;
+    }
+
+    // 3. Marka / Search text filter
+    if (F.marka && F.marka.trim()) {
+      const q = F.marka.toLowerCase().trim();
+      const mMarka = (m.marka || '').toLowerCase();
+      const mMaster = (m.master || '').toLowerCase();
+      const mOwner = (ownerOf(m) || '').toLowerCase();
+      const mRemark = (m.remark || '').toLowerCase();
+      if (!mMarka.includes(q) && !mMaster.includes(q) && !mOwner.includes(q) && !mRemark.includes(q)) {
+        return false;
+      }
+    }
+
+    // 4. Amount Range filter
+    const bal = totalOutstanding(m);
+    if (F.min !== '' && F.min !== null && !isNaN(+F.min) && bal < +F.min) return false;
+    if (F.max !== '' && F.max !== null && !isNaN(+F.max) && bal > +F.max) return false;
+
+    // 5. Follow-up count filter
+    const count = followUpCount(m);
+    if (F.minCount !== '' && F.minCount !== null && !isNaN(+F.minCount) && count < +F.minCount) return false;
+    if (F.maxCount !== '' && F.maxCount !== null && !isNaN(+F.maxCount) && count > +F.maxCount) return false;
+
+    // 6. Date Range filter (oldest invoice due date)
+    const due = oldestDueDate(m);
+    if (F.from && due && due < F.from) return false;
+    if (F.to && due && due > F.to) return false;
+
+    return true;
+  });
 }
 
 function filters(containerId) {
   const container = document.getElementById(containerId);
   if (!container) return;
   
+  const isUserRole = currentUser && currentUser.role === 'user';
+  
+  // If already rendered, do in-place value sync without destroying active input focus
+  const existingInputs = container.querySelectorAll('.filter-input');
+  if (existingInputs && existingInputs.length >= 8) {
+    existingInputs.forEach(el => {
+      if (document.activeElement === el) return; // do not disturb current focused input
+      const k = el.dataset.k;
+      if (k && F[k] !== undefined) {
+        if (el.value !== F[k]) el.value = F[k];
+      }
+    });
+    return;
+  }
+  
   const masters = allMasters();
   const followpers = allFollowpers();
-  const isUserRole = currentUser && currentUser.role === 'user';
   
   const followperOptions = isUserRole
     ? `<option value="${escapeHtml(currentUser.followperName)}" selected>${escapeHtml(currentUser.followperName)}</option>`
@@ -842,13 +889,13 @@ function filters(containerId) {
       <option value="all">All Masters</option>
       ${masters.map(m => `<option value="${escapeHtml(m)}" ${F.master === m ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('')}
     </select>
-    <input class="filter-input" type="text" data-k="marka" placeholder="Marka" value="${escapeHtml(F.marka)}" oninput="setF(this)">
-    <input class="filter-input" type="number" data-k="min" placeholder="Min amount" value="${F.min}" oninput="setF(this)">
-    <input class="filter-input" type="number" data-k="max" placeholder="Max amount" value="${F.max}" oninput="setF(this)">
-    <input class="filter-input" type="number" data-k="minCount" placeholder="Min follow-ups" value="${F.minCount}" oninput="setF(this)">
-    <input class="filter-input" type="number" data-k="maxCount" placeholder="Max follow-ups" value="${F.maxCount}" oninput="setF(this)">
-    <input class="filter-input" type="date" data-k="from" title="From Due Date" value="${F.from}" onchange="setF(this)">
-    <input class="filter-input" type="date" data-k="to" title="To Due Date" value="${F.to}" onchange="setF(this)">
+    <input class="filter-input" type="text" data-k="marka" placeholder="Search Marka / Party" value="${escapeHtml(F.marka || '')}" oninput="setF(this)">
+    <input class="filter-input" type="number" data-k="min" placeholder="Min amount ₹" value="${F.min || ''}" oninput="setF(this)">
+    <input class="filter-input" type="number" data-k="max" placeholder="Max amount ₹" value="${F.max || ''}" oninput="setF(this)">
+    <input class="filter-input" type="number" data-k="minCount" placeholder="Min follow-ups" value="${F.minCount || ''}" oninput="setF(this)">
+    <input class="filter-input" type="number" data-k="maxCount" placeholder="Max follow-ups" value="${F.maxCount || ''}" oninput="setF(this)">
+    <input class="filter-input" type="date" data-k="from" title="From Due Date" value="${F.from || ''}" onchange="setF(this)">
+    <input class="filter-input" type="date" data-k="to" title="To Due Date" value="${F.to || ''}" onchange="setF(this)">
     <button onclick="clearFilters()" class="tiny-btn" style="margin-top:0;align-self:center;">Clear</button>
   `;
 }
@@ -870,6 +917,10 @@ function clearFilters() {
     from: '', 
     to: '' 
   };
+  ['filterBar', 'lockFilters', 'rokadFilters', 'analysisFilters', 'markaFilters', 'fmsFilters'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '';
+  });
   renderAll();
 }
 
@@ -880,12 +931,7 @@ function dashboard() {
   const dash = document.getElementById('dashboard');
   if (!dash) return;
   
-  let active = activeMarkas();
-  const isUserRole = currentUser && currentUser.role === 'user';
-  if (isUserRole) {
-    active = active.filter(m => ownerOf(m) === currentUser.followperName);
-  }
-  
+  let active = filtered();
   const locks = active.filter(isLocked);
   const unassigned = active.filter(m => ownerOf(m) === 'Unassigned');
   
@@ -964,7 +1010,7 @@ function dashboard() {
         </div>
       </div>
     `;
-  }).join('') : '<p class="modal-copy">No active scheduled Markas.</p>';
+  }).join('') : '<p class="modal-copy">No priority cases match active filters.</p>';
   
   // Risk bars
   const dueToday = active.filter(m => m.nextDate && days(m.nextDate) === 0).length;
@@ -985,7 +1031,7 @@ function dashboard() {
   
   // Score List
   const scores = {};
-  markas.forEach(m => {
+  active.forEach(m => {
     const owner = ownerOf(m);
     if (!scores[owner]) scores[owner] = { actions: 0, ptp: 0, overdue: 0, balance: 0 };
     scores[owner].balance += totalOutstanding(m);
@@ -1015,7 +1061,7 @@ function dashboard() {
   
   // Activity List
   let allHist = [];
-  markas.forEach(m => {
+  active.forEach(m => {
     (m.history || []).forEach(h => {
       allHist.push({ ...h, marka: m.marka });
     });
@@ -1271,6 +1317,26 @@ function rokad() {
   if (from) filteredPayments = filteredPayments.filter(p => p.date >= from);
   if (to) filteredPayments = filteredPayments.filter(p => p.date <= to);
   if (F.marka) filteredPayments = filteredPayments.filter(p => (p.marka || '').toLowerCase().includes(F.marka.toLowerCase()));
+  if (F.followper && F.followper !== 'all') {
+    const fOwner = F.followper.toLowerCase().trim();
+    filteredPayments = filteredPayments.filter(p => {
+      const m = markas.find(x => x.marka === p.marka);
+      return m && (ownerOf(m) || '').toLowerCase().trim() === fOwner;
+    });
+  }
+  if (F.master && F.master !== 'all') {
+    const fMaster = F.master.toLowerCase().trim();
+    filteredPayments = filteredPayments.filter(p => {
+      const m = markas.find(x => x.marka === p.marka);
+      return m && (m.master || '').toLowerCase().trim() === fMaster;
+    });
+  }
+  if (F.min !== '' && !isNaN(+F.min)) {
+    filteredPayments = filteredPayments.filter(p => (p.amount || 0) >= +F.min);
+  }
+  if (F.max !== '' && !isNaN(+F.max)) {
+    filteredPayments = filteredPayments.filter(p => (p.amount || 0) <= +F.max);
+  }
 
   const todayIso = iso(today);
   const todayReceived = payments.filter(p => p.date === todayIso).reduce((s, p) => s + (p.amount || 0), 0);
@@ -1376,6 +1442,13 @@ function fmsView() {
   activeList.forEach(m => {
     const tasks = getFmsTasks(m);
     tasks.forEach(t => {
+      // Filter check
+      if (curRole !== 'all' && t.role !== curRole) return;
+      if (curStep !== 'all' && t.code !== curStep) return;
+      if (curStatus === 'Pending' && t.isDone) return;
+      if (curStatus === 'DoneOnTime' && (!t.isDone || t.score !== 1.0)) return;
+      if (curStatus === 'DoneDelayed' && (!t.isDone || t.score !== 0.5)) return;
+
       totalTasksCount++;
       if (t.isDone) {
         if (t.score === 1.0) onTimeCount++;
@@ -1383,13 +1456,6 @@ function fmsView() {
       } else {
         pendingCount++;
       }
-
-      // Filter check
-      if (curRole !== 'all' && t.role !== curRole) return;
-      if (curStep !== 'all' && t.code !== curStep) return;
-      if (curStatus === 'Pending' && t.isDone) return;
-      if (curStatus === 'DoneOnTime' && (!t.isDone || t.score !== 1.0)) return;
-      if (curStatus === 'DoneDelayed' && (!t.isDone || t.score !== 0.5)) return;
 
       allTasks.push({
         ...t,
@@ -1403,7 +1469,7 @@ function fmsView() {
 
   // Render Metrics
   document.getElementById('fmsMetrics').innerHTML = [
-    ['TOTAL FMS MILESTONES', totalTasksCount.toLocaleString('en-IN'), 'Active collection cases'],
+    ['TOTAL FMS MILESTONES', totalTasksCount.toLocaleString('en-IN'), 'Filtered collection milestones'],
     ['ON-TIME DONE (1.0 PT)', onTimeCount.toLocaleString('en-IN'), `${totalTasksCount ? Math.round((onTimeCount/totalTasksCount)*100) : 0}% on-time adherence`],
     ['DELAYED DONE (0.5 PT)', delayedCount.toLocaleString('en-IN'), 'Completed past planned date'],
     ['PENDING / OVERDUE', pendingCount.toLocaleString('en-IN'), 'Immediate action required']
@@ -2806,7 +2872,7 @@ function crmEscalationsView() {
   updateSortIcons('crmEscalations');
 
   let openClaims = 0, openWa = 0, openEscs = 0, resolvedCount = 0;
-  allEscs.forEach(e => {
+  filteredEscs.forEach(e => {
     const isOpen = (e.status || 'Open').toLowerCase() === 'open';
     if (isOpen) {
       if (e.type === 'Claim Matter' || e.type === 'Claim / Complaint') openClaims++;
@@ -3038,14 +3104,14 @@ function visitsView() {
   });
   updateSortIcons('visits');
 
-  const todayVisitsCount = allVisits.filter(v => v.date === todayIso).length;
-  const uniquePartiesVisited = new Set(allVisits.map(v => v.marka)).size;
-  const ptpsFromVisits = allVisits.filter(v => v.status === 'Promise to Pay').length;
+  const todayVisitsCount = filteredVisits.filter(v => v.date === todayIso).length;
+  const uniquePartiesVisited = new Set(filteredVisits.map(v => v.marka)).size;
+  const ptpsFromVisits = filteredVisits.filter(v => v.status === 'Promise to Pay').length;
 
   const metricsEl = document.getElementById('visitMetrics');
   if (metricsEl) {
     metricsEl.innerHTML = [
-      ['TOTAL FIELD VISITS', allVisits.length.toLocaleString('en-IN'), 'In-person visits logged'],
+      ['TOTAL FIELD VISITS', filteredVisits.length.toLocaleString('en-IN'), 'Filtered in-person visits'],
       ["TODAY'S FIELD VISITS", todayVisitsCount.toLocaleString('en-IN'), 'Visits completed today'],
       ['PARTIES VISITED', uniquePartiesVisited.toLocaleString('en-IN'), 'Distinct client locations'],
       ['PTP SECURED ON VISIT', ptpsFromVisits.toLocaleString('en-IN'), 'Commitments collected in person']
@@ -5985,15 +6051,17 @@ function renderAll() {
   markaView();
   usersView();
   
+  const filteredList = filtered();
+  
   const sb = document.getElementById('scheduleBadge');
-  if (sb) sb.textContent = activeMarkas().filter(m => !isLocked(m) && m.nextDate && days(m.nextDate) >= 0).length;
+  if (sb) sb.textContent = filteredList.filter(m => !isLocked(m) && m.nextDate && days(m.nextDate) >= 0).length;
   const mobSb = document.getElementById('mobScheduleBadge');
   if (mobSb) mobSb.textContent = sb ? sb.textContent : '0';
   
   const fb = document.getElementById('fmsBadge');
   if (fb) {
     let pendingFms = 0;
-    activeMarkas().forEach(m => {
+    filteredList.forEach(m => {
       getFmsTasks(m).forEach(t => {
         if (!t.isDone) pendingFms++;
       });
@@ -6007,7 +6075,7 @@ function renderAll() {
   if (vb) {
     const todayIso = iso(today);
     let todayVis = 0;
-    activeMarkas().forEach(m => {
+    filteredList.forEach(m => {
       (m.history || []).forEach(h => {
         if (h.date === todayIso && h.mode && (h.mode.toLowerCase().includes('person') || h.mode.toLowerCase().includes('visit'))) {
           todayVis++;
@@ -6028,7 +6096,7 @@ function renderAll() {
   const eb = document.getElementById('escalationBadge');
   if (eb) {
     let openEscs = 0;
-    markas.forEach(m => {
+    filteredList.forEach(m => {
       (m.escalations || []).forEach(e => {
         if (e.type !== 'Help Ticket' && e.type !== 'Help' && (e.status || 'Open').toLowerCase() === 'open') {
           openEscs++;
@@ -6041,7 +6109,7 @@ function renderAll() {
   }
 
   const lb = document.getElementById('lockBadge');
-  if (lb) lb.textContent = activeMarkas().filter(isLocked).length;
+  if (lb) lb.textContent = filteredList.filter(isLocked).length;
   
   populateFollowperDropdowns();
 }
