@@ -250,6 +250,9 @@
         <table>
           <thead>
             <tr>
+              <th style="width:36px; text-align:center;">
+                <input type="checkbox" id="fmsSelectAll" onchange="toggleAllFmsSelect(this)" title="Select All Pending Milestones" style="cursor:pointer; width:15px; height:15px;">
+              </th>
               <th class="sortable" onclick="sortTable('fms', 'marka')">MARKA / MASTER <span class="sort-icon" id="sort_fms_marka">▲</span></th>
               <th class="sortable" onclick="sortTable('fms', 'dueDate')">DUE DATE (POLICY) <span class="sort-icon" id="sort_fms_dueDate">⇅</span></th>
               <th class="sortable" onclick="sortTable('fms', 'balance')">OUTSTANDING <span class="sort-icon" id="sort_fms_balance">⇅</span></th>
@@ -620,7 +623,6 @@
           <select id="actionStatus" onchange="toggleConditionalFields()">
             <option value="Payment Received">Payment Received</option>
             <option value="Promise to Pay">Promise to Pay</option>
-            <option value="Not Responding">Not Responding</option>
             <option value="WhatsApp Complaint / Claim Matter">WhatsApp Complaint / Claim Matter</option>
             <option value="Internal Help Ticket">Internal Help Ticket (Request Helper Assistance)</option>
           </select>
@@ -635,12 +637,11 @@
         <div class="form-grid" style="margin-bottom:8px;">
           <label>Visit Purpose
             <select id="visitPurpose">
-              <option value="Payment Collection">Payment Collection</option>
-              <option value="Statement Sign">Statement Sign</option>
-              <option value="Dispute Discussion">Dispute Discussion</option>
               <option value="Cheque Collection">Cheque Collection</option>
-              <option value="Master Meeting">Master Meeting</option>
-              <option value="Relationship Visit">Relationship Visit</option>
+              <option value="Account Statement Reconciliation">Account Statement Reconciliation</option>
+              <option value="Payment Follow-up / Reminder">Payment Follow-up / Reminder</option>
+              <option value="Dispute / Claim Verification">Dispute / Claim Verification</option>
+              <option value="General Relationship Visit">General Relationship Visit</option>
             </select>
           </label>
           <label>Person Met (Party Representative)<input id="visitPersonMet" placeholder="e.g. Owner / Cashier / Manager"></label>
@@ -649,10 +650,10 @@
       </div>
       <!-- Customer Complaint & Dispute Field Group -->
       <div id="complaintGroup" style="display:none; background:#fdf8f7; border:1px solid #f2d4ce; border-radius:8px; padding:12px; margin-bottom:12px;" class="conditional-field">
-        <p class="eyebrow" style="margin:0 0 8px 0; color:#c44d48; font-weight:800;">⚡ CUSTOMER COMPLAINT / DISPUTE DETAILS</p>
+        <p class="eyebrow" style="margin:0 0 8px 0; color:#c44d48; font-weight:800;">⚡ CUSTOMER COMPLAINT / DISPUTE DETAILS (MIN. 5 DAYS PLAN)</p>
         <div class="form-grid" style="margin-bottom:8px;">
           <label>Complaint / Claim Number / WA Ref
-            <input id="claimNumber" type="text" placeholder="e.g. Rate dispute, Goods return, WA-8834, CLM-102...">
+            <input id="claimNumber" type="text" placeholder="e.g. Rate difference, RF return, WA-8834, CLM-102...">
           </label>
           <label>Escalate Complaint To (Management Target)
             <select id="escalateTo">
@@ -669,7 +670,7 @@
       <div id="helpTicketGroup" style="display:none; background:#f5faf7; border:1px solid #cbe7da; border-radius:8px; padding:12px; margin-bottom:12px;" class="conditional-field">
         <p class="eyebrow" style="margin:0 0 8px 0; color:#087454; font-weight:800;">🎟️ INTERNAL TEAM HELP TICKET (HELPER DELEGATION)</p>
         <div class="form-grid" style="margin-bottom:8px;">
-          <label>Assign Helper (Team Member)
+          <label>Assign Helper (Team Member / Doer / Master)
             <select id="helpTicketHelper">
               <option value="">Select Helper Person...</option>
             </select>
@@ -702,13 +703,18 @@
               <option value="RTGS">RTGS</option>
               <option value="cash">cash</option>
               <option value="NEFT">NEFT</option>
+              <option value="UPI">UPI</option>
             </select>
           </label>
           <label id="followPayRefLabel">Cheque No / UTR / Txn ID
-            <input id="followPayRef" placeholder="Enter Cheque / UTR / Txn ID">
+            <input id="followPayRef" placeholder="Enter Cheque No / UTR / Txn ID">
           </label>
           <label>Total Received Amount (₹)
             <input id="followPayAmount" type="number" min="1" placeholder="Amount received" oninput="updateFollowPayAllocations('amount')">
+          </label>
+          <label style="grid-column: 1 / -1;">Upload Transaction Receipt / Screenshot (Optional)
+            <input id="followPayReceiptFile" type="file" accept="image/*" onchange="previewReceiptImage(this, 'followPayReceiptPreview')">
+            <div id="followPayReceiptPreview" style="margin-top:6px; display:none;"></div>
           </label>
         </div>
         <div id="followPayBillsContainer">
@@ -758,10 +764,15 @@
             <option value="RTGS">RTGS</option>
             <option value="cash">cash</option>
             <option value="NEFT">NEFT</option>
+            <option value="UPI">UPI</option>
           </select>
         </label>
-        <label id="payRefLabel">Cheque No<input id="payRef" required></label>
+        <label id="payRefLabel">Cheque No / UTR / Txn ID<input id="payRef" required placeholder="Enter Cheque No / UTR / Txn ID"></label>
         <label>Total received (₹)<input id="payAmount" type="number" min="1" required oninput="updatePayAllocations('amount')"></label>
+        <label style="grid-column: 1 / -1;">Upload Transaction Receipt / Screenshot (Optional)
+          <input id="payReceiptFile" type="file" accept="image/*" onchange="previewReceiptImage(this, 'payReceiptPreview')">
+          <div id="payReceiptPreview" style="margin-top:6px; display:none;"></div>
+        </label>
       </div>
       <label>Select Marka
         <select id="payMarkaSelect" onchange="onPayMarkaSelectChange()" class="full">
@@ -876,8 +887,9 @@
         </label>
         <label>Resolution Mode
           <select id="resolveType" onchange="toggleResolutionType()">
+            <option value="Rate Difference / Price Adjustment">Rate Difference / Price Adjustment (Settle against bills)</option>
             <option value="Discount / Debit Note">Discount / Debit Note (Settle against bills)</option>
-            <option value="Goods Return / Credit Note">Goods Return / Credit Note (Settle against bills)</option>
+            <option value="RF Return / Credit Note">RF Return / Credit Note (Settle against bills)</option>
             <option value="Quality Claim Settlement">Quality Claim Settlement (Waiver / Adjustment)</option>
             <option value="Settled with Payment">Settled with Payment (Settle against bills)</option>
             <option value="Bad Debt / Write-off">Bad Debt / Write-off</option>
@@ -1107,7 +1119,8 @@
           <select id="resolveEscType">
             <option value="Resolved">Resolved / Agreed</option>
             <option value="Discount Applied">Discount / Credit Note Applied</option>
-            <option value="Goods Return Accepted">Goods Return Accepted</option>
+            <option value="RF Return Accepted">RF Return Accepted</option>
+            <option value="Rate Difference / Price Adjustment">Rate Difference / Price Adjustment</option>
             <option value="Settled with Payment">Settled with Payment</option>
             <option value="Closed (No Merit)">Closed (No Merit)</option>
           </select>
@@ -1268,6 +1281,66 @@
     </div>
   </div>
 
+  <!-- Reassign Help Ticket Modal -->
+  <div class="modal-backdrop" id="reassignTicketModal">
+    <form class="modal" onsubmit="saveReassignTicket(event)">
+      <button type="button" class="close" onclick="closeModal('reassignTicketModal')">×</button>
+      <p class="eyebrow">HELP TICKET REASSIGNMENT</p>
+      <h2>Reassign Ticket to Team Member</h2>
+      <input type="hidden" id="reassignTicketId">
+      <div style="margin-bottom:14px;">
+        <label style="font-weight:700; color:#334155; margin-bottom:6px; display:block;">Select New Assignee (Doer / User / Master)
+          <select id="reassignNewHelper" required class="full" style="padding:10px; border:1.5px solid #dbe5e0; border-radius:8px; font-size:13px;"></select>
+        </label>
+      </div>
+      <label style="margin-bottom:14px;">Reassignment Note / Instruction
+        <textarea id="reassignNote" placeholder="Explain reason for reassignment or provide instructions..." required style="height:70px;"></textarea>
+      </label>
+      <div class="modal-footer">
+        <span>Transfers task responsibility and notifies the new assignee.</span>
+        <button class="btn primary" type="submit">Confirm Reassignment</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Bulk FMS Mark Done Modal -->
+  <div class="modal-backdrop" id="bulkFmsModal">
+    <form class="modal" onsubmit="saveBulkFmsDone(event)">
+      <button type="button" class="close" onclick="closeModal('bulkFmsModal')">×</button>
+      <p class="eyebrow">BULK FMS COMPLETION</p>
+      <h2>Mark Selected FMS Milestones Done</h2>
+      <p class="modal-copy" style="margin-bottom:14px;">You have selected <b id="bulkFmsCount" style="color:#087454;">0</b> milestone task(s). The remark below will be applied to all selected milestones.</p>
+      <div class="form-grid" style="margin-bottom:14px;">
+        <label>Completion Date
+          <input id="bulkFmsDate" type="date" required>
+        </label>
+        <label>Completed By
+          <input id="bulkFmsCompletedBy" required>
+        </label>
+      </div>
+      <label style="margin-bottom:14px;">Common Completion Remark
+        <textarea id="bulkFmsRemark" placeholder="e.g. Verified with party, statement confirmed, payment follow-up logged..." required style="height:75px;"></textarea>
+      </label>
+      <div class="modal-footer">
+        <span>All selected milestones will be marked Done on-time/delayed based on actual date.</span>
+        <button class="btn primary" type="submit">Mark All Done ✓</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Transaction Receipt Image Viewer Modal -->
+  <div class="modal-backdrop" id="receiptViewModal">
+    <div class="modal" style="max-width:550px; text-align:center;">
+      <button type="button" class="close" onclick="closeModal('receiptViewModal')">×</button>
+      <p class="eyebrow">PAYMENT RECEIPT / TRANSACTION SCREENSHOT</p>
+      <h2 id="receiptViewTitle">Transaction Receipt</h2>
+      <div id="receiptViewBody" style="margin:16px 0; max-height:480px; overflow-y:auto;"></div>
+      <div class="modal-footer" style="justify-content:center;">
+        <button type="button" class="btn secondary" onclick="closeModal('receiptViewModal')">Close Viewer</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Mobile Floating Action Button (FAB) -->
   <div class="mobile-fab-container" id="mobileFabContainer">
     <div class="mobile-fab-menu" id="mobileFabMenu">
@@ -1329,7 +1402,7 @@
   <!-- Firebase Compatibility Libraries for Real-time Cloud DB -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-  <script src="latest-report-data.js?v=5.4.0"></script>
-  <script src="app.js?v=5.4.0"></script>
+  <script src="latest-report-data.js?v=5.5.0"></script>
+  <script src="app.js?v=5.5.0"></script>
 </body>
 </html>

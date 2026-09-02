@@ -152,6 +152,8 @@ function checkAuth() {
     document.getElementById('userAvatar').textContent = currentUser.email.substring(0, 2).toUpperCase();
     
     const isAdmin = currentUser.role === 'admin' || currentUser.role === 'superuser';
+    const isMasterAdmin = currentUser.email === 'devlope.vishal@gmail.com' || currentUser.email === 'admin@collectiq.com' || (currentUser.role === 'admin' && currentUser.email.includes('admin'));
+
     if (!isAdmin) {
       document.getElementById('setupSection').style.display = 'none';
       if (document.getElementById('navUsers')) document.getElementById('navUsers').style.display = 'none';
@@ -160,7 +162,7 @@ function checkAuth() {
     } else {
       document.getElementById('setupSection').style.display = 'block';
       if (document.getElementById('navUsers')) document.getElementById('navUsers').style.display = 'block';
-      if (document.getElementById('resetBillsBtn')) document.getElementById('resetBillsBtn').style.display = 'inline-flex';
+      if (document.getElementById('resetBillsBtn')) document.getElementById('resetBillsBtn').style.display = isMasterAdmin ? 'inline-flex' : 'none';
     }
   } else {
     currentUser = null;
@@ -1165,10 +1167,16 @@ function rokad() {
     tbody.innerHTML = filteredPayments.length ? filteredPayments.slice().reverse().map(p => {
       const isSettled = (p.allocations || []).every(a => a.settled);
       const allocText = (p.allocations || []).map(a => `Bill #${a.billId}: ${money(a.amount)}${a.settled ? ' ✓' : ''}`).join(', ') || 'General Allocation';
+      const receiptBtn = p.receiptImage ? `
+        <button onclick="openReceiptViewer('${escapeHtml(p.ref || 'Receipt')}', '${p.receiptImage}')" class="row-action" style="background:#edf7f2; color:#087454; border:1px solid #c0e7d5; padding:2px 6px; font-size:10px; margin-left:6px;">🖼️ Receipt</button>
+      ` : '';
 
       return `
         <tr>
-          <td><b style="font-family:'DM Mono', monospace;">${escapeHtml(p.ref || '—')}</b></td>
+          <td>
+            <b style="font-family:'DM Mono', monospace;">${escapeHtml(p.ref || '—')}</b>
+            ${receiptBtn}
+          </td>
           <td>${fmt(p.date)}</td>
           <td><span style="background:#e8f4ef; color:#087454; padding:2px 6px; border-radius:4px; font-weight:700; font-size:11px; text-transform:uppercase;">${escapeHtml(p.mode || 'cheque')}</span></td>
           <td class="money"><b>${money(p.amount)}</b></td>
@@ -1222,6 +1230,7 @@ function fmsView() {
       <label style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;">Search Marka:
         <input type="text" class="filter-input" placeholder="e.g. ABT..." value="${escapeHtml(F.marka || '')}" oninput="F.marka = this.value; fmsView();" style="width:120px;">
       </label>
+      <button id="fmsBulkBtn" onclick="openBulkFmsModal()" class="btn primary" style="padding:6px 14px; font-size:12px; font-weight:700; display:none; margin-left:auto;">✓ Mark Selected Done (0)</button>
     </div>
   `;
 
@@ -1309,6 +1318,13 @@ function fmsView() {
 
     return `
       <tr>
+        <td style="text-align:center;">
+          ${!t.isDone ? `
+            <input type="checkbox" class="fms-select-item" data-marka="${t.markaId}" data-code="${t.code}" onchange="updateFmsBulkButton()" style="cursor:pointer; width:15px; height:15px;">
+          ` : `
+            <span style="color:#087454; font-weight:bold; font-size:12px;">✓</span>
+          `}
+        </td>
         <td>
           <span class="case-name">${escapeHtml(t.markaName)}</span>
           <span class="case-sub">${escapeHtml(t.masterName)}</span>
@@ -1341,8 +1357,89 @@ function fmsView() {
         </td>
       </tr>
     `;
-  }).join('') : '<tr><td colspan="11" style="text-align:center;color:#788882;padding:24px;">No FMS milestone tasks found.</td></tr>';
+  }).join('') : '<tr><td colspan="12" style="text-align:center;color:#788882;padding:24px;">No FMS milestone tasks found.</td></tr>';
 }
+
+function toggleAllFmsSelect(masterCheckbox) {
+  const isChecked = masterCheckbox.checked;
+  document.querySelectorAll('.fms-select-item').forEach(cb => cb.checked = isChecked);
+  updateFmsBulkButton();
+}
+window.toggleAllFmsSelect = toggleAllFmsSelect;
+
+function updateFmsBulkButton() {
+  const checked = document.querySelectorAll('.fms-select-item:checked');
+  const btn = document.getElementById('fmsBulkBtn');
+  if (btn) {
+    btn.style.display = checked.length > 0 ? 'inline-flex' : 'none';
+    btn.textContent = `✓ Mark Selected Done (${checked.length})`;
+  }
+  const selectAllCb = document.getElementById('fmsSelectAll');
+  const allCbs = document.querySelectorAll('.fms-select-item');
+  if (selectAllCb && allCbs.length > 0) {
+    selectAllCb.checked = checked.length === allCbs.length;
+  }
+}
+window.updateFmsBulkButton = updateFmsBulkButton;
+
+function openBulkFmsModal() {
+  const checked = document.querySelectorAll('.fms-select-item:checked');
+  if (!checked.length) return toast('No milestone tasks selected.');
+  
+  document.getElementById('bulkFmsCount').textContent = checked.length;
+  document.getElementById('bulkFmsDate').value = iso(today);
+  document.getElementById('bulkFmsCompletedBy').value = (currentUser ? currentUser.followperName : 'Admin') || 'Admin';
+  document.getElementById('bulkFmsRemark').value = '';
+  openModal('bulkFmsModal');
+}
+window.openBulkFmsModal = openBulkFmsModal;
+
+async function saveBulkFmsDone(e) {
+  e.preventDefault();
+  const checked = document.querySelectorAll('.fms-select-item:checked');
+  if (!checked.length) return toast('No milestone tasks selected.');
+
+  const actualDate = document.getElementById('bulkFmsDate').value;
+  const completedBy = document.getElementById('bulkFmsCompletedBy').value;
+  const remark = document.getElementById('bulkFmsRemark').value.trim();
+
+  if (!remark) return toast('Please enter completion remark.');
+
+  let count = 0;
+  checked.forEach(cb => {
+    const markaId = cb.dataset.marka;
+    const taskCode = cb.dataset.code;
+    const m = markas.find(x => x.id === markaId);
+    if (!m) return;
+
+    if (!m.fmsTasks) m.fmsTasks = [];
+    let existing = m.fmsTasks.find(t => t.code === taskCode);
+    if (!existing) {
+      existing = { code: taskCode };
+      m.fmsTasks.push(existing);
+    }
+    existing.done = true;
+    existing.actualDate = actualDate;
+    existing.completedBy = completedBy;
+    existing.remark = remark;
+
+    if (!m.history) m.history = [];
+    m.history.push({
+      type: 'followup',
+      date: actualDate,
+      followper: completedBy,
+      status: 'FMS Milestone',
+      remark: `[${taskCode} Completed] ${remark}`
+    });
+    count++;
+  });
+
+  save();
+  closeModal('bulkFmsModal');
+  renderAll();
+  toast(`✓ Successfully marked ${count} FMS milestone tasks as Done!`);
+}
+window.saveBulkFmsDone = saveBulkFmsDone;
 
 function openFmsModal(markaId, taskCode) {
   const m = markas.find(x => x.id === markaId);
@@ -2058,12 +2155,14 @@ function helpTicketsView() {
           <td><b style="color:#087454;">${escapeHtml(t.assignedHelper || '—')}</b></td>
           <td>${statusBadge}</td>
           <td>
-            <div style="display:flex; gap:6px; flex-wrap:wrap;">
               ${!isResolved ? `
                 <button onclick="openResolveTicketModal('${t.id}')" class="row-action" style="background:#087454; color:#fff; font-weight:700; font-size:11px; padding:4px 8px;">Action / Follow-up ⏳</button>
               ` : `
                 <button onclick="openResolveTicketModal('${t.id}')" class="row-action" style="background:#edf7f2; color:#087454; border:1px solid #c0e7d5; font-size:11px; padding:4px 8px;">👁️ Action Details</button>
               `}
+              ${(!isResolved && currentUser && (currentUser.role === 'admin' || currentUser.role === 'superuser' || currentUser.email === 'devlope.vishal@gmail.com')) ? `
+                <button onclick="openReassignTicketModal('${t.id}')" class="row-action" style="background:#eef4ff; color:#2563eb; border:1px solid #bfdbfe; font-size:11px; padding:4px 8px;">🔁 Reassign</button>
+              ` : ''}
               ${t.markaId ? `<button onclick="openHistory('${t.markaId}')" class="row-action" style="background:#f4f7f6; color:#087454; border:1px solid #d2ebe0;">👁️ Timeline</button>` : ''}
             </div>
           </td>
@@ -2072,6 +2171,27 @@ function helpTicketsView() {
     }).join('') : '<tr><td colspan="8" style="text-align:center;color:#788882;padding:24px;">No help tickets found.</td></tr>';
   }
 }
+
+function getAllAssigneesList() {
+  const set = new Set();
+  // 1. All Doers / Followpers
+  allFollowpers().forEach(f => {
+    if (f && f !== 'Unassigned' && f !== 'all') set.add(f);
+  });
+  // 2. All Masters
+  allMasters().forEach(m => {
+    if (m && m !== 'Unassigned' && m !== 'all') set.add(m);
+  });
+  // 3. All Users
+  const userList = (users && users.length > 0) ? users : DEFAULT_USERS;
+  userList.forEach(u => {
+    if (u.followperName && u.followperName !== 'all') set.add(u.followperName);
+    if (u.email) set.add(u.email);
+  });
+  ['Sales HOD', 'Saurav Bhai', 'Bhavesh Bhai', 'Account Team', 'CRM', 'Process Coordinator (PC)'].forEach(r => set.add(r));
+  return Array.from(set).sort();
+}
+window.getAllAssigneesList = getAllAssigneesList;
 
 function openHelpTicketModal(optionalMarkaId) {
   const dt = document.getElementById('htDate');
@@ -2089,8 +2209,8 @@ function openHelpTicketModal(optionalMarkaId) {
 
   const helperSelect = document.getElementById('htAssignedHelper');
   if (helperSelect) {
-    const helpers = allFollowpers().filter(x => x !== 'Unassigned');
-    helperSelect.innerHTML = '<option value="">Select Helper...</option>' + 
+    const helpers = getAllAssigneesList();
+    helperSelect.innerHTML = '<option value="">Select Helper / Doer / Master...</option>' + 
       helpers.map(h => `<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`).join('');
   }
 
@@ -2102,6 +2222,66 @@ function openHelpTicketModal(optionalMarkaId) {
   openModal('helpTicketModal');
 }
 window.openHelpTicketModal = openHelpTicketModal;
+
+function openReassignTicketModal(ticketId) {
+  const t = (helpTickets || []).find(x => x.id === ticketId);
+  if (!t) return toast('Ticket not found.');
+
+  document.getElementById('reassignTicketId').value = ticketId;
+  const sel = document.getElementById('reassignNewHelper');
+  if (sel) {
+    const list = getAllAssigneesList();
+    sel.innerHTML = '<option value="">Select Assignee (Doer / User / Master)...</option>' + 
+      list.map(h => `<option value="${escapeHtml(h)}" ${h === t.assignedHelper ? 'selected' : ''}>${escapeHtml(h)}</option>`).join('');
+  }
+  const noteEl = document.getElementById('reassignNote');
+  if (noteEl) noteEl.value = '';
+
+  openModal('reassignTicketModal');
+}
+window.openReassignTicketModal = openReassignTicketModal;
+
+async function saveReassignTicket(e) {
+  e.preventDefault();
+  const ticketId = document.getElementById('reassignTicketId').value;
+  const newHelper = document.getElementById('reassignNewHelper').value;
+  const note = document.getElementById('reassignNote').value.trim();
+
+  if (!newHelper) return toast('Please select the new assignee.');
+
+  const t = (helpTickets || []).find(x => x.id === ticketId);
+  if (!t) return toast('Ticket not found.');
+
+  const oldHelper = t.assignedHelper || 'Previous Helper';
+  t.assignedHelper = newHelper;
+  if (!t.history) t.history = [];
+  t.history.push({
+    date: iso(today),
+    type: 'Reassigned',
+    note: `Reassigned from ${oldHelper} to ${newHelper}. ${note ? 'Note: ' + note : ''}`,
+    by: (currentUser ? currentUser.followperName : 'Admin') || 'Admin'
+  });
+
+  if (t.markaId) {
+    const m = markas.find(x => x.id === t.markaId);
+    if (m) {
+      if (!m.history) m.history = [];
+      m.history.push({
+        type: 'followup',
+        date: iso(today),
+        followper: (currentUser ? currentUser.followperName : 'Admin') || 'Admin',
+        status: 'Help Ticket',
+        remark: `[Ticket Reassigned] ${t.subject} transferred from ${oldHelper} to ${newHelper}. ${note ? 'Note: ' + note : ''}`
+      });
+    }
+  }
+
+  save();
+  closeModal('reassignTicketModal');
+  renderAll();
+  toast(`✓ Help ticket successfully reassigned to ${newHelper}.`);
+}
+window.saveReassignTicket = saveReassignTicket;
 
 async function saveHelpTicket(e) {
   e.preventDefault();
@@ -2996,6 +3176,14 @@ function openFollowup(markaId) {
   if (payTypeSelect) payTypeSelect.value = 'Full Payment';
   const payModeSelect = document.getElementById('followPayMode');
   if (payModeSelect) payModeSelect.value = 'cheque';
+  const followReceiptFile = document.getElementById('followPayReceiptFile');
+  if (followReceiptFile) followReceiptFile.value = '';
+  const followReceiptPreview = document.getElementById('followPayReceiptPreview');
+  if (followReceiptPreview) {
+    followReceiptPreview.innerHTML = '';
+    followReceiptPreview.style.display = 'none';
+    delete followReceiptPreview.dataset.base64;
+  }
   onFollowPayModeChange();
   
   // Render active bills for claim/complaint selection checklist
@@ -3056,7 +3244,7 @@ function onFollowPayModeChange() {
   const lbl = document.getElementById('followPayRefLabel');
   if (lbl) {
     if (mode === 'cheque') lbl.textContent = 'Cheque Number (Required)';
-    else if (mode === 'RTGS' || mode === 'NEFT') lbl.textContent = 'UTR / Transaction ID (Required)';
+    else if (mode === 'RTGS' || mode === 'NEFT' || mode === 'UPI') lbl.textContent = 'UTR / Transaction ID (Required)';
     else if (mode === 'cash') lbl.textContent = 'Cash Receipt / Voucher No (Required)';
     else lbl.textContent = 'Transaction / Cheque ID (Required)';
   }
@@ -3085,18 +3273,24 @@ function onFollowPayTypeChange() {
 function populateFollowPayBills(m) {
   const container = document.getElementById('followPayBillsList');
   if (!container || !m) return;
-  const bills = activeBills(m).sort((a,b) => a.firstDate.localeCompare(b.firstDate));
+  
+  const bills = activeBills(m).sort((a, b) => a.firstDate.localeCompare(b.firstDate));
+  if (!bills.length) {
+    container.innerHTML = '<p class="modal-copy">No active unpaid bills for this Marka.</p>';
+    return;
+  }
+
   container.innerHTML = bills.map(b => `
-    <div class="settle-bill-item" style="grid-template-columns: 28px 1.4fr 1fr 1fr; border-bottom: 1px solid #edf1ef; padding: 6px 0; align-items:center;">
-      <input type="checkbox" class="follow-pay-check" data-bill-id="${b.id}" checked onchange="updateFollowPayAllocations('check')">
-      <div><b>Bill ${fmt(b.firstDate)}</b> <small style="color:#788882;">${(b.billNos || []).map(escapeHtml).join(', ')}</small></div>
-      <div style="font-family:'DM Mono',monospace; font-size:11px;">Due: ${money(b.balance)}</div>
+    <div class="settle-bill-item" style="grid-template-columns: 28px 1fr 1fr 1fr; border-bottom:1px solid #edf1ef; padding:8px 0; align-items:center;">
+      <input type="checkbox" class="follow-pay-check" data-bill-id="${b.id}" onchange="updateFollowPayAllocations('check')">
       <div>
-        <input type="number" class="follow-pay-amt" data-bill-id="${b.id}" min="0" max="${b.balance}" value="${b.balance}" style="width:100%; padding:4px 6px; font-size:11px;" oninput="updateFollowPayAllocations('custom')">
+        <b style="font-size:12px;">Bill ${fmt(b.firstDate)}</b>
+        <small style="display:block; color:#75847e;">${(b.billNos || []).map(escapeHtml).join(', ') || 'No invoice ref'}</small>
       </div>
+      <div style="font-size:12px; color:#495d56;">Bal: <b>${money(b.balance)}</b></div>
+      <input type="number" class="follow-pay-amt" data-bill-id="${b.id}" value="0" min="0" max="${b.balance}" placeholder="Alloc amt" oninput="updateFollowPayAllocations('custom')" style="font-size:11px; padding:4px 6px;">
     </div>
-  `).join('') || '<p class="modal-copy">No active bills found.</p>';
-  updateFollowPayAllocations('amount');
+  `).join('');
 }
 
 function updateFollowPayAllocations(source = 'amount') {
@@ -3167,6 +3361,46 @@ function updateFollowPayAllocations(source = 'amount') {
     summaryEl.textContent = `${money(allocatedSum)} allocated across ${checkedCount} invoice(s)`;
   }
 }
+
+function previewReceiptImage(input, previewContainerId) {
+  const container = document.getElementById(previewContainerId);
+  if (!container) return;
+  if (input.files && input.files[0]) {
+    const file = input.files[0];
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      container.innerHTML = `
+        <div style="display:inline-flex; align-items:center; gap:8px; background:#edf7f2; border:1px solid #c0e7d5; padding:6px 10px; border-radius:6px; margin-top:4px;">
+          <img src="${e.target.result}" style="width:36px; height:36px; object-fit:cover; border-radius:4px; border:1px solid #087454;" alt="Receipt Preview">
+          <div style="font-size:11px; text-align:left;">
+            <b style="color:#087454;">✓ ${escapeHtml(file.name)}</b>
+            <small style="display:block; color:#5b7067;">${Math.round(file.size/1024)} KB · Uploaded</small>
+          </div>
+          <button type="button" onclick="openReceiptViewer('${escapeHtml(file.name)}', '${e.target.result}')" class="btn-sm row-action" style="margin-left:auto;">👁️ View</button>
+        </div>
+      `;
+      container.style.display = 'block';
+      container.dataset.base64 = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  } else {
+    container.innerHTML = '';
+    container.style.display = 'none';
+    delete container.dataset.base64;
+  }
+}
+window.previewReceiptImage = previewReceiptImage;
+
+function openReceiptViewer(title, imgSrc) {
+  const tEl = document.getElementById('receiptViewTitle');
+  const bEl = document.getElementById('receiptViewBody');
+  if (tEl) tEl.textContent = title || 'Transaction Receipt';
+  if (bEl) {
+    bEl.innerHTML = `<img src="${imgSrc}" style="max-width:100%; max-height:440px; object-fit:contain; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.15);" alt="Receipt">`;
+  }
+  openModal('receiptViewModal');
+}
+window.openReceiptViewer = openReceiptViewer;
 
 function renderHistoryTimeline(m) {
   const entries = (m.history || []).slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
@@ -3248,6 +3482,11 @@ function toggleConditionalFields() {
   }
 
   if (isComplaint) {
+    const nd = document.getElementById('nextDate');
+    if (nd) {
+      const d5 = new Date(today.getTime() + 5 * 86400000);
+      nd.value = iso(d5);
+    }
     const sel = document.getElementById('escalateTo');
     if (sel) {
       sel.innerHTML = '<option value="">None (Keep with current Followper)</option>' +
@@ -3270,8 +3509,8 @@ function toggleConditionalFields() {
   if (isHelp) {
     const hSel = document.getElementById('helpTicketHelper');
     if (hSel) {
-      const helpers = allFollowpers().filter(f => f !== 'Unassigned');
-      hSel.innerHTML = '<option value="">Select Helper Person...</option>' +
+      const helpers = getAllAssigneesList();
+      hSel.innerHTML = '<option value="">Select Helper / Doer / Master...</option>' +
         helpers.map(h => `<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`).join('');
     }
   }
@@ -3375,6 +3614,7 @@ async function saveFollowup(e) {
     }
   }
 
+  const receiptImage = document.getElementById('followPayReceiptPreview')?.dataset?.base64 || '';
   // Apply updates locally and save to localStorage immediately
   if (isPayment) {
     allocations.forEach(a => {
@@ -3391,6 +3631,7 @@ async function saveFollowup(e) {
       mode: payMode,
       amount: payAmount,
       marka: m.marka,
+      receiptImage: receiptImage,
       allocations
     });
   }
@@ -3399,6 +3640,13 @@ async function saveFollowup(e) {
   let finalStatus = statusVal;
   let finalNext = nextDate;
   let finalRemark = remark;
+
+  if (isComplaint) {
+    const min5Date = iso(new Date(today.getTime() + 5 * 86400000));
+    if (!finalNext || finalNext < min5Date) {
+      finalNext = min5Date;
+    }
+  }
 
   if (isPayment) {
     if (stillDue === 0 || payType === 'Full Payment') {
@@ -3437,6 +3685,7 @@ async function saveFollowup(e) {
     billIds,
     amount: payAmount || 0,
     ref: payRef,
+    receiptImage: receiptImage,
     allocations
   };
 
@@ -3557,6 +3806,14 @@ function openPayment(optionalMarkaId) {
   document.getElementById('payAmount').value = '';
   document.getElementById('payType').value = 'Part';
   document.getElementById('payMode').value = 'cheque';
+  const payReceiptFile = document.getElementById('payReceiptFile');
+  if (payReceiptFile) payReceiptFile.value = '';
+  const payReceiptPreview = document.getElementById('payReceiptPreview');
+  if (payReceiptPreview) {
+    payReceiptPreview.innerHTML = '';
+    payReceiptPreview.style.display = 'none';
+    delete payReceiptPreview.dataset.base64;
+  }
   onPayModeChange();
   
   const sel = document.getElementById('payMarkaSelect');
@@ -3586,47 +3843,31 @@ function openPaymentFromBills() {
 }
 
 function onPayModeChange() {
-  const mode = document.getElementById('payMode').value;
+  const mode = document.getElementById('payMode') ? document.getElementById('payMode').value : 'cheque';
   const lbl = document.getElementById('payRefLabel');
   if (lbl) {
-    if (mode === 'cheque') lbl.innerHTML = 'Cheque No<input id="payRef" required placeholder="e.g. 123456">';
-    else if (mode === 'RTGS' || mode === 'NEFT') lbl.innerHTML = `${mode} UTR No<input id="payRef" required placeholder="e.g. UTR129384">`;
-    else lbl.innerHTML = 'Transaction ID / Ref<input id="payRef" required placeholder="e.g. CASH-REF">';
+    if (mode === 'cheque') lbl.textContent = 'Cheque Number (Required)';
+    else if (mode === 'RTGS' || mode === 'NEFT' || mode === 'UPI') lbl.textContent = 'UTR / Transaction ID (Required)';
+    else if (mode === 'cash') lbl.textContent = 'Cash Receipt / Voucher No (Required)';
+    else lbl.textContent = 'Transaction / Cheque ID (Required)';
   }
 }
 
 function onPayTypeChange() {
-  const type = document.getElementById('payType').value;
-  const amtInput = document.getElementById('payAmount');
+  const pType = document.getElementById('payType').value;
   const mId = document.getElementById('payMarkaSelect').value;
   const m = markas.find(x => x.id === mId);
-  
-  if (type === 'Full') {
-    amtInput.readOnly = true;
-    if (m) {
-      const total = totalOutstanding(m);
-      amtInput.value = total;
-      
-      // Select all bills
-      const checks = document.querySelectorAll('.pay-bill-check');
-      const inputs = document.querySelectorAll('.pay-bill-alloc');
-      checks.forEach(c => c.checked = true);
-      inputs.forEach(inp => {
-        const billId = inp.dataset.billId;
-        const b = m.bills.find(x => String(x.id) === String(billId));
-        if (b) inp.value = b.balance;
-      });
-      updatePayAllocations('manual');
-    }
+  if (!m) return;
+  const tot = totalOutstanding(m);
+  const amtInput = document.getElementById('payAmount');
+  if (pType === 'Full') {
+    amtInput.value = tot;
+    updatePayAllocations('amount');
   } else {
-    amtInput.readOnly = false;
-    amtInput.value = '';
-    // Reset all bill selections
-    const checks = document.querySelectorAll('.pay-bill-check');
-    const inputs = document.querySelectorAll('.pay-bill-alloc');
-    checks.forEach(c => c.checked = false);
-    inputs.forEach(inp => inp.value = 0);
-    updatePayAllocations('manual');
+    if (+amtInput.value >= tot || !amtInput.value) {
+      amtInput.value = Math.max(1, Math.floor(tot / 2));
+    }
+    updatePayAllocations('amount');
   }
 }
 
@@ -3634,36 +3875,36 @@ function onPayMarkaSelectChange() {
   const mId = document.getElementById('payMarkaSelect').value;
   const m = markas.find(x => x.id === mId);
   const container = document.getElementById('payBillsContainer');
-  
   if (!m) {
-    container.style.display = 'none';
+    if (container) container.style.display = 'none';
     return;
   }
   
-  container.style.display = 'block';
-  const activeList = activeBills(m).sort((a, b) => a.firstDate.localeCompare(b.firstDate));
-  document.getElementById('payBillsList').innerHTML = activeList.map(b => `
-    <div class="pay-bill-item">
-      <input type="checkbox" class="pay-bill-check" data-bill-id="${b.id}" onchange="updatePayAllocations('manual')">
-      <div>
-        <b>Bill ${fmt(b.firstDate)}</b> <br>
-        <small style="color:#788882;">${(b.billNos || []).map(escapeHtml).join(', ')}</small>
+  if (container) container.style.display = 'block';
+  const list = document.getElementById('payBillsList');
+  const bills = activeBills(m).sort((a, b) => a.firstDate.localeCompare(b.firstDate));
+  
+  if (list) {
+    list.innerHTML = bills.map(b => `
+      <div class="pay-bill-item">
+        <input type="checkbox" class="pay-bill-check" data-bill-id="${b.id}" checked onchange="updatePayAllocations('check')">
+        <div>
+          <b>Bill ${fmt(b.firstDate)}</b>
+          <small>${(b.billNos || []).map(escapeHtml).join(', ') || 'No invoice ref'}</small>
+        </div>
+        <div style="font-family:'DM Mono',monospace; font-size:11px;">Due: ${money(b.balance)}</div>
+        <div>
+          <input type="number" class="pay-bill-alloc" data-bill-id="${b.id}" min="0" max="${b.balance}" value="${b.balance}" oninput="onPayBillAllocInput('${b.id}', this.value)">
+        </div>
       </div>
-      <div style="font-weight:600; color:#555;">Due: ${money(b.balance)}</div>
-      <input type="number" class="pay-bill-alloc" data-bill-id="${b.id}" value="0" min="0" max="${b.balance}" oninput="onPayAllocInput(this)" style="font-family:'DM Mono';">
-    </div>
-  `).join('') || '<p class="modal-copy">No active bills found for this Marka.</p>';
+    `).join('') || '<p class="modal-copy">No active unpaid bills found.</p>';
+  }
   
   onPayTypeChange();
 }
 
-function onPayAllocInput(el) {
-  const max = +el.max;
-  const val = +el.value || 0;
-  if (val > max) el.value = max;
-  if (val < 0) el.value = 0;
-  
-  const billId = el.dataset.billId;
+function onPayBillAllocInput(billId, val) {
+  val = +val || 0;
   const chk = document.querySelector(`.pay-bill-check[data-bill-id="${billId}"]`);
   if (chk) {
     chk.checked = val > 0;
@@ -3744,6 +3985,7 @@ async function savePayment(e) {
   const payMode = document.getElementById('payMode').value;
   const payRef = document.getElementById('payRef').value.trim();
   const payAmount = +document.getElementById('payAmount').value || 0;
+  const receiptImage = document.getElementById('payReceiptPreview')?.dataset?.base64 || '';
   
   if (!payAmount || payAmount <= 0) return toast('Enter a valid payment amount.');
   if (!payRef) return toast('Reference / receipt number is required.');
@@ -3775,6 +4017,7 @@ async function savePayment(e) {
     payMode,
     payRef,
     payAmount,
+    receiptImage,
     allocations
   };
   
@@ -3805,9 +4048,11 @@ async function savePayment(e) {
         m.history.push({
           type: 'payment',
           date: payDate,
-          status: 'Payment Received',
-          remark: `Payment: ${money(a.amount)} allocated to bill ${fmt(b.firstDate)}. Mode: ${payMode}, Ref: ${payRef}`,
+          status: b.balance === 0 ? 'Payment Received' : 'Part Payment',
+          remark: `Payment of ${money(a.amount)} received (${payMode} ref: ${payRef}) allocated to bill ${fmt(b.firstDate)}.`,
           amount: a.amount,
+          ref: payRef,
+          receiptImage: receiptImage,
           billId: b.id
         });
       }
@@ -4751,8 +4996,14 @@ function processImportedRows(rawRows, fileName = 'Imported File') {
 }
 
 async function clearAllData() {
-  if (currentUser && currentUser.role !== 'admin' && currentUser.role !== 'superuser') {
-    return toast('Access Denied: Only Admin users can reset and clear bills data.');
+  const isMasterAdmin = currentUser && (
+    currentUser.email === 'devlope.vishal@gmail.com' ||
+    currentUser.email === 'admin@collectiq.com' ||
+    (currentUser.role === 'admin' && currentUser.email.includes('admin'))
+  );
+
+  if (!isMasterAdmin) {
+    return toast('Access Denied: Only devlope.vishal@gmail.com and Primary Admin can reset/clear bills data.');
   }
 
   if (!confirm('⚠️ Are you sure you want to clear all existing Markas, Bills, and Collection Data?\n\nThis will give you a clean slate to upload your new dataset. (User logins and accounts will be preserved).')) {
