@@ -5045,19 +5045,31 @@ function importFile(e) {
   if (ext === 'xlsx' || ext === 'xls') {
     const reader = new FileReader();
     reader.onload = (evt) => {
-      try {
-        const data = new Uint8Array(evt.target.result);
-        if (typeof XLSX === 'undefined') {
-          return toast('Excel library is loading, please try again in a moment.');
+      const data = new Uint8Array(evt.target.result);
+      const parseExcel = () => {
+        try {
+          const workbook = XLSX.read(data, { type: 'array', cellDates: true, raw: false });
+          const sheetName = workbook.SheetNames[0];
+          const sheet = workbook.Sheets[sheetName];
+          const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+          processImportedRows(rawRows, f.name);
+        } catch (err) {
+          console.error('Error reading Excel file:', err);
+          toast('Failed to read Excel file: ' + err.message);
         }
-        const workbook = XLSX.read(data, { type: 'array', cellDates: true, raw: false });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-        const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
-        processImportedRows(rawRows, f.name);
-      } catch (err) {
-        console.error('Error reading Excel file:', err);
-        toast('Failed to read Excel file: ' + err.message);
+      };
+
+      if (typeof XLSX === 'undefined') {
+        toast('Loading Excel engine...');
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+        s.onload = parseExcel;
+        s.onerror = () => {
+          toast('Failed to load Excel parser. Please check internet connection or export as CSV.');
+        };
+        document.head.appendChild(s);
+      } else {
+        parseExcel();
       }
     };
     reader.readAsArrayBuffer(f);
