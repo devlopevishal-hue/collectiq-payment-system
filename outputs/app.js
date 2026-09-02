@@ -134,8 +134,9 @@ const DEFAULT_USERS = [
 ];
 
 function isLocalServer() {
-  if (firestoreDb) return false;
-  return Boolean(window.location && window.location.protocol && window.location.protocol.startsWith('http'));
+  const host = (window.location && window.location.hostname) || '';
+  const port = (window.location && window.location.port) || '';
+  return (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || port === '3000' || port === '3899' || port === '3911') && !firestoreDb;
 }
 
 function isOnlineMode() {
@@ -5259,19 +5260,34 @@ async function clearAllData() {
 
   markas = [];
   payments = [];
+  helpTickets = [];
   localStorage.removeItem('collectiq_markas_v4');
   localStorage.removeItem('collectiq_rokad_v4');
   localStorage.removeItem('collectiq_markas_v3');
   localStorage.removeItem('collectiq_rojkad_v3');
+  localStorage.removeItem('collectiq_help_tickets_v4');
 
-  if (isOnlineMode()) {
+  if (firestoreDb) {
+    try {
+      await firestoreDb.collection('collectiq').doc('main').set({
+        markas: [],
+        payments: [],
+        helpTickets: [],
+        users: users,
+        masterFollowpers: masterFollowpers,
+        updatedAt: new Date().toISOString()
+      });
+      toast('✓ Cloud DB collections cleared.');
+    } catch (e) {
+      console.warn('Cloud DB clear error:', e);
+    }
+  }
+
+  if (isLocalServer()) {
     try {
       const res = await fetch('/api/clear-all-data', { method: 'POST' });
       if (res.ok) {
         toast('✓ All database collection records cleared.');
-      } else {
-        const err = await res.json();
-        toast('Notice: ' + err.error);
       }
     } catch (e) {
       console.warn('Backend clear notice:', e);
