@@ -6357,6 +6357,9 @@ function initFirebase() {
       firebase.initializeApp(cfg);
     }
     firestoreDb = firebase.firestore();
+    try {
+      firestoreDb.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+    } catch(e) {}
     
     // Auto-seed cloud database if document does not exist yet on first boot
     firestoreDb.collection('collectiq').doc('main').get().then(doc => {
