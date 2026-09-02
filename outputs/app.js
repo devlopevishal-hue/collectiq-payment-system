@@ -1172,6 +1172,7 @@ function locks() {
     let va, vb;
     if (col === 'marka') { va = a.marka; vb = b.marka; }
     else if (col === 'oldest') { va = oldestDueDate(a); vb = oldestDueDate(b); }
+    else if (col === 'lockDate') { va = addDaysToIso(oldestDueDate(a), 19); vb = addDaysToIso(oldestDueDate(b), 19); }
     else if (col === 'days') { va = days(oldestDueDate(a)); vb = days(oldestDueDate(b)); }
     else if (col === 'balance') { va = totalOutstanding(a); vb = totalOutstanding(b); }
     else if (col === 'owner') { va = ownerOf(a); vb = ownerOf(b); }
@@ -1205,7 +1206,9 @@ function locks() {
   if (tbody) {
     tbody.innerHTML = lockedList.length ? lockedList.map(m => {
       const oldest = oldestDueDate(m);
-      const od = days(oldest);
+      const gpLockDate = addDaysToIso(oldest, 19);
+      const daysLocked = Math.max(1, days(gpLockDate));
+      const totalOverdueDays = days(oldest);
       const hod = m.salesHodAction;
       let hodBadge = hod ? `
         <div style="background:#fff8f4; border:1px solid #fed7c3; border-radius:6px; padding:4px 8px; font-size:11px;">
@@ -1218,10 +1221,14 @@ function locks() {
         <tr>
           <td><span class="case-name">${escapeHtml(m.marka)}</span><span class="case-sub">${escapeHtml(m.master)}</span></td>
           <td><b>${fmt(oldest)}</b></td>
-          <td><span class="status overdue" style="font-weight:800;">${od} DAYS OVERDUE</span></td>
+          <td>
+            <b style="color:#991b1b;">${fmt(gpLockDate)}</b>
+            <small style="display:block; color:#dc2626; font-weight:700; font-size:10px;">Locked ${daysLocked} day${daysLocked > 1 ? 's' : ''} ago</small>
+          </td>
+          <td><span class="status overdue" style="font-weight:800;">${totalOverdueDays} DAYS OVERDUE</span></td>
           <td class="money"><b>${money(totalOutstanding(m))}</b></td>
           <td>${escapeHtml(ownerOf(m))}</td>
-          <td style="max-width:280px;">${hodBadge}</td>
+          <td style="max-width:260px;">${hodBadge}</td>
           <td>${fmt(m.lastDate)}<br><small style="color:#788882;">${escapeHtml((m.remark || '').substring(0, 40))}</small></td>
           <td>
             <div style="display:flex; gap:4px; flex-wrap:wrap;">
@@ -1233,7 +1240,7 @@ function locks() {
           </td>
         </tr>
       `;
-    }).join('') : '<tr><td colspan="8" style="text-align:center;color:#788882;padding:24px;">No Marka is currently in GP lock.</td></tr>';
+    }).join('') : '<tr><td colspan="9" style="text-align:center;color:#788882;padding:24px;">No Marka is currently in GP lock.</td></tr>';
   }
 }
 
@@ -1241,17 +1248,23 @@ function openSalesHodModal(markaId) {
   const m = markas.find(x => x.id === markaId);
   if (!m) return toast('Marka not found.');
 
+  const oldest = oldestDueDate(m);
+  const gpLockDate = addDaysToIso(oldest, 19);
+  const daysLocked = Math.max(1, days(gpLockDate));
+  const totalOverdueDays = days(oldest);
+
   document.getElementById('salesHodMarkaId').value = markaId;
   document.getElementById('salesHodDate').value = iso(today);
   document.getElementById('salesHodBy').value = (currentUser ? currentUser.followperName : 'Sales HOD') || 'Sales HOD';
   document.getElementById('salesHodPartyInfo').innerHTML = `
     <div style="display:flex; justify-content:space-between; align-items:center;">
       <h3 style="margin:0; font-size:15px; color:#991b1b;">⊘ GP LOCKED · ${escapeHtml(m.marka)} · ${escapeHtml(m.master)}</h3>
-      <span class="status overdue" style="font-weight:800;">${days(oldestDueDate(m))} DAYS OVERDUE</span>
+      <span class="status overdue" style="font-weight:800;">${totalOverdueDays} DAYS OVERDUE</span>
     </div>
-    <div style="margin-top:6px; font-size:12px; color:#495d56; display:flex; justify-content:space-between;">
+    <div style="margin-top:8px; font-size:12px; color:#495d56; display:grid; grid-template-columns:1fr 1fr; gap:6px; background:#fff; padding:8px; border-radius:4px; border:1px solid #fed7c3;">
+      <span>First Invoice Due: <b>${fmt(oldest)}</b></span>
+      <span>GP Lock Date: <b style="color:#b91c1c;">${fmt(gpLockDate)} (${daysLocked}d in lock)</b></span>
       <span>Total Outstanding: <b style="color:#087454;">${money(totalOutstanding(m))}</b></span>
-      <span>First Due Date: <b>${fmt(oldestDueDate(m))}</b></span>
       <span>Assigned Doer: <b>${escapeHtml(ownerOf(m))}</b></span>
     </div>
   `;
@@ -3308,8 +3321,11 @@ function openFollowup(markaId) {
   }
   if (!m) return toast('No Marka found.');
   
-  document.getElementById('markaId').value = m.id;
-  document.getElementById('followTitle').textContent = `${m.marka} · ${m.master} · Oldest due: ${fmt(oldestDueDate(m))} · Total: ${money(totalOutstanding(m))}`;
+  const oldest = oldestDueDate(m);
+  const gpDate = isLocked(m) ? addDaysToIso(oldest, 19) : null;
+  document.getElementById('followTitle').textContent = isLocked(m) 
+    ? `⊘ GP LOCKED (${days(oldest)}d overdue) · Lock Date: ${fmt(gpDate)} · ${m.marka} · ${m.master} · Total: ${money(totalOutstanding(m))}`
+    : `${m.marka} · ${m.master} · Oldest due: ${fmt(oldest)} · Total: ${money(totalOutstanding(m))}`;
   document.getElementById('plannedDate').value = m.nextDate || '';
   document.getElementById('followDate').value = iso(today);
   document.getElementById('followper').value = ownerOf(m) === 'Unassigned' ? '' : ownerOf(m);
