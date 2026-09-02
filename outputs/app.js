@@ -3071,11 +3071,10 @@ function visitsView() {
     `;
   }
 
-  const activeMarkaList = filtered(activeMarkas());
   let allVisits = [];
   const todayIso = iso(today);
 
-  activeMarkaList.forEach(m => {
+  markas.forEach(m => {
     (m.history || []).forEach((h, hIdx) => {
       const isVisit = (h.mode && (h.mode.toLowerCase().includes('person') || h.mode.toLowerCase().includes('visit')));
       if (isVisit) {
@@ -3100,12 +3099,17 @@ function visitsView() {
     });
   });
 
+  if (isUserRole) {
+    const uName = (currentUser.followperName || '').toLowerCase().trim();
+    allVisits = allVisits.filter(v => (v.followper || '').toLowerCase().trim() === uName || (v.owner || '').toLowerCase().trim() === uName);
+  }
+
   const q = (F.visitSearch || '').toLowerCase().trim();
   let filteredVisits = allVisits.filter(v => {
     const doerMatch = (curDoer === 'all' || v.followper === curDoer);
     const fromMatch = !F.visitFrom || v.date >= F.visitFrom;
     const toMatch = !F.visitTo || v.date <= F.visitTo;
-    const searchMatch = !q || v.marka.toLowerCase().includes(q) || v.master.toLowerCase().includes(q) || v.contact.toLowerCase().includes(q);
+    const searchMatch = !q || v.marka.toLowerCase().includes(q) || v.master.toLowerCase().includes(q) || v.contact.toLowerCase().includes(q) || (v.notes || '').toLowerCase().includes(q);
     return doerMatch && fromMatch && toMatch && searchMatch;
   });
 
@@ -3321,6 +3325,8 @@ function openFollowup(markaId) {
   }
   if (!m) return toast('No Marka found.');
   
+  populateFollowperDropdowns();
+
   const oldest = oldestDueDate(m);
   const gpDate = isLocked(m) ? addDaysToIso(oldest, 19) : null;
   document.getElementById('followTitle').textContent = isLocked(m) 
@@ -3328,7 +3334,19 @@ function openFollowup(markaId) {
     : `${m.marka} · ${m.master} · Oldest due: ${fmt(oldest)} · Total: ${money(totalOutstanding(m))}`;
   document.getElementById('plannedDate').value = m.nextDate || '';
   document.getElementById('followDate').value = iso(today);
-  document.getElementById('followper').value = ownerOf(m) === 'Unassigned' ? '' : ownerOf(m);
+
+  const followperEl = document.getElementById('followper');
+  const currentOwner = ownerOf(m) === 'Unassigned' ? '' : ownerOf(m);
+  if (followperEl) {
+    if (currentOwner && !Array.from(followperEl.options).some(o => o.value === currentOwner)) {
+      const opt = document.createElement('option');
+      opt.value = currentOwner;
+      opt.textContent = currentOwner;
+      followperEl.appendChild(opt);
+    }
+    followperEl.value = currentOwner;
+  }
+
   document.getElementById('contactPerson').value = '';
   document.getElementById('contactMode').value = 'Phone call';
   document.getElementById('actionStatus').value = 'Promise to Pay';
@@ -3344,6 +3362,8 @@ function openFollowup(markaId) {
   if (document.getElementById('helpTicketHelper')) document.getElementById('helpTicketHelper').value = '';
   if (document.getElementById('helpTicketPriority')) document.getElementById('helpTicketPriority').value = 'Normal';
   if (document.getElementById('escalateTo')) document.getElementById('escalateTo').value = '';
+  if (document.getElementById('visitPersonMet')) document.getElementById('visitPersonMet').value = '';
+  if (document.getElementById('visitNotes')) document.getElementById('visitNotes').value = '';
   
   // Payment fields reset
   const payRefInput = document.getElementById('followPayRef');
@@ -3395,7 +3415,7 @@ function openFollowup(markaId) {
       }
 
       return `
-        <div style="display:flex; justify-content:space-between; align-items:center; background:#fff; border:1px solid #e1eee8; border-radius:6px; padding:6px 10px; font-size:12px;">
+        <div style="flex:1; display:flex; justify-content:space-between; align-items:center; background:#fff; border:1px solid #e1eee8; border-radius:6px; padding:6px 10px; font-size:12px;">
           <div style="flex:1; min-width:0;">
             <div style="font-weight:700; color:#182e25;"><span style="color:#087454; font-family:'DM Mono', monospace; margin-right:4px;">${t.code}</span>${escapeHtml(t.name)}</div>
             <small style="color:#6d827a; font-size:10px;">Due +${t.offset}d (${fmt(t.plannedDate)}) · Responsible: <b>${escapeHtml(t.role)}</b> (${escapeHtml(t.responsibleName)})</small>
@@ -3411,11 +3431,20 @@ function openFollowup(markaId) {
 
   populateFollowPayBills(m);
   toggleConditionalFields();
-  populateFollowperDropdowns();
   
   document.getElementById('modalHistory').innerHTML = renderHistoryTimeline(m);
   openModal('followupModal');
 }
+
+function openVisitModal(optionalMarkaId) {
+  openFollowup(optionalMarkaId);
+  const modeSelect = document.getElementById('contactMode');
+  if (modeSelect) {
+    modeSelect.value = 'In person (Field Visit)';
+    toggleConditionalFields();
+  }
+}
+window.openVisitModal = openVisitModal;
 
 function onFollowPayModeChange() {
   const mode = document.getElementById('followPayMode') ? document.getElementById('followPayMode').value : 'cheque';
@@ -3738,17 +3767,6 @@ async function saveFollowup(e) {
     return toast('Promise date is required for PTP.');
   }
 
-  // Date validations for PTP
-  const todayStr = iso(today);
-  if (isPtp) {
-    if (promiseDate < todayStr) {
-      return toast('Promise to Pay date cannot be in the past.');
-    }
-    if (nextDate < todayStr) {
-      return toast('Next planned follow-up date cannot be in the past.');
-    }
-  }
-
   // Gather selected bill IDs for Complaint / Claim
   let billIds = [];
   if (isComplaint) {
@@ -3816,7 +3834,7 @@ async function saveFollowup(e) {
 
   const stillDue = totalOutstanding(m);
   let finalStatus = statusVal;
-  let finalNext = nextDate;
+  let finalNext = nextDate || (isPtp ? promiseDate : iso(new Date(today.getTime() + 2 * 86400000)));
   let finalRemark = remark;
 
   if (isComplaint) {
@@ -4942,6 +4960,7 @@ function parseCsvDate(str) {
   str = String(str).trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
   
+  // Excel serial number date (e.g. 45532)
   if (/^\d{5}$/.test(str)) {
     const d = new Date((parseInt(str, 10) - 25569) * 86400 * 1000);
     const y = d.getFullYear();
@@ -4949,28 +4968,67 @@ function parseCsvDate(str) {
     const day = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
   }
-  
-  const parts = str.split(/[\/\-\.]/);
+
+  // Handle month names: 01-Sep-2026, 15-Aug-26, 01/September/2026
+  const monthMap = {
+    jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+    jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+    january: '01', february: '02', march: '03', april: '04', may: '05', june: '06',
+    july: '07', august: '08', september: '09', october: '10', november: '11', december: '12'
+  };
+
+  const parts = str.split(/[\/\-\.\s]+/);
   if (parts.length === 3) {
-    let [p1, p2, p3] = parts.map(p => parseInt(p, 10));
-    if (p3 < 100) p3 += 2000;
-    if (parts[0].length === 4) {
-      return `${parts[0]}-${String(p2).padStart(2, '0')}-${String(p3).padStart(2, '0')}`;
+    let p1 = parts[0].toLowerCase();
+    let p2 = parts[1].toLowerCase();
+    let p3 = parts[2].toLowerCase();
+
+    // Check if middle part is month name (e.g. 01-Sep-2026 or 01-Sep-26)
+    if (monthMap[p2]) {
+      const day = String(parseInt(p1, 10)).padStart(2, '0');
+      const mon = monthMap[p2];
+      let yr = parseInt(p3, 10);
+      if (yr < 100) yr += 2000;
+      return `${yr}-${mon}-${day}`;
     }
-    if (p1 <= 12 && p2 > 12) {
-      return `${p3}-${String(p1).padStart(2, '0')}-${String(p2).padStart(2, '0')}`;
-    } else if (p2 <= 12 && p1 > 12) {
-      return `${p3}-${String(p2).padStart(2, '0')}-${String(p1).padStart(2, '0')}`;
+    // Check if first part is month name (e.g. Sep-01-2026)
+    if (monthMap[p1]) {
+      const mon = monthMap[p1];
+      const day = String(parseInt(p2, 10)).padStart(2, '0');
+      let yr = parseInt(p3, 10);
+      if (yr < 100) yr += 2000;
+      return `${yr}-${mon}-${day}`;
+    }
+
+    // Numeric parts
+    const n1 = parseInt(p1, 10);
+    const n2 = parseInt(p2, 10);
+    let n3 = parseInt(p3, 10);
+    if (n3 < 100) n3 += 2000;
+
+    if (parts[0].length === 4) { // YYYY-MM-DD
+      return `${parts[0]}-${String(n2).padStart(2, '0')}-${String(n3).padStart(2, '0')}`;
+    }
+    // DD-MM-YYYY or MM-DD-YYYY
+    if (n1 > 12 && n2 <= 12) {
+      return `${n3}-${String(n2).padStart(2, '0')}-${String(n1).padStart(2, '0')}`;
+    } else if (n2 > 12 && n1 <= 12) {
+      return `${n3}-${String(n1).padStart(2, '0')}-${String(n2).padStart(2, '0')}`;
     } else {
-      return `${p3}-${String(p1).padStart(2, '0')}-${String(p2).padStart(2, '0')}`;
+      // Default to DD-MM-YYYY (Indian format)
+      return `${n3}-${String(n2).padStart(2, '0')}-${String(n1).padStart(2, '0')}`;
     }
   }
+
   const d = new Date(str);
-  if (isNaN(d.getTime())) return '';
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  if (!isNaN(d.getTime())) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  return '';
 }
 
 window.parseCsvLine = parseCsvLine;
@@ -5052,22 +5110,30 @@ function processImportedRows(rawRows, fileName = 'Imported File') {
       row[cleanKey] = v;
     }
 
-    const markaName = (row['markagroup'] || row['marka'] || row['group'] || row['party'] || '').trim();
-    const rawBillDate = row['billdate'] || row['date'] || row['firstdate'] || '';
-    const billDate = parseCsvDate(rawBillDate);
+    const markaName = (
+      row['markagroup'] || row['marka'] || row['group'] || row['party'] ||
+      row['partyname'] || row['customername'] || row['accountname'] || row['particulars'] ||
+      row['ledger'] || row['name'] || row['markaname'] || ''
+    ).trim();
 
-    const rawBalance = row['balance'] !== undefined ? row['balance'] : (row['outstanding'] || row['balamt'] || row['netbalance'] || row['billamt'] || 0);
+    const rawBillDate = row['billdate'] || row['date'] || row['firstdate'] || row['invoicedate'] || row['voucherdate'] || row['invdate'] || row['docdate'] || '';
+    const billDate = parseCsvDate(rawBillDate) || iso(today);
+
+    const rawBalance = row['balance'] !== undefined ? row['balance'] : (
+      row['outstanding'] || row['balamt'] || row['netbalance'] || row['billamt'] ||
+      row['debit'] || row['dramount'] || row['closingbalance'] || row['amount'] || row['billamount'] || 0
+    );
     const balance = parseAmount(rawBalance);
 
-    const master = (row['master'] || row['mastername'] || 'Unassigned Master').trim();
-    const own = (row['collectionperson'] || row['collectionp'] || row['followper'] || row['doer'] || '').trim();
-    const billNo = String(row['billno'] || row['invoiceno'] || row['billnum'] || '').trim();
+    const master = (row['master'] || row['mastername'] || row['agent'] || row['broker'] || row['salesmaster'] || 'Unassigned Master').trim();
+    const own = (row['collectionperson'] || row['collectionp'] || row['followper'] || row['doer'] || row['salesperson'] || row['assignedto'] || row['executive'] || '').trim();
+    const billNo = String(row['billno'] || row['invoiceno'] || row['vchno'] || row['refno'] || row['billnumber'] || row['invno'] || '').trim();
 
-    const rawPolicyDate = row['policydate'] || row['duedate'] || row['policyduedate'] || '';
-    const policyDate = parseCsvDate(rawPolicyDate) || billDate; // Policy date is actual due date
+    const rawPolicyDate = row['policydate'] || row['duedate'] || row['policyduedate'] || row['dueon'] || '';
+    const policyDate = parseCsvDate(rawPolicyDate) || billDate;
     const policyName = (row['policyname'] || row['policy'] || 'NET').trim();
 
-    if (!markaName || !billDate) return;
+    if (!markaName) return;
     totalRows++;
 
     if (!markaMap.has(markaName)) {
@@ -5087,29 +5153,32 @@ function processImportedRows(rawRows, fileName = 'Imported File') {
   });
 
   let updated = 0;
-  let ignoredDuplicates = 0;
   let addedBills = 0;
 
   markaMap.forEach((data, markaName) => {
     let m = markas.find(x => x.marka === markaName);
     if (m) {
       data.bills.forEach((newBill) => {
-        const existingBill = (m.bills || []).find(b => b.firstDate === newBill.firstDate && b.sourceAmount === newBill.sourceAmount && (newBill.billNos.length === 0 || (b.billNos || []).some(no => newBill.billNos.includes(no))));
+        const existingBill = (m.bills || []).find(b => 
+          (newBill.billNos.length > 0 && (b.billNos || []).some(no => newBill.billNos.includes(no))) ||
+          (b.firstDate === newBill.firstDate)
+        );
         if (existingBill) {
-          ignoredDuplicates++;
-          return;
+          existingBill.balance = newBill.balance;
+          existingBill.sourceAmount = newBill.sourceAmount || existingBill.sourceAmount;
+          if (newBill.policyDate) existingBill.policyDate = newBill.policyDate;
+        } else {
+          m.bills.push({
+            id: Date.now() + updated + addedBills++,
+            firstDate: newBill.firstDate,
+            balance: newBill.balance,
+            sourceAmount: newBill.sourceAmount,
+            billCount: newBill.billCount,
+            billNos: newBill.billNos,
+            policyDate: newBill.policyDate,
+            policyName: newBill.policyName
+          });
         }
-
-        m.bills.push({
-          id: Date.now() + updated + addedBills++,
-          firstDate: newBill.firstDate,
-          balance: newBill.balance,
-          sourceAmount: newBill.sourceAmount,
-          billCount: newBill.billCount,
-          billNos: newBill.billNos,
-          policyDate: newBill.policyDate,
-          policyName: newBill.policyName
-        });
       });
       m.master = data.master || m.master;
       if (ownerOf(m) === 'Unassigned' && data.own) m.owner = data.own;
