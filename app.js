@@ -6366,12 +6366,12 @@ function initFirebase() {
       } else {
         const d = doc.data();
         if (d) {
-          if (Array.isArray(d.users) && d.users.length > 0) {
+          if (Array.isArray(d.users)) {
             users = d.users;
             window.users = users;
             localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
           }
-          if (Array.isArray(d.markas) && d.markas.length > 0) {
+          if (Array.isArray(d.markas)) {
             markas = d.markas;
             localStorage.setItem('collectiq_markas_v4', JSON.stringify(markas));
           }
@@ -6383,6 +6383,10 @@ function initFirebase() {
             helpTickets = d.helpTickets;
             localStorage.setItem('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
           }
+          if (d.masterFollowpers) {
+            masterFollowpers = { ...DEFAULT_MASTER_FOLLOWPERS, ...d.masterFollowpers };
+            localStorage.setItem('collectiq_master_followpers_v4', JSON.stringify(masterFollowpers));
+          }
           renderAll();
         }
       }
@@ -6393,7 +6397,7 @@ function initFirebase() {
       if (doc.exists) {
         const d = doc.data();
         if (d) {
-          if (Array.isArray(d.markas) && d.markas.length > 0) {
+          if (Array.isArray(d.markas)) {
             markas = d.markas;
             markas.forEach(m => {
               if (!m.escalations) m.escalations = [];
@@ -6414,7 +6418,7 @@ function initFirebase() {
             masterFollowpers = { ...DEFAULT_MASTER_FOLLOWPERS, ...d.masterFollowpers };
             localStorage.setItem('collectiq_master_followpers_v4', JSON.stringify(masterFollowpers));
           }
-          if (Array.isArray(d.users) && d.users.length > 0) {
+          if (Array.isArray(d.users)) {
             users = d.users;
             window.users = users;
             localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
