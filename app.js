@@ -483,29 +483,36 @@ function load() {
     window.helpTickets = helpTickets;
 
     const storedUsers = localStorage.getItem('collectiq_users_v4');
+    const userMap = new Map();
     if (storedUsers) {
       try {
-        users = JSON.parse(storedUsers);
-        if (!Array.isArray(users)) users = [];
-      } catch(e) {
-        users = [];
-      }
-    } else {
-      users = [];
+        const parsed = JSON.parse(storedUsers);
+        if (Array.isArray(parsed)) {
+          parsed.forEach(u => {
+            if (u && u.email) {
+              const k = u.email.toLowerCase().trim();
+              if (!userMap.has(k)) userMap.set(k, u);
+            }
+          });
+        }
+      } catch(e) {}
     }
 
     DEFAULT_USERS.forEach(defUser => {
-      const existing = users.find(u => u.email.toLowerCase() === defUser.email.toLowerCase());
-      if (existing) {
+      const k = defUser.email.toLowerCase().trim();
+      if (!userMap.has(k)) {
+        userMap.set(k, { ...defUser });
+      } else {
+        const existing = userMap.get(k);
         if (existing.password === existing.email || !existing.password || existing.password === 'undefined') {
           existing.password = defUser.password;
         }
         existing.role = defUser.role;
         existing.followperName = defUser.followperName;
-      } else {
-        users.push({ ...defUser });
       }
     });
+
+    users = Array.from(userMap.values());
     localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
     window.users = users;
     checkAuth();
@@ -576,39 +583,48 @@ function ownerOf(m) {
 }
 
 function allFollowpers() {
-  const fromUsers = (users || []).map(u => {
-    if (u.followperName && u.followperName.toLowerCase() !== 'all' && u.followperName !== 'Unassigned') {
-      return u.followperName.trim();
-    }
-    if (u.email) {
-      const prefix = u.email.split('@')[0];
-      return prefix.charAt(0).toUpperCase() + prefix.slice(1);
-    }
-    return '';
-  }).filter(Boolean);
+  const rawList = [
+    ...(users || []).map(u => (u.followperName && u.followperName.toLowerCase() !== 'all' && u.followperName !== 'Unassigned') ? u.followperName.trim() : (u.email ? u.email.split('@')[0] : '')),
+    ...(markas || []).map(ownerOf),
+    ...Object.values(masterFollowpers || {}),
+    ...Object.values(DEFAULT_MASTER_FOLLOWPERS || {}),
+    ...(markas || []).flatMap(m => (m.history || []).map(h => (h.followper || '').trim())),
+    ...(helpTickets || []).flatMap(t => [t.requestedBy, t.assignedHelper, t.resolvedBy]),
+    ...(markas || []).flatMap(m => (m.escalations || []).flatMap(e => [e.followper, e.escalatedTo, e.resolvedBy])),
+    'Bhavesh Bhai', 'Saurav Bhai', 'Sales HOD', 'Accounts', 'Process Coordinator (PC)'
+  ];
 
-  const fromMarkas = (markas || []).map(ownerOf).filter(n => n && n !== 'Unassigned');
-  const fromMasters = Object.values(masterFollowpers || {}).filter(n => n && n !== 'Unassigned');
-  const fromDefaults = Object.values(DEFAULT_MASTER_FOLLOWPERS || {});
-  const fromHistory = (markas || []).flatMap(m => (m.history || []).map(h => (h.followper || '').trim())).filter(n => n && n !== 'Unassigned');
-  const fromTickets = (helpTickets || []).flatMap(t => [t.requestedBy, t.assignedHelper, t.resolvedBy]).filter(n => n && typeof n === 'string' && n !== 'Unassigned');
-  const fromEscs = (markas || []).flatMap(m => (m.escalations || []).flatMap(e => [e.followper, e.escalatedTo, e.resolvedBy])).filter(n => n && typeof n === 'string' && n !== 'Unassigned');
-  const fromFixed = ['Bhavesh Bhai', 'Saurav Bhai', 'Sales HOD', 'Accounts', 'Process Coordinator (PC)'];
+  const nameMap = new Map();
+  rawList.forEach(raw => {
+    if (!raw || typeof raw !== 'string') return;
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed === 'Unassigned' || trimmed.toLowerCase() === 'all' || trimmed.toLowerCase() === 'null') return;
+    const lower = trimmed.toLowerCase();
+    if (!nameMap.has(lower)) {
+      nameMap.set(lower, trimmed);
+    }
+  });
 
-  return [...new Set([
-    ...fromUsers,
-    ...fromMarkas,
-    ...fromMasters,
-    ...fromDefaults,
-    ...fromHistory,
-    ...fromTickets,
-    ...fromEscs,
-    ...fromFixed
-  ])].filter(x => x && x !== 'Unassigned' && x.toLowerCase() !== 'all').sort((a, b) => a.localeCompare(b));
+  return Array.from(nameMap.values()).sort((a, b) => a.localeCompare(b));
 }
 
 function allMasters() {
-  return [...new Set(markas.map(m => m.master))].sort();
+  const rawList = [
+    ...(markas || []).map(m => m.master),
+    ...Object.keys(masterFollowpers || {}),
+    ...Object.keys(DEFAULT_MASTER_FOLLOWPERS || {})
+  ];
+  const masterMap = new Map();
+  rawList.forEach(raw => {
+    if (!raw || typeof raw !== 'string') return;
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed === 'Unassigned Master' || trimmed.toLowerCase() === 'null') return;
+    const lower = trimmed.toLowerCase();
+    if (!masterMap.has(lower)) {
+      masterMap.set(lower, trimmed);
+    }
+  });
+  return Array.from(masterMap.values()).sort((a, b) => a.localeCompare(b));
 }
 
 // ==========================================
