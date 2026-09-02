@@ -463,6 +463,24 @@ function load() {
       if (p3) payments = JSON.parse(p3);
     }
 
+    const ht4 = localStorage.getItem('collectiq_help_tickets_v4');
+    if (ht4) {
+      try {
+        helpTickets = JSON.parse(ht4);
+        if (Array.isArray(helpTickets)) {
+          helpTickets = helpTickets.filter(t => !t.subject.startsWith('[Ticket Reassigned]'));
+        } else {
+          helpTickets = [];
+        }
+      } catch(e) {
+        helpTickets = [];
+      }
+    } else {
+      helpTickets = [];
+    }
+    localStorage.setItem('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
+    window.helpTickets = helpTickets;
+
     const storedUsers = localStorage.getItem('collectiq_users_v4');
     if (storedUsers) {
       try {
@@ -540,7 +558,8 @@ function oldestBillDate(m) {
 }
 
 function isLocked(m) {
-  return totalOutstanding(m) > 0 && m.nextDate && days(m.nextDate) > 19;
+  const oldest = oldestDueDate(m);
+  return totalOutstanding(m) > 0 && oldest && days(oldest) > 19;
 }
 
 function followUpCount(m) {
@@ -677,15 +696,19 @@ function getFmsTasks(m) {
     const plannedDate = addDaysToIso(baseDueDate, def.offset);
     
     // Check if task exists in m.fmsTasks (pick latest)
-    let saved = [...(m.fmsTasks || [])].reverse().find(t => t.taskCode === def.code);
+    let saved = [...(m.fmsTasks || [])].reverse().find(t => (t.taskCode === def.code || t.code === def.code));
     
     // Also check if there is a matching history log entry
     if (!saved && m.history) {
-      const histMatch = [...m.history].reverse().find(h => h.status === 'FMS Task Completed' && h.remark && h.remark.includes(`[${def.code} COMPLETED]`));
+      const histMatch = [...m.history].reverse().find(h => 
+        (h.status === 'FMS Task Completed' || h.status === 'FMS Milestone' || h.status === 'FMS Milestone Done') && 
+        h.remark && (h.remark.includes(`[${def.code}`) || h.remark.includes(`[${def.code} COMPLETED]`))
+      );
       if (histMatch) {
         const isDelayed = histMatch.date > plannedDate;
         saved = {
           taskCode: def.code,
+          code: def.code,
           taskName: def.name,
           responsibleRole: def.role,
           offsetDays: def.offset,
@@ -695,18 +718,20 @@ function getFmsTasks(m) {
           status: isDelayed ? 'Done (Delayed)' : 'Done (On-Time)',
           score: isDelayed ? 0.5 : 1.0,
           completedBy: histMatch.followper || 'Admin',
-          remark: histMatch.remark
+          remark: histMatch.remark,
+          done: true
         };
       }
     }
 
     const defaultResponsibleName = def.role === 'Master' ? m.master : (def.role.includes('PC') || def.role.includes('Process Coordinator')) ? 'Process Coordinator (PC)' : 'Account Team';
 
-    if (saved && saved.actualDate) {
-      const isDelayed = saved.actualDate > plannedDate;
-      const delayDays = Math.max(0, days(plannedDate) - days(saved.actualDate));
-      const score = isDelayed ? 0.5 : 1.0;
-      const status = isDelayed ? 'Done (Delayed)' : 'Done (On-Time)';
+    if (saved && (saved.actualDate || saved.done)) {
+      const actDate = saved.actualDate || iso(today);
+      const isDelayed = actDate > plannedDate;
+      const delayDays = Math.max(0, days(plannedDate) - days(actDate));
+      const score = (typeof saved.score === 'number') ? saved.score : (isDelayed ? 0.5 : 1.0);
+      const status = saved.status || (isDelayed ? 'Done (Delayed)' : 'Done (On-Time)');
       tasks.push({
         code: def.code,
         name: def.name,
@@ -716,7 +741,7 @@ function getFmsTasks(m) {
         offset: def.offset,
         dueDate: baseDueDate,
         plannedDate: plannedDate,
-        actualDate: saved.actualDate,
+        actualDate: actDate,
         delay: isDelayed ? Math.max(1, delayDays) : 0,
         score: score,
         status: status,
@@ -1101,32 +1126,138 @@ function locks() {
     let va, vb;
     if (col === 'marka') { va = a.marka; vb = b.marka; }
     else if (col === 'oldest') { va = oldestDueDate(a); vb = oldestDueDate(b); }
-    else if (col === 'days') { va = days(a.nextDate); vb = days(b.nextDate); }
+    else if (col === 'days') { va = days(oldestDueDate(a)); vb = days(oldestDueDate(b)); }
     else if (col === 'balance') { va = totalOutstanding(a); vb = totalOutstanding(b); }
     else if (col === 'owner') { va = ownerOf(a); vb = ownerOf(b); }
     else if (col === 'lastDate') { va = a.lastDate || ''; vb = b.lastDate || ''; }
-    else { va = days(a.nextDate); vb = days(b.nextDate); }
+    else { va = days(oldestDueDate(a)); vb = days(oldestDueDate(b)); }
     return compareVal(va, vb, dir);
   });
   
   updateSortIcons('gplock');
+
+  const metricsEl = document.getElementById('lockMetrics');
+  if (metricsEl) {
+    const totalLockedAmt = lockedList.reduce((s, m) => s + totalOutstanding(m), 0);
+    const hodActionCount = lockedList.filter(m => m.salesHodAction && m.salesHodAction.action).length;
+    const maxOverdue = lockedList.reduce((max, m) => Math.max(max, days(oldestDueDate(m))), 0);
+    metricsEl.innerHTML = [
+      ['GP LOCKED CASES (19+ DAYS)', lockedList.length.toLocaleString('en-IN'), 'Billing & dispatch suspended'],
+      ['LOCKED OUTSTANDING', money(totalLockedAmt), 'Immediate recovery required'],
+      ['MAX OVERDUE DAYS', `${maxOverdue} Days`, 'From oldest unpaid invoice'],
+      ['SALES HOD DIRECTIVES', `${hodActionCount} Updated`, 'Legal & recovery actions initiated']
+    ].map(x => `
+      <div class="metric">
+        <div class="metric-top"><span>${x[0]}</span></div>
+        <strong>${x[1]}</strong>
+        <small>${x[2]}</small>
+      </div>
+    `).join('');
+  }
   
-  document.getElementById('lockTable').innerHTML = lockedList.length ? lockedList.map(m => `
-    <tr>
-      <td><span class="case-name">${escapeHtml(m.marka)}</span><span class="case-sub">${escapeHtml(m.master)}</span></td>
-      <td>${fmt(oldestDueDate(m))}</td>
-      <td><span class="status overdue">${days(m.nextDate)} DAYS</span></td>
-      <td class="money">${money(totalOutstanding(m))}</td>
-      <td>${escapeHtml(ownerOf(m))}</td>
-      <td>${fmt(m.lastDate)}<br><small style="color:#788882;">${escapeHtml((m.remark || '').substring(0, 40))}</small></td>
-      <td>
-        <button onclick="openBillDetails('${m.id}')" class="row-action">Bills</button>
-        <button onclick="openHistory('${m.id}')" class="row-action">History</button>
-        <button onclick="openFollowup('${m.id}')" class="row-action" style="background:#087454;color:#fff;">Update</button>
-      </td>
-    </tr>
-  `).join('') : '<tr><td colspan="7" style="text-align:center;color:#788882;padding:24px;">No Marka is currently in GP lock.</td></tr>';
+  const tbody = document.getElementById('lockTable');
+  if (tbody) {
+    tbody.innerHTML = lockedList.length ? lockedList.map(m => {
+      const oldest = oldestDueDate(m);
+      const od = days(oldest);
+      const hod = m.salesHodAction;
+      let hodBadge = hod ? `
+        <div style="background:#fff8f4; border:1px solid #fed7c3; border-radius:6px; padding:4px 8px; font-size:11px;">
+          <b style="color:#b45309; display:block;">⚠️ ${escapeHtml(hod.action)}</b>
+          <small style="color:#6d827a; font-size:10px;">${escapeHtml(hod.remark || '')} · <b>${fmt(hod.date)}</b></small>
+        </div>
+      ` : '<span style="color:#9ab0a6; font-size:11px;">निर्णय प्रतीक्षारत (Pending HOD)</span>';
+
+      return `
+        <tr>
+          <td><span class="case-name">${escapeHtml(m.marka)}</span><span class="case-sub">${escapeHtml(m.master)}</span></td>
+          <td><b>${fmt(oldest)}</b></td>
+          <td><span class="status overdue" style="font-weight:800;">${od} DAYS OVERDUE</span></td>
+          <td class="money"><b>${money(totalOutstanding(m))}</b></td>
+          <td>${escapeHtml(ownerOf(m))}</td>
+          <td style="max-width:280px;">${hodBadge}</td>
+          <td>${fmt(m.lastDate)}<br><small style="color:#788882;">${escapeHtml((m.remark || '').substring(0, 40))}</small></td>
+          <td>
+            <div style="display:flex; gap:4px; flex-wrap:wrap;">
+              <button onclick="openPayment('${m.id}')" class="row-action" style="background:#087454; color:#fff; font-weight:700;">+ Clear Payment ₹</button>
+              <button onclick="openSalesHodModal('${m.id}')" class="row-action" style="background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; font-weight:700;">Sales HOD Action</button>
+              <button onclick="openBillDetails('${m.id}')" class="row-action">Bills</button>
+              <button onclick="openHistory('${m.id}')" class="row-action">History</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('') : '<tr><td colspan="8" style="text-align:center;color:#788882;padding:24px;">No Marka is currently in GP lock.</td></tr>';
+  }
 }
+
+function openSalesHodModal(markaId) {
+  const m = markas.find(x => x.id === markaId);
+  if (!m) return toast('Marka not found.');
+
+  document.getElementById('salesHodMarkaId').value = markaId;
+  document.getElementById('salesHodDate').value = iso(today);
+  document.getElementById('salesHodBy').value = (currentUser ? currentUser.followperName : 'Sales HOD') || 'Sales HOD';
+  document.getElementById('salesHodPartyInfo').innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h3 style="margin:0; font-size:15px; color:#991b1b;">⊘ GP LOCKED · ${escapeHtml(m.marka)} · ${escapeHtml(m.master)}</h3>
+      <span class="status overdue" style="font-weight:800;">${days(oldestDueDate(m))} DAYS OVERDUE</span>
+    </div>
+    <div style="margin-top:6px; font-size:12px; color:#495d56; display:flex; justify-content:space-between;">
+      <span>Total Outstanding: <b style="color:#087454;">${money(totalOutstanding(m))}</b></span>
+      <span>First Due Date: <b>${fmt(oldestDueDate(m))}</b></span>
+      <span>Assigned Doer: <b>${escapeHtml(ownerOf(m))}</b></span>
+    </div>
+  `;
+
+  if (m.salesHodAction) {
+    document.getElementById('salesHodActionSelect').value = m.salesHodAction.action || 'पेमेंट वाले से फॉलोअप लेना है';
+    document.getElementById('salesHodRemark').value = m.salesHodAction.remark || '';
+  } else {
+    document.getElementById('salesHodActionSelect').value = 'पेमेंट वाले से फॉलोअप लेना है';
+    document.getElementById('salesHodRemark').value = '';
+  }
+
+  openModal('salesHodModal');
+}
+window.openSalesHodModal = openSalesHodModal;
+
+async function saveSalesHodAction(e) {
+  e.preventDefault();
+  const markaId = document.getElementById('salesHodMarkaId').value;
+  const m = markas.find(x => x.id === markaId);
+  if (!m) return toast('Marka not found.');
+
+  const actionDate = document.getElementById('salesHodDate').value;
+  const decisionBy = document.getElementById('salesHodBy').value;
+  const action = document.getElementById('salesHodActionSelect').value;
+  const remark = document.getElementById('salesHodRemark').value.trim();
+
+  if (!action) return toast('Please select an action.');
+  if (!remark) return toast('Please enter action remarks / details.');
+
+  m.salesHodAction = {
+    action,
+    date: actionDate,
+    remark,
+    setBy: decisionBy
+  };
+
+  if (!m.history) m.history = [];
+  m.history.push({
+    type: 'followup',
+    date: actionDate,
+    followper: decisionBy,
+    status: 'Sales HOD Action',
+    remark: `[Sales HOD Directive: ${action}] ${remark}`
+  });
+
+  save();
+  closeModal('salesHodModal');
+  renderAll();
+  toast(`✓ Sales HOD Action (${action}) saved successfully!`);
+}
+window.saveSalesHodAction = saveSalesHodAction;
 
 function rokad() {
   const container = document.getElementById('rokad');
@@ -1400,7 +1531,7 @@ async function saveBulkFmsDone(e) {
   if (!checked.length) return toast('No milestone tasks selected.');
 
   const actualDate = document.getElementById('bulkFmsDate').value;
-  const completedBy = document.getElementById('bulkFmsCompletedBy').value;
+  const completedBy = document.getElementById('bulkFmsCompletedBy').value.trim() || 'Admin';
   const remark = document.getElementById('bulkFmsRemark').value.trim();
 
   if (!remark) return toast('Please enter completion remark.');
@@ -1411,25 +1542,48 @@ async function saveBulkFmsDone(e) {
     const taskCode = cb.dataset.code;
     const m = markas.find(x => x.id === markaId);
     if (!m) return;
+    const def = FMS_DEFINITIONS.find(d => d.code === taskCode);
+    const baseDueDate = oldestDueDate(m);
+    const plannedDate = addDaysToIso(baseDueDate, def ? def.offset : 0);
+    const isDelayed = actualDate > plannedDate;
+    const score = isDelayed ? 0.5 : 1.0;
+    const status = isDelayed ? 'Done (Delayed)' : 'Done (On-Time)';
+    const respName = def ? (def.role === 'Master' ? m.master : (def.role.includes('PC') || def.role.includes('Process Coordinator')) ? 'Process Coordinator (PC)' : 'Account Team') : 'Account Team';
 
     if (!m.fmsTasks) m.fmsTasks = [];
-    let existing = m.fmsTasks.find(t => t.code === taskCode);
-    if (!existing) {
-      existing = { code: taskCode };
-      m.fmsTasks.push(existing);
+    let existingIdx = m.fmsTasks.findIndex(t => (t.code === taskCode || t.taskCode === taskCode));
+    const taskObj = {
+      id: 'fms_' + m.id + '_' + taskCode,
+      code: taskCode,
+      taskCode: taskCode,
+      taskName: def ? def.name : taskCode,
+      responsibleRole: def ? def.role : '',
+      responsibleName: respName,
+      offsetDays: def ? def.offset : 0,
+      dueDate: baseDueDate,
+      plannedDate: plannedDate,
+      actualDate: actualDate,
+      status: status,
+      score: score,
+      remark: remark,
+      completedBy: completedBy,
+      done: true,
+      completedAt: new Date().toISOString()
+    };
+
+    if (existingIdx >= 0) {
+      m.fmsTasks[existingIdx] = taskObj;
+    } else {
+      m.fmsTasks.push(taskObj);
     }
-    existing.done = true;
-    existing.actualDate = actualDate;
-    existing.completedBy = completedBy;
-    existing.remark = remark;
 
     if (!m.history) m.history = [];
     m.history.push({
       type: 'followup',
       date: actualDate,
       followper: completedBy,
-      status: 'FMS Milestone',
-      remark: `[${taskCode} Completed] ${remark}`
+      status: 'FMS Task Completed',
+      remark: `[${taskCode} COMPLETED] ${def ? def.name : taskCode}. Planned: ${plannedDate}, Actual: ${actualDate} (${isDelayed ? 'Delayed: 0.5 pt' : 'On-Time: 1.0 pt'}). Responsible: ${def ? def.role : ''} (${completedBy}). Note: ${remark}`
     });
     count++;
   });
@@ -1515,80 +1669,47 @@ async function saveFmsTask(e) {
   const isDelayed = actualDate > plannedDate;
   const score = isDelayed ? 0.5 : 1.0;
   const status = isDelayed ? 'Done (Delayed)' : 'Done (On-Time)';
+  const respName = def.role === 'Master' ? m.master : (def.role.includes('PC') || def.role.includes('Process Coordinator')) ? 'Process Coordinator (PC)' : 'Account Team';
 
-  if (isOnlineMode()) {
-    const respName = def.role === 'Master' ? m.master : (def.role.includes('PC') || def.role.includes('Process Coordinator')) ? 'Process Coordinator (PC)' : 'Account Team';
-    const payload = {
-      markaId,
-      taskCode,
-      taskName: def.name,
-      responsibleRole: def.role,
-      responsibleName: respName,
-      offsetDays: def.offset,
-      dueDate,
-      plannedDate,
-      actualDate,
-      remark,
-      completedBy
-    };
+  const taskObj = {
+    id: 'fms_' + m.id + '_' + taskCode,
+    code: taskCode,
+    taskCode: taskCode,
+    taskName: def.name,
+    responsibleRole: def.role,
+    responsibleName: respName,
+    offsetDays: def.offset,
+    dueDate,
+    plannedDate,
+    actualDate,
+    status,
+    score,
+    remark,
+    completedBy,
+    done: true,
+    completedAt: new Date().toISOString()
+  };
 
-    try {
-      const res = await fetch('/api/fms/complete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) {
-        closeModal('fmsModal');
-        await syncWithDatabase();
-        toast(`✓ ${taskCode} marked done (${score} pt) and synced with SQLite.`);
-      } else {
-        const err = await res.json();
-        toast('Error: ' + err.error);
-      }
-    } catch (err) {
-      toast('API error: ' + err.message);
-    }
-  } else {
-    // Local offline mode
-    if (!m.fmsTasks) m.fmsTasks = [];
-    const idx = m.fmsTasks.findIndex(t => t.taskCode === taskCode);
-    const respName = def.role === 'Master' ? m.master : (def.role.includes('PC') || def.role.includes('Process Coordinator')) ? 'Process Coordinator (PC)' : 'Account Team';
-    const taskObj = {
-      id: 'fms_' + m.id + '_' + taskCode,
-      taskCode,
-      taskName: def.name,
-      responsibleRole: def.role,
-      responsibleName: respName,
-      offsetDays: def.offset,
-      dueDate,
-      plannedDate,
-      actualDate,
-      status,
-      score,
-      remark,
-      completedBy,
-      completedAt: new Date().toISOString()
-    };
+  if (!m.fmsTasks) m.fmsTasks = [];
+  const idx = m.fmsTasks.findIndex(t => (t.taskCode === taskCode || t.code === taskCode));
+  if (idx >= 0) m.fmsTasks[idx] = taskObj;
+  else m.fmsTasks.push(taskObj);
 
-    if (idx >= 0) m.fmsTasks[idx] = taskObj;
-    else m.fmsTasks.push(taskObj);
+  // Append to history
+  const histRemark = `[${taskCode} COMPLETED] ${def.name}. Planned: ${plannedDate}, Actual: ${actualDate} (${isDelayed ? 'Delayed: 0.5 pt' : 'On-Time: 1.0 pt'}). Responsible: ${def.role} (${completedBy}). Note: ${remark || 'Milestone achieved.'}`;
+  if (!m.history) m.history = [];
+  m.history.push({
+    type: 'followup',
+    date: actualDate,
+    followper: completedBy,
+    status: 'FMS Task Completed',
+    remark: histRemark
+  });
 
-    // Append to history
-    const histRemark = `[${taskCode} COMPLETED] ${def.name}. Planned: ${plannedDate}, Actual: ${actualDate} (${isDelayed ? 'Delayed: 0.5 pt' : 'On-Time: 1.0 pt'}). Responsible: ${def.role} (${completedBy}). Note: ${remark || 'Milestone achieved.'}`;
-    m.history.push({
-      type: 'followup',
-      date: actualDate,
-      followper: completedBy,
-      status: 'FMS Task Completed',
-      remark: histRemark
-    });
-
-    save();
-    closeModal('fmsModal');
-    renderAll();
-    toast(`✓ ${taskCode} marked done locally (${score} pt).`);
-  }
+  save();
+  closeModal('fmsModal');
+  renderAll();
+  toast(`✓ ${taskCode} marked done (${score} pt).`);
 }
 window.saveFmsTask = saveFmsTask;
 
@@ -2003,34 +2124,9 @@ function helpTicketsView() {
     `;
   }
 
+  // Filter out any corrupted duplicate tickets
+  helpTickets = (helpTickets || []).filter(t => !t.subject.startsWith('[Ticket Reassigned]'));
   let list = [...(helpTickets || [])];
-  const seenIds = new Set(list.map(t => t.id));
-
-  markas.forEach(m => {
-    (m.history || []).forEach((h, hIdx) => {
-      if (h.status === 'Help Ticket') {
-        const id = 'ht_hist_' + m.id + '_' + hIdx;
-        if (!seenIds.has(id)) {
-          seenIds.add(id);
-          list.push({
-            id,
-            markaId: m.id,
-            markaName: m.marka,
-            date: h.date,
-            requestedBy: h.followper || ownerOf(m),
-            assignedHelper: h.escalatedTo || 'Helper',
-            priority: 'Normal',
-            subject: h.remark ? h.remark.slice(0, 50) : 'Task Assistance',
-            remark: h.remark || '',
-            status: 'Open',
-            resolutionNote: '',
-            resolvedBy: '',
-            resolvedAt: ''
-          });
-        }
-      }
-    });
-  });
 
   // Strict User Data Security: Two-Way Visibility for who generated it, who is assigned helper to solve, who resolved it, or party owner
   if (isUserRole) {
@@ -2270,7 +2366,7 @@ async function saveReassignTicket(e) {
         type: 'followup',
         date: iso(today),
         followper: (currentUser ? currentUser.followperName : 'Admin') || 'Admin',
-        status: 'Help Ticket',
+        status: 'Ticket Reassigned',
         remark: `[Ticket Reassigned] ${t.subject} transferred from ${oldHelper} to ${newHelper}. ${note ? 'Note: ' + note : ''}`
       });
     }

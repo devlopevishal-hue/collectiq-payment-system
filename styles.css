@@ -114,11 +114,31 @@ h3 { font-size: var(--font-h3); line-height: 1.35; }
 .tab.active { background: #e7f2ed; color: #087454; }
 .tab span { background: white; border-radius: 10px; padding: 1px 5px; margin-left: 4px; }
 .toolbar select { border: 1px solid #dbe5e0; border-radius: 6px; background: white; padding: 7px 10px; font: 600 11px Manrope; color: #52635c; }
-.table-panel { padding: 3px 16px; }
-table { width: 100%; border-collapse: collapse; }
-th { text-align: left; color: #7c8b85; font: 500 10px 'DM Mono'; letter-spacing: .5px; padding: 13px 5px; border-bottom: 1px solid var(--line); }
-td { padding: 14px 5px; border-bottom: 1px solid #eef1ef; font-size: 11px; }
-tr:last-child td { border: 0; }
+.table-panel { 
+  padding: 3px 16px; 
+  max-height: 700px; 
+  overflow-y: auto; 
+  overflow-x: auto; 
+  position: relative; 
+  border-radius: 8px;
+}
+table { width: 100%; border-collapse: separate; border-spacing: 0; }
+thead th, th { 
+  text-align: left; 
+  color: #7c8b85; 
+  font: 500 10px 'DM Mono'; 
+  letter-spacing: .5px; 
+  padding: 13px 8px; 
+  border-bottom: 2px solid #dce6e1; 
+  position: sticky; 
+  top: 0; 
+  background: #ffffff; 
+  z-index: 8;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+td { padding: 12px 8px; border-bottom: 1px solid #eef1ef; font-size: 11px; background: #fff; }
+tr:last-child td { border-bottom: 1px solid #eef1ef; }
+tr:hover td { background: #fbfdfc; }
 .case-name { font-weight: 800; display: block; }
 .case-sub { display: block; color: #82908a; font: 10px 'DM Mono'; margin-top: 3px; }
 .money { font: 500 11px 'DM Mono'; }

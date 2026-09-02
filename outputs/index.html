@@ -204,24 +204,25 @@
     <section id="gplock" class="view">
       <div class="section-top">
         <div>
-          <p class="eyebrow">BILLING & DISPATCH HOLD</p>
-          <h2>GP lock list</h2>
+          <p class="eyebrow">BILLING &amp; DISPATCH HOLD (19+ DAYS OVERDUE)</p>
+          <h2>GP Lock Control &amp; Sales HOD Directives</h2>
         </div>
-        <div class="attention" style="margin:0; padding:8px 12px;">
-          <strong>Follow-up suspended</strong>
+        <div class="header-actions">
+          <button class="btn secondary" onclick="exportExcel()">Export GP Lock Excel</button>
         </div>
       </div>
-      <p>Cases listed here are under GP Lock. Follow-ups are suspended until resolved.</p>
       <div id="lockFilters" class="filterbar"></div>
+      <div id="lockMetrics" class="metrics mini" style="margin-bottom:16px;"></div>
       <div class="panel table-panel">
         <table>
           <thead>
             <tr>
               <th class="sortable" onclick="sortTable('gplock', 'marka')">MARKA / MASTER <span class="sort-icon" id="sort_gplock_marka">⇅</span></th>
-              <th class="sortable" onclick="sortTable('gplock', 'oldest')">DUE DATE (POLICY) <span class="sort-icon" id="sort_gplock_oldest">⇅</span></th>
+              <th class="sortable" onclick="sortTable('gplock', 'oldest')">FIRST DUE DATE <span class="sort-icon" id="sort_gplock_oldest">⇅</span></th>
               <th class="sortable" onclick="sortTable('gplock', 'days')">OVERDUE DAYS <span class="sort-icon" id="sort_gplock_days">▼</span></th>
               <th class="sortable" onclick="sortTable('gplock', 'balance')">OUTSTANDING <span class="sort-icon" id="sort_gplock_balance">⇅</span></th>
-              <th class="sortable" onclick="sortTable('gplock', 'owner')">FOLLOWPER <span class="sort-icon" id="sort_gplock_owner">⇅</span></th>
+              <th class="sortable" onclick="sortTable('gplock', 'owner')">DOER / FOLLOWPER <span class="sort-icon" id="sort_gplock_owner">⇅</span></th>
+              <th>SALES HOD DIRECTIVE (सेल हेड निर्देश)</th>
               <th class="sortable" onclick="sortTable('gplock', 'lastDate')">LAST CONVERSATION <span class="sort-icon" id="sort_gplock_lastDate">⇅</span></th>
               <th>ACTIONS</th>
             </tr>
@@ -1159,6 +1160,42 @@
       <div class="modal-footer">
         <span>Scoring rule: On-Time = 1.0 point, Delayed = 0.5 points</span>
         <button class="btn primary" type="submit">Mark Done &amp; Save</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Sales HOD Action Modal for GP Lock -->
+  <div class="modal-backdrop" id="salesHodModal">
+    <form class="modal" onsubmit="saveSalesHodAction(event)" style="max-width:560px;">
+      <button type="button" class="close" onclick="closeModal('salesHodModal')">×</button>
+      <p class="eyebrow">GP LOCK · SALES HOD ACTION</p>
+      <h2 id="salesHodModalTitle">Sales HOD Action / अपडेट</h2>
+      <input type="hidden" id="salesHodMarkaId">
+      <div id="salesHodPartyInfo" style="margin-bottom:12px; background:#fbf2ee; border:1px solid #f9d4c4; border-radius:6px; padding:10px;"></div>
+      <div class="form-grid">
+        <label>Action Date
+          <input id="salesHodDate" type="date" required>
+        </label>
+        <label>Sales HOD / Decision By
+          <input id="salesHodBy" required readonly style="background:#f4f7f6;">
+        </label>
+      </div>
+      <label style="margin-top:10px;">Sales HOD Action (सेल हेड निर्देश / निर्णय)
+        <select id="salesHodActionSelect" required style="font-weight:700; color:#182e25; padding:10px; font-size:12px;">
+          <option value="पेमेंट वाले से फॉलोअप लेना है">1. पेमेंट वाले से फॉलोअप लेना है (Payment wale se follow up lena hai)</option>
+          <option value="SGTPA और PEPL को सूचना देना है">2. SGTPA और PEPL को सूचना देना है (Intimation to SGTPA &amp; PEPL)</option>
+          <option value="वकील से लीगल नोटिस / वॉर्निंग लेटर भेजना है">3. वकील से लीगल नोटिस / वॉर्निंग लेटर भेजना है (Send warning letter from advocate)</option>
+          <option value="कोर्ट केस / सिविल केस करना है">4. कोर्ट केस / सिविल केस करना है (Court case / Civil case karna hai)</option>
+          <option value="पुलिस कम्प्लेन दर्ज करना है">5. पुलिस कम्प्लेन दर्ज करना है (Police complain karna hai)</option>
+          <option value="ग्रे सेल / स्टॉक सीज करना है">6. ग्रे सेल / स्टॉक सीज करना है (Grey sell)</option>
+        </select>
+      </label>
+      <label style="margin-top:10px;">Action Remarks / विशेष निर्देश
+        <textarea id="salesHodRemark" placeholder="निर्णय, विवरण या विशेष निर्देश यहाँ लिखें..." required style="height:90px;"></textarea>
+      </label>
+      <div class="modal-footer" style="margin-top:14px;">
+        <button class="btn secondary" type="button" onclick="closeModal('salesHodModal')">Cancel</button>
+        <button class="btn primary" type="submit" style="font-weight:800; background:#c44d48; border-color:#c44d48;">Save Sales HOD Action / निर्देश सुरक्षित करें ✓</button>
       </div>
     </form>
   </div>
