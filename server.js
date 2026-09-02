@@ -76,6 +76,7 @@ db.exec(`
     escalated_to TEXT,
     amount REAL DEFAULT 0,
     bill_id TEXT,
+    bill_ids_json TEXT,
     created_at TEXT NOT NULL,
     FOREIGN KEY (marka_id) REFERENCES markas(id) ON DELETE CASCADE
   );
@@ -94,7 +95,11 @@ db.exec(`
     resolved_date TEXT,
     resolution_type TEXT,
     settled_amount REAL DEFAULT 0,
+    cover_amount REAL DEFAULT 0,
     resolution_note TEXT,
+    resolved_by TEXT,
+    bill_ids_json TEXT,
+    updated_at TEXT,
     FOREIGN KEY (marka_id) REFERENCES markas(id) ON DELETE CASCADE
   );
 
@@ -147,17 +152,9 @@ db.exec(`
     subject TEXT NOT NULL,
     remark TEXT NOT NULL,
     status TEXT DEFAULT 'Open',
-  CREATE TABLE IF NOT EXISTS help_tickets (
-    id TEXT PRIMARY KEY,
-    marka_id TEXT NOT NULL,
-    marka_name TEXT NOT NULL,
-    date TEXT NOT NULL,
-    requested_by TEXT NOT NULL,
-    assigned_helper TEXT NOT NULL,
-    priority TEXT DEFAULT 'Normal',
-    subject TEXT NOT NULL,
-    remark TEXT NOT NULL,
-    status TEXT DEFAULT 'Open',
+    next_date TEXT DEFAULT '',
+    history_json TEXT DEFAULT '[]',
+    resolution_type TEXT DEFAULT '',
     resolution_note TEXT DEFAULT '',
     resolved_by TEXT DEFAULT '',
     resolved_at TEXT,
@@ -212,6 +209,12 @@ try {
 try {
   db.exec("ALTER TABLE escalations ADD COLUMN cover_amount REAL DEFAULT 0;");
   console.log('✓ Migration: Added cover_amount to escalations.');
+} catch (e) {
+  // column already exists
+}
+try {
+  db.exec("ALTER TABLE escalations ADD COLUMN updated_at TEXT;");
+  console.log('✓ Migration: Added updated_at to escalations.');
 } catch (e) {
   // column already exists
 }
@@ -600,9 +603,9 @@ const server = http.createServer((req, res) => {
         // Check remaining balance if payment was made
         const remStmt = db.prepare('SELECT SUM(balance) AS total FROM bills WHERE marka_id = ? AND balance > 0').get(markaId);
         const stillDue = remStmt ? (remStmt.total || 0) : 0;
-        let finalStatus = actionStatus;
-        let finalNextDate = nextDate;
-        let finalRemark = remark;
+        let finalStatus = actionStatus || 'Follow-up';
+        let finalNextDate = nextDate || '';
+        let finalRemark = remark || '';
 
         if (actionStatus === 'Payment Received' || actionStatus === 'Part Payment') {
           if (stillDue === 0) {
@@ -627,7 +630,7 @@ const server = http.createServer((req, res) => {
             owner = ?,
             updated_at = ?
           WHERE id = ?
-        `).run(followDate, finalStatus, finalRemark, expected || 0, promiseDate || '', finalNextDate, newOwner, now, markaId);
+        `).run(followDate || now.slice(0, 10), finalStatus, finalRemark, expected || 0, promiseDate || '', finalNextDate, newOwner || 'Unassigned', now, markaId);
 
         // Create Escalation if needed
         const isEscalation = actionStatus && (
@@ -642,9 +645,9 @@ const server = http.createServer((req, res) => {
                             actionStatus.includes('Dispute') ? 'Dispute' :
                             actionStatus.includes('Escalat') ? 'Escalated' : 'Claim Matter';
           db.prepare(`
-            INSERT INTO escalations (id, marka_id, date, type, claim_number, wa_complaint_no, escalated_to, followper, status, remark, bill_ids_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Open', ?, ?)
-          `).run(eid, markaId, followDate, cleanType, claimNumber || '', waComplaintNo || '', escalateTo || '', followper, remark, JSON.stringify(billIds || []));
+            INSERT INTO escalations (id, marka_id, date, type, claim_number, wa_complaint_no, escalated_to, followper, status, remark, bill_ids_json, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Open', ?, ?, ?)
+          `).run(eid, markaId, followDate || now.slice(0, 10), cleanType, claimNumber || '', waComplaintNo || '', escalateTo || '', followper || '', remark || '', JSON.stringify(billIds || []), now);
         }
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -805,18 +808,21 @@ const server = http.createServer((req, res) => {
     req.on('data', chunk => body += chunk);
     req.on('end', () => {
       try {
-        const { masterName, newFollowper, syncMarkas } = JSON.parse(body);
+        const payload = JSON.parse(body);
+        const masterName = payload.masterName;
+        const targetFollowper = payload.newFollowper || payload.followperName || '';
+        const syncMarkas = payload.syncMarkas;
         const now = new Date().toISOString();
 
         db.prepare(`
           INSERT INTO masters (master_name, followper_name, updated_at)
           VALUES (?, ?, ?)
           ON CONFLICT(master_name) DO UPDATE SET followper_name = excluded.followper_name, updated_at = excluded.updated_at
-        `).run(masterName, newFollowper, now);
+        `).run(masterName, targetFollowper, now);
 
         let updatedMarkas = 0;
         if (syncMarkas) {
-          const resStmt = db.prepare('UPDATE markas SET owner = ?, updated_at = ? WHERE master = ?').run(newFollowper, now, masterName);
+          const resStmt = db.prepare('UPDATE markas SET owner = ?, updated_at = ? WHERE master = ?').run(targetFollowper, now, masterName);
           updatedMarkas = resStmt.changes;
         }
 
@@ -894,7 +900,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (pathname === '/api/users' && req.method === 'POST') {
+  if ((pathname === '/api/users' || pathname === '/api/users/create' || pathname === '/api/users/update') && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => body += chunk);
     req.on('end', () => {
