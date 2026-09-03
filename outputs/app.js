@@ -2404,19 +2404,20 @@ function openHelpTicketModal(optionalMarkaId) {
   if (dt) dt.value = iso(today);
   
   const reqBy = document.getElementById('htRequestedBy');
-  if (reqBy) reqBy.value = (currentUser ? currentUser.followperName : 'Admin') || 'Admin';
+  if (reqBy) reqBy.value = (currentUser ? (currentUser.followperName || currentUser.email) : 'Admin') || 'Admin';
   
   const mSelect = document.getElementById('htMarka');
   if (mSelect) {
-    const list = filtered(activeMarkas());
-    mSelect.innerHTML = '<option value="">Select Party / Marka...</option>' + 
-      list.map(m => `<option value="${m.id}" ${optionalMarkaId === m.id ? 'selected' : ''}>${escapeHtml(m.marka)} · ${escapeHtml(m.master)} (₹${money(totalOutstanding(m))})</option>`).join('');
+    const list = [...activeMarkas()].sort((a, b) => (a.marka || '').localeCompare(b.marka || ''));
+    mSelect.innerHTML = '<option value="">General (Not Specific to a Single Marka)...</option>' + 
+      list.map(m => `<option value="${m.id}" ${optionalMarkaId === m.id ? 'selected' : ''}>${escapeHtml(m.marka)} · ${escapeHtml(m.master)} (${escapeHtml(ownerOf(m))}) - ₹${money(totalOutstanding(m))}</option>`).join('');
+    if (optionalMarkaId) mSelect.value = optionalMarkaId;
   }
 
   const helperSelect = document.getElementById('htAssignedHelper');
   if (helperSelect) {
     const helpers = getAllAssigneesList();
-    helperSelect.innerHTML = '<option value="">Select Helper / Doer / Master...</option>' + 
+    helperSelect.innerHTML = '<option value="">Select Helper / Doer / Master / Admin...</option>' + 
       helpers.map(h => `<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`).join('');
   }
 
@@ -2491,12 +2492,12 @@ window.saveReassignTicket = saveReassignTicket;
 
 async function saveHelpTicket(e) {
   e.preventDefault();
-  const date = document.getElementById('htDate').value;
-  const priority = document.getElementById('htPriority').value;
-  const markaId = document.getElementById('htMarka').value;
+  const date = document.getElementById('htDate').value || iso(today);
+  const priority = document.getElementById('htPriority').value || 'Normal';
+  const markaId = document.getElementById('htMarka').value || '';
   const m = markas.find(x => x.id === markaId);
   const markaName = m ? m.marka : 'General';
-  const requestedBy = document.getElementById('htRequestedBy').value;
+  const requestedBy = document.getElementById('htRequestedBy').value || (currentUser ? (currentUser.followperName || currentUser.email) : 'User') || 'User';
   const assignedHelper = document.getElementById('htAssignedHelper').value;
   const subject = document.getElementById('htSubject').value.trim();
   const remark = document.getElementById('htRemark').value.trim();
@@ -2515,6 +2516,7 @@ async function saveHelpTicket(e) {
     subject,
     remark,
     status: 'Open',
+    history: [],
     createdAt: new Date().toISOString()
   };
 
@@ -2531,17 +2533,17 @@ async function saveHelpTicket(e) {
       status: 'Help Ticket',
       remark: `[Help Ticket: ${subject}] Assigned to: ${assignedHelper}. Note: ${remark}`
     });
-    save();
   }
 
-  if (isOnlineMode()) {
+  save();
+
+  if (isLocalServer()) {
     try {
       await fetch('/api/help-tickets/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(ticketObj)
       });
-      await syncWithDatabase();
     } catch (err) {
       console.warn('API error:', err);
     }
