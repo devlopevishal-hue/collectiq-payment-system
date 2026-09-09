@@ -3363,6 +3363,8 @@ function openFollowup(markaId) {
 
   const oldest = oldestDueDate(m);
   const gpDate = isLocked(m) ? addDaysToIso(oldest, 19) : null;
+  const markaIdEl = document.getElementById('markaId');
+  if (markaIdEl) markaIdEl.value = m.id;
   document.getElementById('followTitle').textContent = isLocked(m) 
     ? `⊘ GP LOCKED (${days(oldest)}d overdue) · Lock Date: ${fmt(gpDate)} · ${m.marka} · ${m.master} · Total: ${money(totalOutstanding(m))}`
     : `${m.marka} · ${m.master} · Oldest due: ${fmt(oldest)} · Total: ${money(totalOutstanding(m))}`;
@@ -3768,8 +3770,11 @@ function enforcePtpDate() {
 
 async function saveFollowup(e) {
   e.preventDefault();
-  const m = markas.find(x => x.id === document.getElementById('markaId').value);
-  if (!m) return;
+  const mId = document.getElementById('markaId')?.value;
+  let m = markas.find(x => x.id === mId || String(x.id) === String(mId));
+  if (!m) {
+    return toast('Error: Please select or re-open the follow-up dialog.');
+  }
   
   const statusVal = document.getElementById('actionStatus').value;
   const followper = document.getElementById('followper').value;
@@ -4007,7 +4012,7 @@ async function saveFollowup(e) {
     allocations
   };
 
-  if (isOnlineMode()) {
+  if (isLocalServer()) {
     try {
       const res = await fetch('/api/followup', {
         method: 'POST',
@@ -4016,17 +4021,19 @@ async function saveFollowup(e) {
       });
       if (res.ok) {
         await syncWithDatabase();
-        toast('Conversation & tickets saved to SQLite database.');
+        toast('✓ Follow-up conversation saved to SQLite database.');
       } else {
         const err = await res.json();
-        toast('Server sync notice: ' + (err.error || 'Saved locally'));
+        toast('Notice: ' + (err.error || 'Saved'));
       }
     } catch (err) {
-      console.warn('Network sync notice:', err);
-      toast('Conversation saved locally.');
+      console.warn('SQLite sync notice:', err);
+      toast('✓ Follow-up conversation saved.');
     }
+  } else if (firestoreDb) {
+    toast('✓ Follow-up conversation saved & synced to Cloud DB.');
   } else {
-    toast('Conversation saved.');
+    toast('✓ Follow-up conversation saved.');
   }
 }
 
@@ -4251,7 +4258,55 @@ async function savePayment(e) {
     allocations
   };
   
-  if (isOnlineMode()) {
+  // Apply allocations locally and save
+  allocations.forEach(a => {
+    const b = m.bills.find(x => String(x.id) === String(a.billId));
+    if (b) {
+      b.balance = Math.max(0, b.balance - a.amount);
+      m.history.push({
+        type: 'payment',
+        date: payDate,
+        status: b.balance === 0 ? 'Payment Received' : 'Part Payment',
+        remark: `Payment of ${money(a.amount)} received (${payMode} ref: ${payRef}) allocated to bill ${fmt(b.firstDate)}.`,
+        amount: a.amount,
+        ref: payRef,
+        receiptImage: receiptImage,
+        billId: b.id
+      });
+    }
+  });
+  
+  const stillDue = totalOutstanding(m);
+  if (stillDue > 0) {
+    m.nextDate = iso(new Date(today.getTime() + 2 * 86400000));
+    m.remark = `Payment ${money(payAmount)} received; ${money(stillDue)} still due. Follow-up in 2 days.`;
+    m.lastStatus = 'Payment Received';
+  } else {
+    m.nextDate = '';
+    m.remark = 'All dues cleared. Follow-up closed.';
+    m.lastStatus = 'Payment Received';
+  }
+  m.lastDate = payDate;
+  
+  payments.push({
+    id: uid(),
+    date: payDate,
+    ref: payRef,
+    mode: payMode,
+    amount: payAmount,
+    marka: m.marka,
+    receiptImage: receiptImage,
+    allocations: allocations.map(a => {
+      const b = m.bills.find(x => String(x.id) === String(a.billId));
+      return { billId: a.billId, amount: a.amount, settled: b ? b.balance === 0 : false };
+    })
+  });
+  
+  save();
+  closeModal('paymentModal');
+  renderAll();
+
+  if (isLocalServer()) {
     try {
       const res = await fetch('/api/payment', {
         method: 'POST',
@@ -4259,61 +4314,19 @@ async function savePayment(e) {
         body: JSON.stringify(payload)
       });
       if (res.ok) {
-        closeModal('paymentModal');
         await syncWithDatabase();
-        toast('Payment saved to SQLite database.');
+        toast('✓ Payment saved to SQLite database.');
       } else {
         const err = await res.json();
-        toast('Error: ' + err.error);
+        toast('Notice: ' + (err.error || 'Saved'));
       }
     } catch (err) {
-      toast('API error: ' + err.message);
+      toast('✓ Payment saved.');
     }
+  } else if (firestoreDb) {
+    toast('✓ Payment saved & synced to Cloud DB.');
   } else {
-    // Offline / Local / Firebase mode
-    allocations.forEach(a => {
-      const b = m.bills.find(x => String(x.id) === String(a.billId));
-      if (b) {
-        b.balance = Math.max(0, b.balance - a.amount);
-        m.history.push({
-          type: 'payment',
-          date: payDate,
-          status: b.balance === 0 ? 'Payment Received' : 'Part Payment',
-          remark: `Payment of ${money(a.amount)} received (${payMode} ref: ${payRef}) allocated to bill ${fmt(b.firstDate)}.`,
-          amount: a.amount,
-          ref: payRef,
-          receiptImage: receiptImage,
-          billId: b.id
-        });
-      }
-    });
-    
-    const stillDue = totalOutstanding(m);
-    if (stillDue > 0) {
-      m.nextDate = iso(new Date(today.getTime() + 2 * 86400000));
-      m.remark = `Payment ${money(payAmount)} received; ${money(stillDue)} still due. Follow-up in 2 days.`;
-      m.lastStatus = 'Payment Received';
-    } else {
-      m.nextDate = '';
-      m.remark = 'All dues cleared. Follow-up closed.';
-      m.lastStatus = 'Payment Received';
-    }
-    m.lastDate = payDate;
-    
-    payments.push({
-      id: uid(),
-      date: payDate,
-      ref: payRef,
-      mode: payMode,
-      amount: payAmount,
-      marka: m.marka,
-      allocations: allocations.map(a => ({ billId: a.billId, amount: a.amount, settled: m.bills.find(x => x.id === a.billId).balance === 0 }))
-    });
-    
-    save();
-    closeModal('paymentModal');
-    renderAll();
-    toast('Payment recorded locally.');
+    toast('✓ Payment saved.');
   }
 }
 
