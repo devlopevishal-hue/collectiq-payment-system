@@ -1005,7 +1005,7 @@ function dashboard() {
     upcomingDueTotal += upcomingDueAmount(m);
   });
   
-  const scheduledCount = active.filter(m => !isLocked(m) && m.nextDate && days(m.nextDate) >= 0).length;
+  const scheduledCount = active.filter(m => m.nextDate && days(m.nextDate) >= 0).length || active.length;
   
   let openEscalations = 0;
   active.forEach(m => {
@@ -1051,7 +1051,7 @@ function dashboard() {
   `).join('');
   
   // Priority List
-  const priority = active.filter(m => !isLocked(m)).sort((a, b) => new Date(a.nextDate || '9999-12-31') - new Date(b.nextDate || '9999-12-31')).slice(0, 6);
+  const priority = active.slice().sort((a, b) => new Date(a.nextDate || '9999-12-31') - new Date(b.nextDate || '9999-12-31')).slice(0, 6);
   
   document.getElementById('priorityList').innerHTML = priority.length ? priority.map(m => {
     const d = days(m.nextDate);
@@ -1148,12 +1148,12 @@ function schedule() {
   if (!container) return;
   
   filters('filterBar');
-  const active = filtered().filter(m => !isLocked(m));
+  const active = filtered();
   
   const allCount = active.length;
   const dueCount = active.filter(m => m.nextDate && days(m.nextDate) === 0).length;
-  const overdueCount = active.filter(m => m.nextDate && days(m.nextDate) > 0).length;
-  const upcomingCount = active.filter(m => !m.nextDate || days(m.nextDate) < 0).length;
+  const overdueCount = active.filter(m => (m.nextDate && days(m.nextDate) > 0) || isLocked(m)).length;
+  const upcomingCount = active.filter(m => !isLocked(m) && (!m.nextDate || days(m.nextDate) < 0)).length;
   
   const tabAll = document.querySelector('.tab[data-filter="all"]');
   if (tabAll) tabAll.innerHTML = `All <span>${allCount}</span>`;
@@ -1166,8 +1166,8 @@ function schedule() {
   
   let list = active;
   if (tab === 'due') list = active.filter(m => m.nextDate && days(m.nextDate) === 0);
-  else if (tab === 'overdue') list = active.filter(m => m.nextDate && days(m.nextDate) > 0);
-  else if (tab === 'upcoming') list = active.filter(m => !m.nextDate || days(m.nextDate) < 0);
+  else if (tab === 'overdue') list = active.filter(m => (m.nextDate && days(m.nextDate) > 0) || isLocked(m));
+  else if (tab === 'upcoming') list = active.filter(m => !isLocked(m) && (!m.nextDate || days(m.nextDate) < 0));
   
   const { col, dir } = SORTS.schedule;
   list.sort((a, b) => {
@@ -1182,7 +1182,7 @@ function schedule() {
     else if (col === 'nextDate') { va = a.nextDate || '9999-12-31'; vb = b.nextDate || '9999-12-31'; }
     else if (col === 'lastDate') { va = a.lastDate || ''; vb = b.lastDate || ''; }
     else if (col === 'status') {
-      const getStatusRank = m => !m.nextDate ? 3 : days(m.nextDate) > 0 ? 1 : days(m.nextDate) === 0 ? 2 : 4;
+      const getStatusRank = m => isLocked(m) ? 0 : !m.nextDate ? 4 : days(m.nextDate) > 0 ? 1 : days(m.nextDate) === 0 ? 2 : 3;
       va = getStatusRank(a); vb = getStatusRank(b);
     } else {
       va = a.marka; vb = b.marka;
@@ -1194,8 +1194,21 @@ function schedule() {
   document.getElementById('scheduleSummary').textContent = `${list.length.toLocaleString('en-IN')} cases · sorted by ${col} (${dir})`;
   
   document.getElementById('scheduleTable').innerHTML = list.length ? list.map(m => {
+    const locked = isLocked(m);
     const d = days(m.nextDate);
-    const badge = !m.nextDate ? '<span class="status closed">CLOSED</span>' : d > 0 ? `<span class="status overdue">OVERDUE</span>` : d === 0 ? `<span class="status active">DUE TODAY</span>` : `<span class="status active">UPCOMING</span>`;
+    const oldest = oldestDueDate(m);
+    let badge;
+    if (locked) {
+      badge = `<span class="status overdue" style="background:#faeceb; color:#c44d48; font-weight:800; border:1px solid #f5c6cb;">⊘ GP LOCKED (${days(oldest)}d)</span>`;
+    } else if (!m.nextDate) {
+      badge = '<span class="status closed">CLOSED</span>';
+    } else if (d > 0) {
+      badge = `<span class="status overdue">OVERDUE (${d}d)</span>`;
+    } else if (d === 0) {
+      badge = `<span class="status active" style="background:#fff3cd; color:#856404; font-weight:800;">DUE TODAY</span>`;
+    } else {
+      badge = `<span class="status active">UPCOMING</span>`;
+    }
     const due = alreadyDueAmount(m);
     return `
       <tr>
@@ -3382,7 +3395,7 @@ function openFollowup(markaId) {
   if (markaId) {
     m = markas.find(x => x.id === markaId);
   } else {
-    const active = activeMarkas().filter(x => !isLocked(x));
+    const active = activeMarkas();
     active.sort((a, b) => new Date(a.nextDate || '9999-12-31') - new Date(b.nextDate || '9999-12-31'));
     m = active[0];
   }
@@ -6266,7 +6279,7 @@ function renderAll() {
   const filteredList = filtered();
   
   const sb = document.getElementById('scheduleBadge');
-  if (sb) sb.textContent = filteredList.filter(m => !isLocked(m) && m.nextDate && days(m.nextDate) >= 0).length;
+  if (sb) sb.textContent = filteredList.filter(m => (m.nextDate && days(m.nextDate) >= 0) || isLocked(m)).length || filteredList.length;
   const mobSb = document.getElementById('mobScheduleBadge');
   if (mobSb) mobSb.textContent = sb ? sb.textContent : '0';
   
