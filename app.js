@@ -91,14 +91,31 @@ const DEFAULT_MASTER_FOLLOWPERS = {
 let masterFollowpers = { ...DEFAULT_MASTER_FOLLOWPERS };
 
 function getMasterFollowper(masterName) {
-  if (!masterName) return 'Unassigned';
+  if (!masterName || typeof masterName !== 'string') return 'Unassigned';
   const clean = masterName.trim().toUpperCase();
-  for (const [k, v] of Object.entries(masterFollowpers)) {
-    if (k.toUpperCase() === clean || clean.includes(k.toUpperCase()) || k.toUpperCase().includes(clean)) {
-      return v;
+  if (!clean || clean === 'UNASSIGNED MASTER' || clean === 'UNASSIGNED') return 'Unassigned';
+
+  // 1. Exact match in current masterFollowpers map
+  for (const [k, v] of Object.entries(masterFollowpers || {})) {
+    if (k.trim().toUpperCase() === clean && v && v !== 'Unassigned') {
+      return v.trim();
     }
   }
-  return masterFollowpers[masterName] || 'Unassigned';
+  // 2. Substring match in current masterFollowpers map
+  for (const [k, v] of Object.entries(masterFollowpers || {})) {
+    const kClean = k.trim().toUpperCase();
+    if (kClean && (clean.includes(kClean) || kClean.includes(clean)) && v && v !== 'Unassigned') {
+      return v.trim();
+    }
+  }
+  // 3. Fallback to DEFAULT_MASTER_FOLLOWPERS
+  for (const [k, v] of Object.entries(DEFAULT_MASTER_FOLLOWPERS || {})) {
+    const kClean = k.trim().toUpperCase();
+    if (kClean && (clean === kClean || clean.includes(kClean) || kClean.includes(clean))) {
+      return v.trim();
+    }
+  }
+  return 'Unassigned';
 }
 
 // ==========================================
@@ -593,7 +610,16 @@ function activeMarkas() {
 }
 
 function ownerOf(m) {
-  return m.owner || 'Unassigned';
+  if (!m) return 'Unassigned';
+  const direct = (m.owner || '').trim();
+  if (direct && direct !== 'Unassigned' && direct.toLowerCase() !== 'null' && direct.toLowerCase() !== 'undefined') {
+    return direct;
+  }
+  const masterOwner = getMasterFollowper(m.master);
+  if (masterOwner && masterOwner !== 'Unassigned' && masterOwner.trim()) {
+    return masterOwner.trim();
+  }
+  return 'Unassigned';
 }
 
 function allFollowpers() {
@@ -838,21 +864,24 @@ function compareVal(a, b, dir) {
 function filtered(list = activeMarkas()) {
   if (currentUser && currentUser.role === 'user') {
     const uName = (currentUser.followperName || '').toLowerCase().trim();
-    list = list.filter(m => (ownerOf(m) || '').toLowerCase().trim() === uName);
+    list = list.filter(m => {
+      const o = (ownerOf(m) || '').toLowerCase().trim();
+      return o === uName || (uName && o && (o.includes(uName) || uName.includes(o)));
+    });
   }
   return list.filter(m => {
     // 1. Followper filter
     if (F.followper && F.followper !== 'all') {
       const fName = (F.followper || '').toLowerCase().trim();
       const mOwner = (ownerOf(m) || '').toLowerCase().trim();
-      if (mOwner !== fName) return false;
+      if (mOwner !== fName && !(fName && mOwner && (mOwner.includes(fName) || fName.includes(mOwner)))) return false;
     }
 
     // 2. Master filter
     if (F.master && F.master !== 'all') {
       const mMaster = (m.master || '').toLowerCase().trim();
       const fMaster = F.master.toLowerCase().trim();
-      if (mMaster !== fMaster) return false;
+      if (mMaster !== fMaster && !(fMaster && mMaster && (mMaster.includes(fMaster) || fMaster.includes(mMaster)))) return false;
     }
 
     // 3. Marka / Search text filter
@@ -4401,21 +4430,37 @@ function openHistory(markaId) {
 }
 
 function assign(markaName, currentOwner) {
+  populateFollowperDropdowns();
   document.getElementById('assignmentMarka').value = markaName;
-  document.getElementById('assignmentFollowper').value = currentOwner === 'Unassigned' ? '' : currentOwner;
+  const sel = document.getElementById('assignmentFollowper');
+  if (sel) {
+    if (currentOwner && currentOwner !== 'Unassigned' && !Array.from(sel.options).some(o => o.value === currentOwner)) {
+      const opt = document.createElement('option');
+      opt.value = currentOwner;
+      opt.textContent = currentOwner;
+      sel.appendChild(opt);
+    }
+    sel.value = currentOwner === 'Unassigned' ? '' : currentOwner;
+  }
   document.getElementById('assignmentTitle').textContent = 'Assign Followper · ' + markaName;
   openModal('assignmentModal');
 }
 
 function saveAssignment(e) {
   e.preventDefault();
-  const markaName = document.getElementById('assignmentMarka').value;
-  const newOwner = document.getElementById('assignmentFollowper').value;
-  markas.filter(m => m.marka === markaName).forEach(m => m.owner = newOwner);
+  const markaName = (document.getElementById('assignmentMarka')?.value || '').trim();
+  const newOwner = (document.getElementById('assignmentFollowper')?.value || '').trim() || 'Unassigned';
+  let count = 0;
+  markas.forEach(m => {
+    if ((m.marka || '').trim().toLowerCase() === markaName.toLowerCase()) {
+      m.owner = newOwner;
+      count++;
+    }
+  });
   save();
   closeModal('assignmentModal');
   renderAll();
-  toast('Followper assignment saved for ' + markaName + '.');
+  toast(`✓ Followper "${newOwner}" assigned to ${count} Marka profile(s) for ${markaName}.`);
 }
 
 function openMasterAssignment(masterName) {
@@ -4423,24 +4468,37 @@ function openMasterAssignment(masterName) {
   document.getElementById('masterAssignmentTitle').textContent = `Assign Accountable Person · ${masterName}`;
   const currentOwner = getMasterFollowper(masterName);
   document.getElementById('masterAssignmentCopy').textContent = `Set the default accountable followper for all current and future Markas under ${masterName}.`;
-  document.getElementById('masterAssignmentFollowper').value = currentOwner === 'Unassigned' ? '' : currentOwner;
+  const sel = document.getElementById('masterAssignmentFollowper');
+  if (sel) {
+    if (currentOwner && currentOwner !== 'Unassigned' && !Array.from(sel.options).some(o => o.value === currentOwner)) {
+      const opt = document.createElement('option');
+      opt.value = currentOwner;
+      opt.textContent = currentOwner;
+      sel.appendChild(opt);
+    }
+    sel.value = currentOwner === 'Unassigned' ? '' : currentOwner;
+  }
   document.getElementById('syncMasterMarkas').checked = true;
   openModal('masterAssignmentModal');
 }
 
 function saveMasterAssignment(e) {
   e.preventDefault();
-  const masterName = document.getElementById('assignmentMasterName').value;
-  const newFollowper = document.getElementById('masterAssignmentFollowper').value.trim() || 'Unassigned';
-  const syncMarkas = document.getElementById('syncMasterMarkas').checked;
+  const masterName = (document.getElementById('assignmentMasterName')?.value || '').trim();
+  const newFollowper = (document.getElementById('masterAssignmentFollowper')?.value || '').trim() || 'Unassigned';
+  const syncMarkas = document.getElementById('syncMasterMarkas')?.checked;
   
   masterFollowpers[masterName] = newFollowper;
   
   let count = 0;
   if (syncMarkas) {
-    markas.filter(m => m.master === masterName).forEach(m => {
-      m.owner = newFollowper;
-      count++;
+    markas.forEach(m => {
+      const mMaster = (m.master || '').trim().toLowerCase();
+      const targetMaster = masterName.toLowerCase();
+      if (mMaster === targetMaster || mMaster.includes(targetMaster) || targetMaster.includes(mMaster)) {
+        m.owner = newFollowper;
+        count++;
+      }
     });
   }
   
