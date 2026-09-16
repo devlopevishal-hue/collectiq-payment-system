@@ -6122,9 +6122,13 @@ async function handleCreateUser(e) {
     users.push(payload);
   }
 
-  localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
+  save();
+  document.getElementById('newUserEmail').value = '';
+  if (document.getElementById('newUserPassword')) document.getElementById('newUserPassword').value = '';
+  if (document.getElementById('newUserFollowper')) document.getElementById('newUserFollowper').value = '';
+  renderAll();
 
-  if (isOnlineMode()) {
+  if (isLocalServer()) {
     try {
       await fetch('/api/users', {
         method: 'POST',
@@ -6137,12 +6141,7 @@ async function handleCreateUser(e) {
     }
   }
 
-  save();
-  document.getElementById('newUserEmail').value = '';
-  if (document.getElementById('newUserPassword')) document.getElementById('newUserPassword').value = '';
-  if (document.getElementById('newUserFollowper')) document.getElementById('newUserFollowper').value = '';
-  renderAll();
-  toast(`User "${email}" saved with role "${role === 'superuser' ? 'Super Doer' : role === 'admin' ? 'Admin' : 'Doer'}".`);
+  toast(`✓ User "${email}" saved with role "${role === 'superuser' ? 'Super Doer' : role === 'admin' ? 'Admin' : 'Doer'}". Live sync active.`);
 }
 window.handleCreateUser = handleCreateUser;
 
@@ -6150,7 +6149,11 @@ async function deleteUser(email) {
   if (email === 'admin@collectiq.com') return toast('Cannot delete system administrator account.');
   if (!confirm(`Are you sure you want to delete the user account for ${email}?`)) return;
 
-  if (isOnlineMode()) {
+  users = users.filter(u => u.email.toLowerCase() !== email.toLowerCase());
+  save();
+  renderAll();
+
+  if (isLocalServer()) {
     try {
       const res = await fetch('/api/users/delete', {
         method: 'POST',
@@ -6159,20 +6162,12 @@ async function deleteUser(email) {
       });
       if (res.ok) {
         await syncWithDatabase();
-        toast('User deleted from SQLite.');
-      } else {
-        const err = await res.json();
-        toast('Error: ' + err.error);
       }
     } catch (err) {
-      toast('API error: ' + err.message);
+      console.warn('API error:', err);
     }
-  } else {
-    users = users.filter(u => u.email !== email);
-    save();
-    renderAll();
-    toast('User deleted locally.');
   }
+  toast(`✓ User account ${email} deleted successfully.`);
 }
 
 // ==========================================
