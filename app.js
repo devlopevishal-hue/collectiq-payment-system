@@ -171,6 +171,12 @@ function checkAuth() {
     
     const isAdmin = currentUser.role === 'admin' || currentUser.role === 'superuser';
     const isMasterAdmin = currentUser.email === 'devlope.vishal@gmail.com' || currentUser.email === 'admin@collectiq.com' || (currentUser.role === 'admin' && currentUser.email.includes('admin'));
+    const isPcOrAdmin = isAdmin || currentUser.role === 'pc' || (currentUser.email && (currentUser.email.toLowerCase().includes('pc') || currentUser.email.toLowerCase().includes('coordinator'))) || (currentUser.followperName && (currentUser.followperName.toLowerCase().includes('pc') || currentUser.followperName.toLowerCase().includes('coordinator')));
+
+    // FMS Pre-planned is only for PC / Admin
+    document.querySelectorAll('.nav[data-view="fms"], .b-nav[data-view="fms"]').forEach(el => {
+      el.style.display = isPcOrAdmin ? '' : 'none';
+    });
 
     if (!isAdmin) {
       document.getElementById('setupSection').style.display = 'none';
@@ -3473,38 +3479,46 @@ function openFollowup(markaId) {
   `).join('');
   document.getElementById('claimComplaintBillList').innerHTML = billChecklistHtml || '<p class="modal-copy">No active bills to select.</p>';
 
-  // Render FMS Pre-planned milestones checklist
-  const fmsTasks = getFmsTasks(m);
-  const doneTasks = fmsTasks.filter(t => t.isDone).length;
-  const badgeEl = document.getElementById('followFmsSummaryBadge');
-  if (badgeEl) {
-    badgeEl.textContent = `${doneTasks}/4 MILESTONES COMPLETED`;
+  // FMS Pre-planned milestones is exclusively for PC / Admin. Hide from regular followpers.
+  const isPcOrAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superuser' || currentUser.role === 'pc' || (currentUser.email && (currentUser.email.toLowerCase().includes('pc') || currentUser.email.toLowerCase().includes('coordinator'))) || (currentUser.followperName && (currentUser.followperName.toLowerCase().includes('pc') || currentUser.followperName.toLowerCase().includes('coordinator'))));
+  const fmsWidgetGroup = document.getElementById('followFmsMilestonesGroup');
+  if (fmsWidgetGroup) {
+    fmsWidgetGroup.style.display = isPcOrAdmin ? 'block' : 'none';
   }
-  const fmsListEl = document.getElementById('followFmsList');
-  if (fmsListEl) {
-    fmsListEl.innerHTML = fmsTasks.map(t => {
-      let badge = '';
-      if (t.isDone) {
-        badge = `<span class="status closed" style="font-size:10px; padding:1px 6px;">✓ DONE (${t.score} pt)</span>`;
-      } else if (t.status === 'Overdue') {
-        badge = `<span class="status overdue" style="font-size:10px; padding:1px 6px;">OVERDUE (${t.delay}d)</span>`;
-      } else {
-        badge = `<span class="status" style="font-size:10px; padding:1px 6px; background:#e0ebe6; color:#2d4239;">PLANNED ${fmt(t.plannedDate)}</span>`;
-      }
 
-      return `
-        <div style="flex:1; display:flex; justify-content:space-between; align-items:center; background:#fff; border:1px solid #e1eee8; border-radius:6px; padding:6px 10px; font-size:12px;">
-          <div style="flex:1; min-width:0;">
-            <div style="font-weight:700; color:#182e25;"><span style="color:#087454; font-family:'DM Mono', monospace; margin-right:4px;">${t.code}</span>${escapeHtml(t.name)}</div>
-            <small style="color:#6d827a; font-size:10px;">Due +${t.offset}d (${fmt(t.plannedDate)}) · Responsible: <b>${escapeHtml(t.role)}</b> (${escapeHtml(t.responsibleName)})</small>
+  if (isPcOrAdmin) {
+    const fmsTasks = getFmsTasks(m);
+    const doneTasks = fmsTasks.filter(t => t.isDone).length;
+    const badgeEl = document.getElementById('followFmsSummaryBadge');
+    if (badgeEl) {
+      badgeEl.textContent = `${doneTasks}/4 MILESTONES COMPLETED`;
+    }
+    const fmsListEl = document.getElementById('followFmsList');
+    if (fmsListEl) {
+      fmsListEl.innerHTML = fmsTasks.map(t => {
+        let badge = '';
+        if (t.isDone) {
+          badge = `<span class="status closed" style="font-size:10px; padding:1px 6px;">✓ DONE (${t.score} pt)</span>`;
+        } else if (t.status === 'Overdue') {
+          badge = `<span class="status overdue" style="font-size:10px; padding:1px 6px;">OVERDUE (${t.delay}d)</span>`;
+        } else {
+          badge = `<span class="status" style="font-size:10px; padding:1px 6px; background:#e0ebe6; color:#2d4239;">PLANNED ${fmt(t.plannedDate)}</span>`;
+        }
+
+        return `
+          <div style="flex:1; display:flex; justify-content:space-between; align-items:center; background:#fff; border:1px solid #e1eee8; border-radius:6px; padding:6px 10px; font-size:12px;">
+            <div style="flex:1; min-width:0;">
+              <div style="font-weight:700; color:#182e25;"><span style="color:#087454; font-family:'DM Mono', monospace; margin-right:4px;">${t.code}</span>${escapeHtml(t.name)}</div>
+              <small style="color:#6d827a; font-size:10px;">Due +${t.offset}d (${fmt(t.plannedDate)}) · Responsible: <b>${escapeHtml(t.role)}</b> (${escapeHtml(t.responsibleName)})</small>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; margin-left:10px;">
+              ${badge}
+              ${t.isDone ? '' : `<button type="button" onclick="openFmsModal('${m.id}', '${t.code}')" style="background:#087454; color:#fff; border:none; border-radius:4px; padding:3px 8px; font-size:11px; cursor:pointer; font-weight:700;">Mark Done</button>`}
+            </div>
           </div>
-          <div style="display:flex; align-items:center; gap:8px; margin-left:10px;">
-            ${badge}
-            ${t.isDone ? '' : `<button type="button" onclick="openFmsModal('${m.id}', '${t.code}')" style="background:#087454; color:#fff; border:none; border-radius:4px; padding:3px 8px; font-size:11px; cursor:pointer; font-weight:700;">Mark Done</button>`}
-          </div>
-        </div>
-      `;
-    }).join('');
+        `;
+      }).join('');
+    }
   }
 
   populateFollowPayBills(m);
