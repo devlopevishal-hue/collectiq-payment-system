@@ -485,7 +485,8 @@
                 <th class="sortable" onclick="sortTable('markas', 'alreadyDue')">ALREADY DUE <span class="sort-icon" id="sort_markas_alreadyDue">⇅</span></th>
                 <th class="sortable" onclick="sortTable('markas', 'balance')">TOTAL OUTSTANDING <span class="sort-icon" id="sort_markas_balance">⇅</span></th>
                 <th class="sortable" onclick="sortTable('markas', 'bills')">ACTIVE BILLS <span class="sort-icon" id="sort_markas_bills">⇅</span></th>
-                <th class="sortable" onclick="sortTable('markas', 'owner')">FOLLOWPER <span class="sort-icon" id="sort_markas_owner">⇅</span></th>
+                <th class="sortable" onclick="sortTable('markas', 'owner')">DOER / FOLLOWPER (JUNIOR) <span class="sort-icon" id="sort_markas_owner">⇅</span></th>
+                <th>CRR PERSON (SENIOR)</th>
                 <th>ACTION</th>
               </tr>
             </thead>
@@ -500,7 +501,8 @@
             <thead>
               <tr>
                 <th>MASTER NAME</th>
-                <th>DEFAULT ACCOUNTABLE PERSON (FOLLOWPER)</th>
+                <th>DOER / FOLLOWPER (JUNIOR)</th>
+                <th>CRR PERSON (SENIOR)</th>
                 <th>ACTIVE MARKAS</th>
                 <th>ALREADY DUE AMOUNT</th>
                 <th>TOTAL OUTSTANDING</th>
@@ -558,9 +560,11 @@
             </label>
             <label>Role / Access Level
               <select id="newUserRole" onchange="onUserRoleChange()" style="width:100%; padding:9px 12px; border:1px solid #dbe5e0; border-radius:6px; margin-top:4px; font-family:inherit;">
-                <option value="user">Standard Doer (Own Markas, Tasks & Scores Only)</option>
-                <option value="superuser">Super Doer / Superuser (Full Visibility, Cross-Doer Delegation & Reports)</option>
-                <option value="admin">Admin (Full Control, Scoring & User Management)</option>
+                <option value="user">Standard Doer (Own Markas, Tasks &amp; Scores Only)</option>
+                <option value="crr">Senior CRR Person (Master-wise Overseeing &amp; Authority)</option>
+                <option value="pc">Process Coordinator / PC (FMS Milestones &amp; Verification)</option>
+                <option value="superuser">Super Doer / Superuser (Full Visibility, Cross-Doer Delegation &amp; Reports)</option>
+                <option value="admin">Admin (Full Control, Scoring &amp; User Management)</option>
               </select>
             </label>
             <div id="newUserFollowperContainer">
@@ -935,12 +939,17 @@
     <form class="modal" onsubmit="saveAssignment(event)">
       <button type="button" class="close" onclick="closeModal('assignmentModal')">×</button>
       <p class="eyebrow">MARKA ACCOUNTABILITY</p>
-      <h2 id="assignmentTitle">Assign Followper</h2>
+      <h2 id="assignmentTitle">Assign Followper &amp; CRR Person</h2>
       <input type="hidden" id="assignmentMarka">
-      <label>Followper<select id="assignmentFollowper" required></select></label>
+      <label>Junior Doer / Followper (Calling &amp; Field Visits)
+        <select id="assignmentFollowper" required></select>
+      </label>
+      <label style="margin-top:12px;">Senior CRR Person (Review &amp; Authority)
+        <select id="assignmentCrr"></select>
+      </label>
       <div class="modal-footer">
         <span>Applies to every current and future case for this Marka.</span>
-        <button class="btn primary">Save assignment</button>
+        <button class="btn primary">Save Assignment</button>
       </div>
     </form>
   </div>
@@ -949,18 +958,21 @@
     <form class="modal" onsubmit="saveMasterAssignment(event)">
       <button type="button" class="close" onclick="closeModal('masterAssignmentModal')">×</button>
       <p class="eyebrow">MASTER ACCOUNTABILITY</p>
-      <h2 id="masterAssignmentTitle">Assign Accountable Person</h2>
+      <h2 id="masterAssignmentTitle">Assign Accountable Master Personnel</h2>
       <input type="hidden" id="assignmentMasterName">
       <p class="modal-copy" id="masterAssignmentCopy"></p>
-      <label>Accountable Followper
+      <label>Junior Doer / Followper (Calling &amp; Field Visits)
         <select id="masterAssignmentFollowper" required></select>
       </label>
-      <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;cursor:pointer;">
+      <label style="margin-top:12px;">Senior CRR Person (Review &amp; Authority)
+        <select id="masterAssignmentCrr"></select>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12px;cursor:pointer;">
         <input type="checkbox" id="syncMasterMarkas" checked>
-        Update all existing Markas under this Master to this Followper
+        Update all existing Markas under this Master to these Personnel
       </label>
       <div class="modal-footer">
-        <span>Applies as default followper for all new and existing cases for this Master.</span>
+        <span>Applies as default assignments for all cases under this Master.</span>
         <button class="btn primary">Save Master Assignment</button>
       </div>
     </form>
@@ -1291,9 +1303,11 @@
         </label>
         <label style="display:block; font-weight:600; font-size:12px;">Role / Access Level
           <select id="editUserRole" onchange="onEditUserRoleChange()" style="width:100%; padding:9px 12px; border:1px solid #dbe5e0; border-radius:6px; margin-top:4px; font-family:inherit; font-size:13px;">
-            <option value="user">Standard Doer (Own Markas, Tasks & Scores Only)</option>
-            <option value="superuser">Super Doer / Superuser (Full Visibility, Cross-Doer Delegation & Reports)</option>
-            <option value="admin">Admin (Full Control, Scoring & User Management)</option>
+            <option value="user">Standard Doer (Own Markas, Tasks &amp; Scores Only)</option>
+            <option value="crr">Senior CRR Person (Master-wise Overseeing &amp; Authority)</option>
+            <option value="pc">Process Coordinator / PC (FMS Milestones &amp; Verification)</option>
+            <option value="superuser">Super Doer / Superuser (Full Visibility, Cross-Doer Delegation &amp; Reports)</option>
+            <option value="admin">Admin (Full Control, Scoring &amp; User Management)</option>
           </select>
         </label>
         <div id="editUserFollowperContainer">

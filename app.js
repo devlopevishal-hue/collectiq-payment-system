@@ -74,7 +74,7 @@ function escalationTargets() {
   return helpTargets();
 }
 
-// Master-wise Accountable Person (Followper) Default Mapping
+// Master-wise Accountable Person (Followper / Junior) Default Mapping
 const DEFAULT_MASTER_FOLLOWPERS = {
   'MANISH MASTER': 'Girdharilal',
   'RAJESH MASTER': 'Girdharilal',
@@ -88,7 +88,22 @@ const DEFAULT_MASTER_FOLLOWPERS = {
   '11': 'Girdharilal'
 };
 
+// Master-wise Senior CRR Person Default Mapping
+const DEFAULT_MASTER_CRR = {
+  'BABLU MASTER': 'Ravi Bhai',
+  'BABLU SHERA MASTER': 'Ravi Bhai',
+  'KALPESH MASTER': 'Ravi Bhai',
+  'RAJESH MASTER': 'Nayan Bhai',
+  'RIPETSH MASTER': 'Nayan Bhai',
+  'RIPTESH MASTER': 'Nayan Bhai',
+  'MANISH MASTER': 'Nayan Bhai',
+  'KUNAL MASTER': 'Mahendra Bhai',
+  'GUDDU MASTER': 'Mahendra Bhai',
+  '11': 'Nayan Bhai'
+};
+
 let masterFollowpers = { ...DEFAULT_MASTER_FOLLOWPERS };
+let masterCrrs = { ...DEFAULT_MASTER_CRR };
 
 function getMasterFollowper(masterName) {
   if (!masterName || typeof masterName !== 'string') return 'Unassigned';
@@ -118,6 +133,47 @@ function getMasterFollowper(masterName) {
   return 'Unassigned';
 }
 
+function getMasterCrr(masterName) {
+  if (!masterName || typeof masterName !== 'string') return 'Unassigned';
+  const clean = masterName.trim().toUpperCase();
+  if (!clean || clean === 'UNASSIGNED MASTER' || clean === 'UNASSIGNED') return 'Unassigned';
+
+  // 1. Exact match in masterCrrs map
+  for (const [k, v] of Object.entries(masterCrrs || {})) {
+    if (k.trim().toUpperCase() === clean && v && v !== 'Unassigned') {
+      return v.trim();
+    }
+  }
+  // 2. Substring match
+  for (const [k, v] of Object.entries(masterCrrs || {})) {
+    const kClean = k.trim().toUpperCase();
+    if (kClean && (clean.includes(kClean) || kClean.includes(clean)) && v && v !== 'Unassigned') {
+      return v.trim();
+    }
+  }
+  // 3. Fallback to DEFAULT_MASTER_CRR
+  for (const [k, v] of Object.entries(DEFAULT_MASTER_CRR || {})) {
+    const kClean = k.trim().toUpperCase();
+    if (kClean && (clean === kClean || clean.includes(kClean) || kClean.includes(clean))) {
+      return v.trim();
+    }
+  }
+  return 'Unassigned';
+}
+
+function crrOf(m) {
+  if (!m) return 'Unassigned';
+  const direct = (m.crr || '').trim();
+  if (direct && direct !== 'Unassigned' && direct.toLowerCase() !== 'null' && direct.toLowerCase() !== 'undefined') {
+    return direct;
+  }
+  const masterCrr = getMasterCrr(m.master);
+  if (masterCrr && masterCrr !== 'Unassigned' && masterCrr.trim()) {
+    return masterCrr.trim();
+  }
+  return 'Unassigned';
+}
+
 // ==========================================
 // DATA LAYER & STATE
 // ==========================================
@@ -140,7 +196,10 @@ const DEFAULT_USERS = [
   { email: 'saurav@collectiq.com', password: '1234', role: 'superuser', followperName: 'Saurav Bhai' },
   { email: 'saurav@bhaskarsilkmills.in', password: '1234', role: 'superuser', followperName: 'Saurav Bhai' },
   { email: 'bhavesh@collectiq.com', password: '1234', role: 'superuser', followperName: 'Bhavesh Bhai' },
-  { email: 'pc@collectiq.com', password: '1234', role: 'user', followperName: 'Process Coordinator (PC)' },
+  { email: 'nayan@collectiq.com', password: '1234', role: 'crr', followperName: 'Nayan Bhai' },
+  { email: 'ravi@collectiq.com', password: '1234', role: 'crr', followperName: 'Ravi Bhai' },
+  { email: 'mahendra@collectiq.com', password: '1234', role: 'crr', followperName: 'Mahendra Bhai' },
+  { email: 'pc@collectiq.com', password: '1234', role: 'pc', followperName: 'Process Coordinator (PC)' },
   { email: 'surendra@collectiq.com', password: '1234', role: 'user', followperName: 'Surendra' },
   { email: 'mahavir@collectiq.com', password: '1234', role: 'user', followperName: 'Mahavir' },
   { email: 'girdharilal@collectiq.com', password: '1234', role: 'user', followperName: 'Girdharilal' },
@@ -359,6 +418,7 @@ function save() {
   localStorage.setItem('collectiq_rokad_v4', JSON.stringify(payments));
   localStorage.setItem('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
   localStorage.setItem('collectiq_master_followpers_v4', JSON.stringify(masterFollowpers));
+  localStorage.setItem('collectiq_master_crrs_v4', JSON.stringify(masterCrrs));
   localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
   saveCloud();
 }
@@ -474,6 +534,13 @@ function load() {
       masterFollowpers = { ...DEFAULT_MASTER_FOLLOWPERS };
     }
 
+    const mc = localStorage.getItem('collectiq_master_crrs_v4');
+    if (mc) {
+      masterCrrs = { ...DEFAULT_MASTER_CRR, ...JSON.parse(mc) };
+    } else {
+      masterCrrs = { ...DEFAULT_MASTER_CRR };
+    }
+
     const v4 = localStorage.getItem('collectiq_markas_v4');
     if (v4) {
       markas = JSON.parse(v4);
@@ -489,6 +556,12 @@ function load() {
         const defaultOwner = getMasterFollowper(m.master);
         if (defaultOwner && defaultOwner !== 'Unassigned') {
           m.owner = defaultOwner;
+        }
+      }
+      if (!m.crr || m.crr === 'Unassigned') {
+        const defaultCrr = getMasterCrr(m.master);
+        if (defaultCrr && defaultCrr !== 'Unassigned') {
+          m.crr = defaultCrr;
         }
       }
     });
@@ -630,21 +703,45 @@ function ownerOf(m) {
 
 function allFollowpers() {
   const rawList = [
-    ...(users || []).map(u => (u.followperName && u.followperName.toLowerCase() !== 'all' && u.followperName !== 'Unassigned') ? u.followperName.trim() : (u.email ? u.email.split('@')[0] : '')),
+    ...(users || []).map(u => (u.followperName && u.followperName.toLowerCase() !== 'all' && u.followperName !== 'Unassigned' && !u.followperName.includes('@')) ? u.followperName.trim() : ''),
     ...(markas || []).map(ownerOf),
     ...Object.values(masterFollowpers || {}),
     ...Object.values(DEFAULT_MASTER_FOLLOWPERS || {}),
     ...(markas || []).flatMap(m => (m.history || []).map(h => (h.followper || '').trim())),
     ...(helpTickets || []).flatMap(t => [t.requestedBy, t.assignedHelper, t.resolvedBy]),
     ...(markas || []).flatMap(m => (m.escalations || []).flatMap(e => [e.followper, e.escalatedTo, e.resolvedBy])),
-    'Bhavesh Bhai', 'Saurav Bhai', 'Sales HOD', 'Accounts', 'Process Coordinator (PC)'
+    'Surendra', 'Sajjan', 'Mahavir', 'Girdharilal', 'Anil Sharma', 'Manish Agarwal', 'Ravi Kant Sharma',
+    'Bhavesh Bhai', 'Saurav Bhai', 'Sales HOD', 'Account Team', 'CRM', 'Process Coordinator (PC)'
   ];
 
   const nameMap = new Map();
   rawList.forEach(raw => {
     if (!raw || typeof raw !== 'string') return;
     const trimmed = raw.trim();
-    if (!trimmed || trimmed === 'Unassigned' || trimmed.toLowerCase() === 'all' || trimmed.toLowerCase() === 'null') return;
+    if (!trimmed || trimmed === 'Unassigned' || trimmed.toLowerCase() === 'all' || trimmed.toLowerCase() === 'null' || trimmed.includes('@')) return;
+    const lower = trimmed.toLowerCase();
+    if (!nameMap.has(lower)) {
+      nameMap.set(lower, trimmed);
+    }
+  });
+
+  return Array.from(nameMap.values()).sort((a, b) => a.localeCompare(b));
+}
+
+function allCrrs() {
+  const rawList = [
+    'Ravi Bhai', 'Nayan Bhai', 'Mahendra Bhai',
+    ...(users || []).filter(u => u.role === 'crr').map(u => (u.followperName && !u.followperName.includes('@')) ? u.followperName.trim() : ''),
+    ...Object.values(masterCrrs || {}),
+    ...Object.values(DEFAULT_MASTER_CRR || {}),
+    ...(markas || []).map(crrOf)
+  ];
+
+  const nameMap = new Map();
+  rawList.forEach(raw => {
+    if (!raw || typeof raw !== 'string') return;
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed === 'Unassigned' || trimmed.toLowerCase() === 'all' || trimmed.toLowerCase() === 'null' || trimmed.includes('@')) return;
     const lower = trimmed.toLowerCase();
     if (!nameMap.has(lower)) {
       nameMap.set(lower, trimmed);
@@ -868,12 +965,25 @@ function compareVal(a, b, dir) {
 // FILTER SYSTEM
 // ==========================================
 function filtered(list = activeMarkas()) {
-  if (currentUser && currentUser.role === 'user') {
-    const uName = (currentUser.followperName || '').toLowerCase().trim();
-    list = list.filter(m => {
-      const o = (ownerOf(m) || '').toLowerCase().trim();
-      return o === uName || (uName && o && (o.includes(uName) || uName.includes(o)));
-    });
+  if (currentUser) {
+    if (currentUser.role === 'user') {
+      const uName = (currentUser.followperName || '').toLowerCase().trim();
+      list = list.filter(m => {
+        const o = (ownerOf(m) || '').toLowerCase().trim();
+        return o === uName || (uName && o && (o.includes(uName) || uName.includes(o)));
+      });
+    } else if (currentUser.role === 'crr') {
+      const uName = (currentUser.followperName || '').toLowerCase().trim();
+      const uEmail = (currentUser.email || '').toLowerCase().trim();
+      if (uName.includes('mahendra') || uName === 'all' || uEmail.includes('mahendra')) {
+        // Mahendra Bhai sees all masters
+      } else {
+        list = list.filter(m => {
+          const c = (crrOf(m) || '').toLowerCase().trim();
+          return c === uName || (uName && c && (c.includes(uName) || uName.includes(c)));
+        });
+      }
+    }
   }
   return list.filter(m => {
     // 1. Followper filter
@@ -2208,12 +2318,13 @@ function markaView() {
           <td class="money">${money(totalOutstanding(m))}</td>
           <td>${activeBills(m).length}</td>
           <td><span class="status ${ownerOf(m) === 'Unassigned' ? 'overdue' : 'active'}">${escapeHtml(ownerOf(m))}</span></td>
+          <td><span class="status active" style="background:#e8f4ef; color:#087454; font-weight:700;">${escapeHtml(crrOf(m))}</span></td>
           <td>
-            <button onclick="assign('${escapeHtml(m.marka).replace(/'/g, "\\'")}', '${escapeHtml(ownerOf(m)).replace(/'/g, "\\'")}')" class="row-action">${ownerOf(m) === 'Unassigned' ? 'Assign' : 'Reassign'}</button>
+            <button onclick="assign('${escapeHtml(m.marka).replace(/'/g, "\\'")}', '${escapeHtml(ownerOf(m)).replace(/'/g, "\\'")}', '${escapeHtml(crrOf(m)).replace(/'/g, "\\'")}')" class="row-action">${ownerOf(m) === 'Unassigned' ? 'Assign' : 'Reassign'}</button>
           </td>
         </tr>
       `;
-    }).join('') : '<tr><td colspan="8" style="text-align:center;color:#788882;padding:24px;">No Markas found.</td></tr>';
+    }).join('') : '<tr><td colspan="9" style="text-align:center;color:#788882;padding:24px;">No Markas found.</td></tr>';
   }
   
   // 2. Master-wise table
@@ -2226,16 +2337,18 @@ function markaView() {
       const masterTotal = masterMarkas.reduce((s, m) => s + totalOutstanding(m), 0);
       const masterDue = masterMarkas.reduce((s, m) => s + alreadyDueAmount(m), 0);
       const accountablePerson = getMasterFollowper(masterName);
+      const seniorCrr = getMasterCrr(masterName);
       
       return `
         <tr>
           <td><b>${escapeHtml(masterName)}</b></td>
           <td><span class="status active" style="font-weight:600;">${escapeHtml(accountablePerson)}</span></td>
+          <td><span class="status active" style="font-weight:700; color:#087454; background:#e8f4ef;">${escapeHtml(seniorCrr)}</span></td>
           <td>${activeMasterMarkas.length} active (${masterMarkas.length} total)</td>
           <td class="money" style="${masterDue > 0 ? 'font-weight:700;color:#c44d48;' : ''}">${money(masterDue)}</td>
           <td class="money"><b>${money(masterTotal)}</b></td>
           <td>
-            <button onclick="openMasterAssignment('${escapeHtml(masterName).replace(/'/g, "\\'")}')" class="row-action" style="background:#087454;color:#fff;">Change Followper</button>
+            <button onclick="openMasterAssignment('${escapeHtml(masterName).replace(/'/g, "\\'")}')" class="row-action" style="background:#087454;color:#fff;">Change Personnel</button>
           </td>
         </tr>
       `;
@@ -2428,22 +2541,28 @@ function helpTicketsView() {
 
 function getAllAssigneesList() {
   const set = new Set();
-  // 1. All Doers / Followpers
+  // 1. All Doers / Followpers (clean names only)
   allFollowpers().forEach(f => {
-    if (f && f !== 'Unassigned' && f !== 'all') set.add(f);
+    if (f && f !== 'Unassigned' && f !== 'all' && !f.includes('@')) set.add(f.trim());
   });
-  // 2. All Masters
+  // 2. All Senior CRR Persons
+  allCrrs().forEach(c => {
+    if (c && c !== 'Unassigned' && c !== 'all' && !c.includes('@')) set.add(c.trim());
+  });
+  // 3. All Masters
   allMasters().forEach(m => {
-    if (m && m !== 'Unassigned' && m !== 'all') set.add(m);
+    if (m && m !== 'Unassigned' && m !== 'all' && !m.includes('@')) set.add(m.trim());
   });
-  // 3. All Users
+  // 4. All Users (names only)
   const userList = (users && users.length > 0) ? users : DEFAULT_USERS;
   userList.forEach(u => {
-    if (u.followperName && u.followperName !== 'all') set.add(u.followperName);
-    if (u.email) set.add(u.email);
+    if (u.followperName && u.followperName !== 'all' && u.followperName !== 'Unassigned' && !u.followperName.includes('@')) {
+      set.add(u.followperName.trim());
+    }
   });
-  ['Sales HOD', 'Saurav Bhai', 'Bhavesh Bhai', 'Account Team', 'CRM', 'Process Coordinator (PC)'].forEach(r => set.add(r));
-  return Array.from(set).sort();
+  ['Surendra', 'Sajjan', 'Mahavir', 'Girdharilal', 'Anil Sharma', 'Manish Agarwal', 'Ravi Kant Sharma',
+   'Ravi Bhai', 'Nayan Bhai', 'Mahendra Bhai', 'Saurav Bhai', 'Bhavesh Bhai', 'Sales HOD', 'Account Team', 'CRM', 'Process Coordinator (PC)'].forEach(r => set.add(r));
+  return Array.from(set).filter(n => n && !n.includes('@')).sort((a, b) => a.localeCompare(b));
 }
 window.getAllAssigneesList = getAllAssigneesList;
 
@@ -3542,10 +3661,10 @@ function onFollowPayModeChange() {
   const mode = document.getElementById('followPayMode') ? document.getElementById('followPayMode').value : 'cheque';
   const lbl = document.getElementById('followPayRefLabel');
   if (lbl) {
-    if (mode === 'cheque') lbl.textContent = 'Cheque Number (Required)';
-    else if (mode === 'RTGS' || mode === 'NEFT' || mode === 'UPI') lbl.textContent = 'UTR / Transaction ID (Required)';
-    else if (mode === 'cash') lbl.textContent = 'Cash Receipt / Voucher No (Required)';
-    else lbl.textContent = 'Transaction / Cheque ID (Required)';
+    if (mode === 'cheque') lbl.textContent = 'Cheque Number (Optional)';
+    else if (mode === 'RTGS' || mode === 'NEFT' || mode === 'UPI') lbl.textContent = 'UTR / Transaction ID (Optional)';
+    else if (mode === 'cash') lbl.textContent = 'Cash Receipt / Voucher No (Optional)';
+    else lbl.textContent = 'Transaction / Cheque ID (Optional)';
   }
 }
 
@@ -3877,14 +3996,11 @@ async function saveFollowup(e) {
   let allocations = [];
 
   if (isPayment) {
-    payRef = (document.getElementById('followPayRef')?.value || '').trim();
+    payRef = (document.getElementById('followPayRef')?.value || '').trim() || 'N/A';
     payMode = document.getElementById('followPayMode')?.value || 'cheque';
     payType = document.getElementById('followPayType')?.value || 'Part Payment';
     payAmount = +(document.getElementById('followPayAmount')?.value || 0);
 
-    if (!payRef) {
-      return toast('Cheque No / UTR / Transaction ID is required for payment received.');
-    }
     if (payAmount <= 0) {
       return toast('Please enter a valid received payment amount.');
     }
@@ -4139,10 +4255,10 @@ function onPayModeChange() {
   const mode = document.getElementById('payMode') ? document.getElementById('payMode').value : 'cheque';
   const lbl = document.getElementById('payRefLabel');
   if (lbl) {
-    if (mode === 'cheque') lbl.textContent = 'Cheque Number (Required)';
-    else if (mode === 'RTGS' || mode === 'NEFT' || mode === 'UPI') lbl.textContent = 'UTR / Transaction ID (Required)';
-    else if (mode === 'cash') lbl.textContent = 'Cash Receipt / Voucher No (Required)';
-    else lbl.textContent = 'Transaction / Cheque ID (Required)';
+    if (mode === 'cheque') lbl.textContent = 'Cheque Number (Optional)';
+    else if (mode === 'RTGS' || mode === 'NEFT' || mode === 'UPI') lbl.textContent = 'UTR / Transaction ID (Optional)';
+    else if (mode === 'cash') lbl.textContent = 'Cash Receipt / Voucher No (Optional)';
+    else lbl.textContent = 'Transaction / Cheque ID (Optional)';
   }
 }
 
@@ -4276,12 +4392,11 @@ async function savePayment(e) {
   const payType = document.getElementById('payType').value;
   const payDate = document.getElementById('payDate').value;
   const payMode = document.getElementById('payMode').value;
-  const payRef = document.getElementById('payRef').value.trim();
+  const payRef = (document.getElementById('payRef').value || '').trim() || 'N/A';
   const payAmount = +document.getElementById('payAmount').value || 0;
   const receiptImage = document.getElementById('payReceiptPreview')?.dataset?.base64 || '';
   
   if (!payAmount || payAmount <= 0) return toast('Enter a valid payment amount.');
-  if (!payRef) return toast('Reference / receipt number is required.');
   
   // Gather allocations
   const allocations = [];
@@ -4456,7 +4571,7 @@ function openHistory(markaId) {
   openModal('historyModal');
 }
 
-function assign(markaName, currentOwner) {
+function assign(markaName, currentOwner, currentCrr) {
   populateFollowperDropdowns();
   document.getElementById('assignmentMarka').value = markaName;
   const sel = document.getElementById('assignmentFollowper');
@@ -4469,7 +4584,17 @@ function assign(markaName, currentOwner) {
     }
     sel.value = currentOwner === 'Unassigned' ? '' : currentOwner;
   }
-  document.getElementById('assignmentTitle').textContent = 'Assign Followper · ' + markaName;
+  const crrSel = document.getElementById('assignmentCrr');
+  if (crrSel) {
+    if (currentCrr && currentCrr !== 'Unassigned' && !Array.from(crrSel.options).some(o => o.value === currentCrr)) {
+      const opt = document.createElement('option');
+      opt.value = currentCrr;
+      opt.textContent = currentCrr;
+      crrSel.appendChild(opt);
+    }
+    crrSel.value = currentCrr === 'Unassigned' ? '' : currentCrr;
+  }
+  document.getElementById('assignmentTitle').textContent = 'Assign Followper & CRR Person · ' + markaName;
   openModal('assignmentModal');
 }
 
@@ -4477,24 +4602,29 @@ function saveAssignment(e) {
   e.preventDefault();
   const markaName = (document.getElementById('assignmentMarka')?.value || '').trim();
   const newOwner = (document.getElementById('assignmentFollowper')?.value || '').trim() || 'Unassigned';
+  const newCrr = (document.getElementById('assignmentCrr')?.value || '').trim() || 'Unassigned';
   let count = 0;
   markas.forEach(m => {
     if ((m.marka || '').trim().toLowerCase() === markaName.toLowerCase()) {
       m.owner = newOwner;
+      m.crr = newCrr;
       count++;
     }
   });
   save();
   closeModal('assignmentModal');
   renderAll();
-  toast(`✓ Followper "${newOwner}" assigned to ${count} Marka profile(s) for ${markaName}.`);
+  toast(`✓ Personnel assigned to ${count} Marka profile(s) for ${markaName}.`);
 }
 
 function openMasterAssignment(masterName) {
+  populateFollowperDropdowns();
   document.getElementById('assignmentMasterName').value = masterName;
-  document.getElementById('masterAssignmentTitle').textContent = `Assign Accountable Person · ${masterName}`;
+  document.getElementById('masterAssignmentTitle').textContent = `Assign Accountable Personnel · ${masterName}`;
   const currentOwner = getMasterFollowper(masterName);
-  document.getElementById('masterAssignmentCopy').textContent = `Set the default accountable followper for all current and future Markas under ${masterName}.`;
+  const currentCrr = getMasterCrr(masterName);
+  document.getElementById('masterAssignmentCopy').textContent = `Set the default accountable Doer (Followper) and Senior CRR Person for all current and future Markas under ${masterName}.`;
+  
   const sel = document.getElementById('masterAssignmentFollowper');
   if (sel) {
     if (currentOwner && currentOwner !== 'Unassigned' && !Array.from(sel.options).some(o => o.value === currentOwner)) {
@@ -4505,6 +4635,18 @@ function openMasterAssignment(masterName) {
     }
     sel.value = currentOwner === 'Unassigned' ? '' : currentOwner;
   }
+
+  const crrSel = document.getElementById('masterAssignmentCrr');
+  if (crrSel) {
+    if (currentCrr && currentCrr !== 'Unassigned' && !Array.from(crrSel.options).some(o => o.value === currentCrr)) {
+      const opt = document.createElement('option');
+      opt.value = currentCrr;
+      opt.textContent = currentCrr;
+      crrSel.appendChild(opt);
+    }
+    crrSel.value = currentCrr === 'Unassigned' ? '' : currentCrr;
+  }
+
   document.getElementById('syncMasterMarkas').checked = true;
   openModal('masterAssignmentModal');
 }
@@ -4513,9 +4655,11 @@ function saveMasterAssignment(e) {
   e.preventDefault();
   const masterName = (document.getElementById('assignmentMasterName')?.value || '').trim();
   const newFollowper = (document.getElementById('masterAssignmentFollowper')?.value || '').trim() || 'Unassigned';
+  const newCrr = (document.getElementById('masterAssignmentCrr')?.value || '').trim() || 'Unassigned';
   const syncMarkas = document.getElementById('syncMasterMarkas')?.checked;
   
   masterFollowpers[masterName] = newFollowper;
+  masterCrrs[masterName] = newCrr;
   
   let count = 0;
   if (syncMarkas) {
@@ -4524,6 +4668,7 @@ function saveMasterAssignment(e) {
       const targetMaster = masterName.toLowerCase();
       if (mMaster === targetMaster || mMaster.includes(targetMaster) || targetMaster.includes(mMaster)) {
         m.owner = newFollowper;
+        m.crr = newCrr;
         count++;
       }
     });
@@ -4532,7 +4677,7 @@ function saveMasterAssignment(e) {
   save();
   closeModal('masterAssignmentModal');
   renderAll();
-  toast(`Master accountability saved: ${masterName} → ${newFollowper}${syncMarkas ? ` (${count} Markas updated)` : ''}`);
+  toast(`Master accountability saved: ${masterName} → Followper: ${newFollowper}, CRR: ${newCrr}${syncMarkas ? ` (${count} Markas updated)` : ''}`);
 }
 
 function openPaymentHistory(markaId) {
@@ -5825,6 +5970,7 @@ function exportMarkasExcel() {
     master: m.master,
     masterFollowper: getMasterFollowper(m.master),
     owner: ownerOf(m),
+    crr: crrOf(m),
     dueDate: oldestDueDate(m),
     alreadyDue: alreadyDueAmount(m),
     balance: totalOutstanding(m),
@@ -5835,7 +5981,7 @@ function exportMarkasExcel() {
     lastStatus: m.lastStatus || '—'
   }));
 
-  const table = `<table><tr><th>Marka</th><th>Master</th><th>Master Followper</th><th>Assigned Followper</th><th>Due Date (Policy)</th><th>Already Due Amount (INR)</th><th>Total Outstanding (INR)</th><th>Active Bills</th><th>Total Bills</th><th>Last Follow-up</th><th>Next Follow-up</th><th>Last Status</th></tr>${rows.map(r => `<tr><td>${escapeHtml(r.marka)}</td><td>${escapeHtml(r.master)}</td><td>${escapeHtml(r.masterFollowper)}</td><td>${escapeHtml(r.owner)}</td><td>${r.dueDate}</td><td>${r.alreadyDue}</td><td>${r.balance}</td><td>${r.activeBills}</td><td>${r.totalBills}</td><td>${r.lastDate}</td><td>${r.nextDate}</td><td>${escapeHtml(r.lastStatus)}</td></tr>`).join('')}</table>`;
+  const table = `<table><tr><th>Marka</th><th>Master</th><th>Master Followper</th><th>Assigned Followper (Junior)</th><th>Senior CRR Person</th><th>Due Date (Policy)</th><th>Already Due Amount (INR)</th><th>Total Outstanding (INR)</th><th>Active Bills</th><th>Total Bills</th><th>Last Follow-up</th><th>Next Follow-up</th><th>Last Status</th></tr>${rows.map(r => `<tr><td>${escapeHtml(r.marka)}</td><td>${escapeHtml(r.master)}</td><td>${escapeHtml(r.masterFollowper)}</td><td>${escapeHtml(r.owner)}</td><td>${escapeHtml(r.crr)}</td><td>${r.dueDate}</td><td>${r.alreadyDue}</td><td>${r.balance}</td><td>${r.activeBills}</td><td>${r.totalBills}</td><td>${r.lastDate}</td><td>${r.nextDate}</td><td>${escapeHtml(r.lastStatus)}</td></tr>`).join('')}</table>`;
   const blob = new Blob(['\ufeff' + table], { type: 'application/vnd.ms-excel' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -5857,12 +6003,13 @@ function exportMastersExcel() {
   const rows = Object.keys(masterStats).map(m => ({
     master: m,
     followper: getMasterFollowper(m),
+    crr: getMasterCrr(m),
     count: masterStats[m].count,
     alreadyDue: masterStats[m].alreadyDue,
     balance: masterStats[m].balance
   })).sort((a, b) => b.balance - a.balance);
 
-  const table = `<table><tr><th>Master Name</th><th>Default Accountable Person</th><th>Active Markas</th><th>Already Due Amount (INR)</th><th>Total Outstanding (INR)</th></tr>${rows.map(r => `<tr><td>${escapeHtml(r.master)}</td><td>${escapeHtml(r.followper)}</td><td>${r.count}</td><td>${r.alreadyDue}</td><td>${r.balance}</td></tr>`).join('')}</table>`;
+  const table = `<table><tr><th>Master Name</th><th>Default Followper (Junior)</th><th>Senior CRR Person</th><th>Active Markas</th><th>Already Due Amount (INR)</th><th>Total Outstanding (INR)</th></tr>${rows.map(r => `<tr><td>${escapeHtml(r.master)}</td><td>${escapeHtml(r.followper)}</td><td>${escapeHtml(r.crr)}</td><td>${r.count}</td><td>${r.alreadyDue}</td><td>${r.balance}</td></tr>`).join('')}</table>`;
   const blob = new Blob(['\ufeff' + table], { type: 'application/vnd.ms-excel' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -6354,11 +6501,16 @@ function renderAll() {
 }
 
 function populateFollowperDropdowns() {
-  const doers = allFollowpers().filter(x => x !== 'Unassigned');
+  const doers = allFollowpers().filter(x => x !== 'Unassigned' && !x.includes('@'));
+  const crrs = allCrrs().filter(x => x !== 'Unassigned' && !x.includes('@'));
+  const helpers = getAllAssigneesList();
+
   const optionsHtml = '<option value="">Select Sales Person / Doer...</option>' + 
     doers.map(x => `<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join('');
+  const crrOptionsHtml = '<option value="">Select Senior CRR Person...</option>' + 
+    crrs.map(x => `<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join('');
   const helperOptionsHtml = '<option value="">Select Helper Person...</option>' + 
-    doers.map(x => `<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join('');
+    helpers.map(x => `<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join('');
     
   const doerIds = ['followper', 'assignmentFollowper', 'masterAssignmentFollowper', 'userFollowper', 'resolveTicketBy'];
   doerIds.forEach(id => {
@@ -6370,7 +6522,17 @@ function populateFollowperDropdowns() {
     }
   });
 
-  const helperIds = ['helpTicketHelper', 'htAssignedHelper'];
+  const crrIds = ['assignmentCrr', 'masterAssignmentCrr'];
+  crrIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      const prevVal = el.value;
+      el.innerHTML = crrOptionsHtml;
+      if (prevVal) el.value = prevVal;
+    }
+  });
+
+  const helperIds = ['helpTicketHelper', 'htAssignedHelper', 'reassignNewHelper'];
   helperIds.forEach(id => {
     const el = document.getElementById(id);
     if (el) {
@@ -6548,6 +6710,10 @@ function initFirebase() {
             masterFollowpers = { ...DEFAULT_MASTER_FOLLOWPERS, ...d.masterFollowpers };
             localStorage.setItem('collectiq_master_followpers_v4', JSON.stringify(masterFollowpers));
           }
+          if (d.masterCrrs) {
+            masterCrrs = { ...DEFAULT_MASTER_CRR, ...d.masterCrrs };
+            localStorage.setItem('collectiq_master_crrs_v4', JSON.stringify(masterCrrs));
+          }
           renderAll();
         }
       }
@@ -6579,6 +6745,10 @@ function initFirebase() {
             masterFollowpers = { ...DEFAULT_MASTER_FOLLOWPERS, ...d.masterFollowpers };
             localStorage.setItem('collectiq_master_followpers_v4', JSON.stringify(masterFollowpers));
           }
+          if (d.masterCrrs) {
+            masterCrrs = { ...DEFAULT_MASTER_CRR, ...d.masterCrrs };
+            localStorage.setItem('collectiq_master_crrs_v4', JSON.stringify(masterCrrs));
+          }
           if (Array.isArray(d.users)) {
             users = d.users;
             window.users = users;
@@ -6607,6 +6777,7 @@ async function saveCloud() {
         markas,
         payments,
         masterFollowpers,
+        masterCrrs,
         users,
         helpTickets,
         version: APP_STORAGE_VERSION,
@@ -6701,6 +6872,7 @@ async function syncWithDatabase() {
           });
           payments = data.payments || [];
           masterFollowpers = { ...DEFAULT_MASTER_FOLLOWPERS, ...(data.masterFollowpers || {}) };
+          masterCrrs = { ...DEFAULT_MASTER_CRR, ...(data.masterCrrs || {}) };
           if (Array.isArray(data.helpTickets)) {
             helpTickets = data.helpTickets;
             localStorage.setItem('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
