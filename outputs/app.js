@@ -3045,19 +3045,28 @@ function crmEscalationsView() {
     });
 
     (m.history || []).forEach((h, hIdx) => {
-      if (h.status === 'Claim Matter' || h.status === 'WhatsApp Complaint' || h.status === 'Escalated' || h.status === 'Claim / Complaint') {
+      const isClaimOrComplaint = h.status && (
+        h.status.includes('Claim') || 
+        h.status.includes('Complaint') || 
+        h.status.includes('Escalat')
+      );
+      if (isClaimOrComplaint) {
         const histKey = m.id + '_' + h.date + '_' + h.status;
         if (!seenEscKeys.has(histKey)) {
           seenEscKeys.add(histKey);
+          let escType = 'Claim Matter';
+          if (h.status.includes('WhatsApp') || h.status.includes('Complaint')) escType = 'WhatsApp Complaint';
+          else if (h.status.includes('Escalat')) escType = 'Escalated';
+
           allEscs.push({
             id: 'h_crm_' + m.id + '_' + hIdx,
             markaName: m.marka,
             markaId: m.id,
             date: h.date,
-            type: h.status,
+            type: escType,
             claimNumber: h.claimNumber || '',
             waComplaintNo: h.waComplaintNo || '',
-            escalatedTo: h.escalatedTo || '',
+            escalatedTo: h.escalatedTo || 'CRM',
             followper: h.followper || ownerOf(m),
             status: 'Open',
             remark: h.remark || '',
@@ -3084,7 +3093,17 @@ function crmEscalationsView() {
   const q = (F.crmSearch || '').toLowerCase().trim();
   let filteredEscs = allEscs.filter(e => {
     const statusMatch = curStatus === 'All' || (e.status || 'Open').toLowerCase() === curStatus.toLowerCase();
-    const typeMatch = curType === 'all' || (e.type || '').toLowerCase() === curType.toLowerCase() || (curType === 'Escalated' && (e.type === 'CRM Escalation' || e.type === 'Escalated'));
+    const eType = (e.type || '').toLowerCase();
+    let typeMatch = true;
+    if (curType === 'Claim Matter') {
+      typeMatch = eType.includes('claim') || eType.includes('matter');
+    } else if (curType === 'WhatsApp Complaint') {
+      typeMatch = eType.includes('whatsapp') || eType.includes('complaint');
+    } else if (curType === 'Escalated') {
+      typeMatch = eType.includes('escalat') || eType.includes('management');
+    } else if (curType !== 'all') {
+      typeMatch = eType === curType.toLowerCase();
+    }
     const searchMatch = !q || (e.markaName || '').toLowerCase().includes(q) || (e.remark || '').toLowerCase().includes(q) || (e.claimNumber || '').toLowerCase().includes(q);
     return statusMatch && typeMatch && searchMatch;
   });
@@ -6676,7 +6695,6 @@ function getCloudConfig() {
 }
 
 function initFirebase() {
-  if (isLocalServer()) return false;
   const cfg = getCloudConfig();
   if (!cfg || typeof firebase === 'undefined') return false;
   try {
@@ -6800,7 +6818,7 @@ async function saveCloud() {
         helpTickets,
         version: APP_STORAGE_VERSION,
         updatedAt: new Date().toISOString()
-      }, { merge: true });
+      });
     } catch (err) {
       console.error('Error writing to Firestore:', err);
     }
