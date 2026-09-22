@@ -29,6 +29,12 @@ db.exec(`
     updated_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS master_crrs (
+    master_name TEXT PRIMARY KEY,
+    crr_name TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS markas (
     id TEXT PRIMARY KEY,
     marka TEXT NOT NULL UNIQUE,
@@ -235,6 +241,20 @@ const DEFAULT_MASTERS = {
   '11': 'Girdharilal'
 };
 
+// Default Master-CRR Mappings
+const DEFAULT_MASTER_CRR = {
+  'BABLU MASTER': 'Ravi Bhai',
+  'BABLU SHERA MASTER': 'Ravi Bhai',
+  'KALPESH MASTER': 'Ravi Bhai',
+  'RAJESH MASTER': 'Nayan Bhai',
+  'RIPETSH MASTER': 'Nayan Bhai',
+  'RIPTESH MASTER': 'Nayan Bhai',
+  'MANISH MASTER': 'Nayan Bhai',
+  'KUNAL MASTER': 'Mahendra Bhai',
+  'GUDDU MASTER': 'Mahendra Bhai',
+  '11': 'Nayan Bhai'
+};
+
 // Seed default masters if empty
 const masterCountStmt = db.prepare('SELECT COUNT(*) AS c FROM masters');
 if (masterCountStmt.get().c === 0) {
@@ -246,6 +266,17 @@ if (masterCountStmt.get().c === 0) {
   console.log('✓ Seeded default master-followper mappings.');
 }
 
+// Seed default master_crrs if empty
+const crrCountStmt = db.prepare('SELECT COUNT(*) AS c FROM master_crrs');
+if (crrCountStmt.get().c === 0) {
+  const insertCrr = db.prepare('INSERT INTO master_crrs (master_name, crr_name, updated_at) VALUES (?, ?, ?)');
+  const now = new Date().toISOString();
+  for (const [m, c] of Object.entries(DEFAULT_MASTER_CRR)) {
+    insertCrr.run(m, c, now);
+  }
+  console.log('✓ Seeded default master-crr mappings.');
+}
+
 // Seed or sync default users
 const insertOrUpdateUser = db.prepare(`
   INSERT INTO users (email, password, role, followper_name, created_at)
@@ -255,9 +286,16 @@ const insertOrUpdateUser = db.prepare(`
 const nowTime = new Date().toISOString();
 insertOrUpdateUser.run('admin@collectiq.com', '1234', 'admin', 'all', nowTime);
 insertOrUpdateUser.run('devlope.vishal@gmail.com', '1234', 'admin', 'all', nowTime);
-insertOrUpdateUser.run('accounts@collectiq.com', '1234', 'user', 'Account Team', nowTime);
-insertOrUpdateUser.run('crm@collectiq.com', '1234', 'user', 'CRM', nowTime);
-insertOrUpdateUser.run('sales.hod@collectiq.com', '1234', 'user', 'Sales HOD', nowTime);
+insertOrUpdateUser.run('accounts@collectiq.com', '1234', 'accounts', 'Account Team', nowTime);
+insertOrUpdateUser.run('crm@collectiq.com', '1234', 'crm', 'CRM', nowTime);
+insertOrUpdateUser.run('sales.hod@collectiq.com', '1234', 'superuser', 'Sales HOD', nowTime);
+insertOrUpdateUser.run('saurav@collectiq.com', '1234', 'superuser', 'Saurav Bhai', nowTime);
+insertOrUpdateUser.run('saurav@bhaskarsilkmills.in', '1234', 'superuser', 'Saurav Bhai', nowTime);
+insertOrUpdateUser.run('bhavesh@collectiq.com', '1234', 'superuser', 'Bhavesh Bhai', nowTime);
+insertOrUpdateUser.run('nayan@collectiq.com', '1234', 'crr', 'Nayan Bhai', nowTime);
+insertOrUpdateUser.run('ravi@collectiq.com', '1234', 'crr', 'Ravi Bhai', nowTime);
+insertOrUpdateUser.run('mahendra@collectiq.com', '1234', 'crr', 'Mahendra Bhai', nowTime);
+insertOrUpdateUser.run('pc@collectiq.com', '1234', 'pc', 'Process Coordinator (PC)', nowTime);
 insertOrUpdateUser.run('surendra@collectiq.com', '1234', 'user', 'Surendra', nowTime);
 insertOrUpdateUser.run('mahavir@collectiq.com', '1234', 'user', 'Mahavir', nowTime);
 insertOrUpdateUser.run('girdharilal@collectiq.com', '1234', 'user', 'Girdharilal', nowTime);
@@ -265,9 +303,6 @@ insertOrUpdateUser.run('sajjan@collectiq.com', '1234', 'user', 'Sajjan', nowTime
 insertOrUpdateUser.run('anil.sharma@collectiq.com', '1234', 'user', 'Anil Sharma', nowTime);
 insertOrUpdateUser.run('manish.agarwal@collectiq.com', '1234', 'user', 'Manish Agarwal', nowTime);
 insertOrUpdateUser.run('ravi.sharma@collectiq.com', '1234', 'user', 'Ravi Kant Sharma', nowTime);
-insertOrUpdateUser.run('saurav@collectiq.com', '1234', 'user', 'Saurav Bhai', nowTime);
-insertOrUpdateUser.run('bhavesh@collectiq.com', '1234', 'user', 'Bhavesh Bhai', nowTime);
-insertOrUpdateUser.run('pc@collectiq.com', '1234', 'user', 'Process Coordinator (PC)', nowTime);
 console.log('✓ Seeded and verified all default user accounts in SQLite.');
 
 // Seed Markas and Bills only on initial creation
@@ -489,6 +524,10 @@ function getFullData() {
   const masterFollowpers = {};
   masterRows.forEach(r => masterFollowpers[r.master_name] = r.followper_name);
 
+  const masterCrrsRows = db.prepare('SELECT * FROM master_crrs').all();
+  const masterCrrs = {};
+  masterCrrsRows.forEach(r => masterCrrs[r.master_name] = r.crr_name);
+
   const helpTicketRows = db.prepare('SELECT * FROM help_tickets ORDER BY created_at DESC').all();
   const helpTickets = helpTicketRows.map(h => ({
     id: h.id,
@@ -518,7 +557,7 @@ function getFullData() {
     followperName: u.followper_name
   }));
 
-  return { markas, payments, masterFollowpers, users, helpTickets, dbType: 'SQLite (WAL)' };
+  return { markas, payments, masterFollowpers, masterCrrs, users, helpTickets, dbType: 'SQLite (WAL)' };
 }
 
 // HTTP Server
@@ -819,6 +858,14 @@ const server = http.createServer((req, res) => {
           VALUES (?, ?, ?)
           ON CONFLICT(master_name) DO UPDATE SET followper_name = excluded.followper_name, updated_at = excluded.updated_at
         `).run(masterName, targetFollowper, now);
+
+        if (payload.newCrr) {
+          db.prepare(`
+            INSERT INTO master_crrs (master_name, crr_name, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(master_name) DO UPDATE SET crr_name = excluded.crr_name, updated_at = excluded.updated_at
+          `).run(masterName, payload.newCrr, now);
+        }
 
         let updatedMarkas = 0;
         if (syncMarkas) {

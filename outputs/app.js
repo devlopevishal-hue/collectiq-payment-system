@@ -190,8 +190,8 @@ let F = { followper: 'all', master: 'all', marka: '', min: '', max: '', minCount
 const DEFAULT_USERS = [
   { email: 'devlope.vishal@gmail.com', password: '1234', role: 'admin', followperName: 'all' },
   { email: 'admin@collectiq.com', password: '1234', role: 'admin', followperName: 'all' },
-  { email: 'accounts@collectiq.com', password: '1234', role: 'user', followperName: 'Account Team' },
-  { email: 'crm@collectiq.com', password: '1234', role: 'user', followperName: 'CRM' },
+  { email: 'accounts@collectiq.com', password: '1234', role: 'accounts', followperName: 'Account Team' },
+  { email: 'crm@collectiq.com', password: '1234', role: 'crm', followperName: 'CRM' },
   { email: 'sales.hod@collectiq.com', password: '1234', role: 'superuser', followperName: 'Sales HOD' },
   { email: 'saurav@collectiq.com', password: '1234', role: 'superuser', followperName: 'Saurav Bhai' },
   { email: 'saurav@bhaskarsilkmills.in', password: '1234', role: 'superuser', followperName: 'Saurav Bhai' },
@@ -209,14 +209,16 @@ const DEFAULT_USERS = [
   { email: 'ravi.sharma@collectiq.com', password: '1234', role: 'user', followperName: 'Ravi Kant Sharma' }
 ];
 
+let hasLoadedCloudData = false;
+
 function isLocalServer() {
   const host = (window.location && window.location.hostname) || '';
   const port = (window.location && window.location.port) || '';
-  return (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || port === '3000' || port === '3899' || port === '3911') && !firestoreDb;
+  return (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || port === '3000' || port === '3899' || port === '3911');
 }
 
 function isOnlineMode() {
-  return isLocalServer() || Boolean(firestoreDb);
+  return isLocalServer();
 }
 
 function checkAuth() {
@@ -231,6 +233,9 @@ function checkAuth() {
     const isAdmin = currentUser.role === 'admin' || currentUser.role === 'superuser';
     const isMasterAdmin = currentUser.email === 'devlope.vishal@gmail.com' || currentUser.email === 'admin@collectiq.com' || (currentUser.role === 'admin' && currentUser.email.includes('admin'));
     const isPcOrAdmin = isAdmin || currentUser.role === 'pc' || (currentUser.email && (currentUser.email.toLowerCase().includes('pc') || currentUser.email.toLowerCase().includes('coordinator'))) || (currentUser.followperName && (currentUser.followperName.toLowerCase().includes('pc') || currentUser.followperName.toLowerCase().includes('coordinator')));
+    const isCrm = currentUser.role === 'crm' || (currentUser.email && currentUser.email.toLowerCase().includes('crm')) || (currentUser.followperName && currentUser.followperName.toLowerCase() === 'crm');
+    const isAccounts = currentUser.role === 'accounts' || (currentUser.email && currentUser.email.toLowerCase().includes('accounts'));
+    const isCrr = currentUser.role === 'crr';
 
     // FMS Pre-planned is only for PC / Admin
     document.querySelectorAll('.nav[data-view="fms"], .b-nav[data-view="fms"]').forEach(el => {
@@ -241,7 +246,11 @@ function checkAuth() {
       document.getElementById('setupSection').style.display = 'none';
       if (document.getElementById('navUsers')) document.getElementById('navUsers').style.display = 'none';
       if (document.getElementById('resetBillsBtn')) document.getElementById('resetBillsBtn').style.display = 'none';
-      F.followper = currentUser.followperName || 'Unassigned';
+      if (isCrm || isAccounts || isCrr) {
+        F.followper = 'all';
+      } else {
+        F.followper = currentUser.followperName || 'Unassigned';
+      }
     } else {
       document.getElementById('setupSection').style.display = 'block';
       if (document.getElementById('navUsers')) document.getElementById('navUsers').style.display = 'block';
@@ -377,7 +386,6 @@ async function handleLoginSubmit(e) {
   matchedUser.activeDeviceId = currentDeviceId;
   matchedUser.lastActiveTime = now;
   matchedUser.lastLoginDevice = navigator.userAgent ? (navigator.userAgent.includes('Mobile') ? 'Mobile Device' : 'Desktop Browser') : 'Web';
-  save();
 
   currentUser = {
     email: matchedUser.email,
@@ -389,6 +397,7 @@ async function handleLoginSubmit(e) {
   localStorage.setItem('collectiq_current_user', JSON.stringify(currentUser));
   
   checkAuth();
+  await syncWithDatabase();
   renderAll();
 
   if (sessionSwitched) {
@@ -2365,7 +2374,9 @@ function helpTicketsView() {
   
   const curStatus = (F.htStatus || 'All').trim();
   const curPriority = (F.htPriority || 'all').trim();
-  const isUserRole = currentUser && currentUser.role === 'user';
+  const isCrmUser = currentUser && (currentUser.role === 'crm' || (currentUser.email && currentUser.email.toLowerCase().includes('crm')) || (currentUser.followperName && currentUser.followperName.toLowerCase() === 'crm'));
+  const isAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superuser');
+  const isUserRole = currentUser && currentUser.role === 'user' && !isCrmUser && !isAdmin;
   
   const filterEl = document.getElementById('helpTicketFilters');
   if (filterEl) {
@@ -2971,7 +2982,9 @@ function crmEscalationsView() {
 
   const curStatus = (F.crmStatus || 'All').trim();
   const curType = (F.crmType || 'all').trim();
-  const isUserRole = currentUser && currentUser.role === 'user';
+  const isCrmUser = currentUser && (currentUser.role === 'crm' || (currentUser.email && currentUser.email.toLowerCase().includes('crm')) || (currentUser.followperName && currentUser.followperName.toLowerCase() === 'crm'));
+  const isAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superuser');
+  const isUserRole = currentUser && currentUser.role === 'user' && !isCrmUser && !isAdmin;
 
   const filterEl = document.getElementById('crmEscFilters');
   if (filterEl) {
@@ -3967,7 +3980,10 @@ async function saveFollowup(e) {
   const isPayment = statusVal.includes('Payment Received');
 
   const claimNumber = (document.getElementById('claimNumber')?.value || '').trim();
-  const escalateTo = document.getElementById('escalateTo')?.value || '';
+  let escalateTo = (document.getElementById('escalateTo')?.value || '').trim();
+  if (isComplaint && !escalateTo) {
+    escalateTo = 'CRM';
+  }
 
   const helperName = document.getElementById('helpTicketHelper')?.value || '';
   const helpPriority = document.getElementById('helpTicketPriority')?.value || 'Normal';
@@ -6679,17 +6695,19 @@ function initFirebase() {
     
     // Auto-seed cloud database if document does not exist yet on first boot
     firestoreDb.collection('collectiq').doc('main').get().then(doc => {
-      if (!doc.exists || (doc.data() && doc.data().version !== APP_STORAGE_VERSION)) {
+      if (!doc.exists) {
         console.log('⚡ Initializing Firebase Cloud database with fresh clean state...');
+        hasLoadedCloudData = true;
         markas = [];
         payments = [];
         helpTickets = [];
         saveCloud();
         renderAll();
       } else {
+        hasLoadedCloudData = true;
         const d = doc.data();
         if (d) {
-          if (Array.isArray(d.users)) {
+          if (Array.isArray(d.users) && d.users.length > 0) {
             users = d.users;
             window.users = users;
             localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
@@ -6722,6 +6740,7 @@ function initFirebase() {
     // Real-time listener for live multi-user sync on GitHub Pages / Web
     firestoreDb.collection('collectiq').doc('main').onSnapshot(doc => {
       if (doc.exists) {
+        hasLoadedCloudData = true;
         const d = doc.data();
         if (d) {
           if (Array.isArray(d.markas)) {
@@ -6749,7 +6768,7 @@ function initFirebase() {
             masterCrrs = { ...DEFAULT_MASTER_CRR, ...d.masterCrrs };
             localStorage.setItem('collectiq_master_crrs_v4', JSON.stringify(masterCrrs));
           }
-          if (Array.isArray(d.users)) {
+          if (Array.isArray(d.users) && d.users.length > 0) {
             users = d.users;
             window.users = users;
             localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
@@ -6772,6 +6791,10 @@ function initFirebase() {
 
 async function saveCloud() {
   if (firestoreDb) {
+    if (!hasLoadedCloudData && markas.length === 0 && payments.length === 0 && helpTickets.length === 0) {
+      console.warn('saveCloud skipped: cloud data not yet loaded into memory.');
+      return;
+    }
     try {
       await firestoreDb.collection('collectiq').doc('main').set({
         markas,

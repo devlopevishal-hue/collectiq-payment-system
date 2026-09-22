@@ -124,6 +124,12 @@
         </div>
       </div>
       <div class="header-actions">
+        <div id="dbBadge" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:6px 10px; background:#f0f4f2; border:1px solid #d0ded7; border-radius:6px; color:#234e3f; cursor:pointer;" onclick="openCloudModal()" title="Database Connection Status">
+          <span style="color:#e99a3c;">●</span> Local Browser Cache
+        </div>
+        <button class="btn secondary" onclick="syncWithDatabase()" style="display:inline-flex; align-items:center; gap:5px;" title="Refresh &amp; Sync with live server / cloud">
+          🔄 Sync Live
+        </button>
         <button class="btn secondary" onclick="exportExcel()">Export to Excel</button>
         <button class="btn secondary" onclick="window.print()">Print PDF</button>
         <button id="resetBillsBtn" class="btn secondary" style="background:#faeceb;color:#c44d48;border-color:#f2c0be;display:none;" onclick="clearAllData()">Reset / Clear Bills</button>
@@ -562,6 +568,8 @@
               <select id="newUserRole" onchange="onUserRoleChange()" style="width:100%; padding:9px 12px; border:1px solid #dbe5e0; border-radius:6px; margin-top:4px; font-family:inherit;">
                 <option value="user">Standard Doer (Own Markas, Tasks &amp; Scores Only)</option>
                 <option value="crr">Senior CRR Person (Master-wise Overseeing &amp; Authority)</option>
+                <option value="crm">CRM Department (Claims, WhatsApp Complaints &amp; Escalations Central Control)</option>
+                <option value="accounts">Accounts Department (Full Rokad &amp; Invoice Settlements Access)</option>
                 <option value="pc">Process Coordinator / PC (FMS Milestones &amp; Verification)</option>
                 <option value="superuser">Super Doer / Superuser (Full Visibility, Cross-Doer Delegation &amp; Reports)</option>
                 <option value="admin">Admin (Full Control, Scoring &amp; User Management)</option>
@@ -1305,6 +1313,8 @@
           <select id="editUserRole" onchange="onEditUserRoleChange()" style="width:100%; padding:9px 12px; border:1px solid #dbe5e0; border-radius:6px; margin-top:4px; font-family:inherit; font-size:13px;">
             <option value="user">Standard Doer (Own Markas, Tasks &amp; Scores Only)</option>
             <option value="crr">Senior CRR Person (Master-wise Overseeing &amp; Authority)</option>
+            <option value="crm">CRM Department (Claims, WhatsApp Complaints &amp; Escalations Central Control)</option>
+            <option value="accounts">Accounts Department (Full Rokad &amp; Invoice Settlements Access)</option>
             <option value="pc">Process Coordinator / PC (FMS Milestones &amp; Verification)</option>
             <option value="superuser">Super Doer / Superuser (Full Visibility, Cross-Doer Delegation &amp; Reports)</option>
             <option value="admin">Admin (Full Control, Scoring &amp; User Management)</option>
