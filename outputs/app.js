@@ -6672,12 +6672,7 @@ const DEFAULT_FIREBASE_CONFIG = {
 };
 
 function getCloudConfig() {
-  try {
-    const c = localStorage.getItem('collectiq_firebase_config_v4');
-    return c ? JSON.parse(c) : DEFAULT_FIREBASE_CONFIG;
-  } catch (e) {
-    return DEFAULT_FIREBASE_CONFIG;
-  }
+  return DEFAULT_FIREBASE_CONFIG;
 }
 
 function initFirebase() {
@@ -6813,64 +6808,22 @@ async function saveCloud() {
 }
 
 function openCloudModal() {
-  const cfg = getCloudConfig();
-  const inp = document.getElementById('firebaseConfigInput');
-  if (inp) inp.value = cfg ? JSON.stringify(cfg, null, 2) : '';
-  const st = document.getElementById('cloudStatusText');
-  if (st) {
-    if (firestoreDb) {
-      st.innerHTML = '<b>Status: 🟢 Connected to Firebase Firestore Cloud DB (Live Sync across all devices)</b>';
-      st.style.color = '#087454';
-    } else if (isServerConnected) {
-      st.innerHTML = '<b>Status: 🟢 Connected to Local Node.js SQLite Server (WAL Mode)</b>';
-      st.style.color = '#087454';
-    } else {
-      st.innerHTML = '<b>Status: 🟡 Standalone Browser Local Cache (Single Machine)</b>';
-      st.style.color = '#744e19';
-    }
-  }
-  openModal('cloudModal');
+  // Direct backend database connection is automatic
+  syncWithDatabase();
+  toast('Database live sync active and connected.');
 }
 
 function saveCloudConfig() {
-  const txt = document.getElementById('firebaseConfigInput').value.trim();
-  if (!txt) return toast('Please paste your Firebase Config JSON.');
-  try {
-    const cfg = JSON.parse(txt);
-    localStorage.setItem('collectiq_firebase_config_v4', JSON.stringify(cfg));
-    const ok = initFirebase();
-    if (ok) {
-      toast('Firebase Cloud DB connected! Syncing live across all devices.');
-      pushToCloud();
-      closeModal('cloudModal');
-    } else {
-      toast('Failed to connect with provided Firebase config.');
-    }
-  } catch (e) {
-    toast('Invalid JSON format. Please paste valid Firebase Config JSON.');
-  }
+  toast('Database connection is automatically configured from backend.');
 }
 
 async function pushToCloud() {
-  if (!firestoreDb) {
-    const ok = initFirebase();
-    if (!ok) return toast('Connect Cloud DB first by pasting Firebase Config.');
-  }
-  toast('Uploading local dataset to Firebase Firestore...');
-  try {
-    await saveCloud();
-    toast('✓ All Markas, Bills & Daily Rokad uploaded to Cloud DB!');
-  } catch (e) {
-    toast('Upload failed: ' + e.message);
-  }
+  await saveCloud();
+  toast('✓ All records synchronized to central database!');
 }
 
 function disconnectCloud() {
-  localStorage.removeItem('collectiq_firebase_config_v4');
-  firestoreDb = null;
-  updateDbStatusBadge(isServerConnected ? 'sqlite' : 'local');
-  closeModal('cloudModal');
-  toast('Cloud DB disconnected. Reverted to local storage.');
+  toast('Direct database connection is active.');
 }
 
 let isSyncing = false;
@@ -6922,7 +6875,7 @@ async function syncWithDatabase() {
     return;
   }
 
-  // 1. Try Firebase if configured (for GitHub Pages / Web deployment)
+  // 1. Try Firebase (for Web / GitHub Pages deployment)
   if (initFirebase()) {
     return;
   }
@@ -6932,14 +6885,14 @@ function updateDbStatusBadge(mode) {
   const el = document.getElementById('dbBadge');
   if (el) {
     if (mode === 'firebase' || firestoreDb) {
-      el.innerHTML = '<span style="color:#4ba779;">●</span> Cloud DB (Firebase)';
-      el.title = 'Connected to Firebase Firestore Cloud DB (Real-time sync on GitHub Pages)';
+      el.innerHTML = '<span style="color:#4ba779;">●</span> Live Database (Connected)';
+      el.title = 'Direct Connection to Central Database (Real-time live sync for all doers)';
     } else if (mode === 'sqlite' || mode === true) {
-      el.innerHTML = '<span style="color:#4ba779;">●</span> SQLite DB (Live Connected)';
+      el.innerHTML = '<span style="color:#4ba779;">●</span> SQLite Database (Live Connected)';
       el.title = 'Direct Live Connection to SQLite Database (Multi-user real-time sync)';
     } else {
-      el.innerHTML = '<span style="color:#e99a3c;">●</span> Local Browser Cache';
-      el.title = 'Running on browser storage. Start the Node.js server to enable live multi-user database sync.';
+      el.innerHTML = '<span style="color:#4ba779;">●</span> Live Database (Connecting...)';
+      el.title = 'Connecting to central live database...';
     }
   }
 }

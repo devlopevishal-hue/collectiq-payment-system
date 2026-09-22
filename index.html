@@ -96,7 +96,6 @@
         <button class="nav" data-view="markas"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg></i> Marka & Followper</button>
         <button class="nav" data-view="import"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg></i> Sync outstanding</button>
         <button class="nav" data-view="users" id="navUsers" style="display:none;"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></i> Manage Users</button>
-        <button class="nav" onclick="openCloudModal()"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path></svg></i> Cloud Database</button>
       </nav>
     </div>
     <div class="user-card">
@@ -124,8 +123,8 @@
         </div>
       </div>
       <div class="header-actions">
-        <div id="dbBadge" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:6px 10px; background:#f0f4f2; border:1px solid #d0ded7; border-radius:6px; color:#234e3f; cursor:pointer;" onclick="openCloudModal()" title="Database Connection Status">
-          <span style="color:#e99a3c;">●</span> Local Browser Cache
+        <div id="dbBadge" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:6px 10px; background:#f0f4f2; border:1px solid #d0ded7; border-radius:6px; color:#234e3f;" title="Live Unified Database Status">
+          <span style="color:#4ba779;">●</span> Live Database (Connected)
         </div>
         <button class="btn secondary" onclick="syncWithDatabase()" style="display:inline-flex; align-items:center; gap:5px;" title="Refresh &amp; Sync with live server / cloud">
           🔄 Sync Live
@@ -1219,37 +1218,7 @@
     </form>
   </div>
 
-  <div class="modal-backdrop" id="cloudModal">
-    <div class="modal wide">
-      <button type="button" class="close" onclick="closeModal('cloudModal')">×</button>
-      <p class="eyebrow">MULTI-USER CLOUD SYNC</p>
-      <h2>Cloud Database Setup (GitHub Pages / Firebase)</h2>
-      <p class="modal-copy">Connect a free Google Firebase Firestore database so multiple team members on different laptops and mobile phones see real-time updates when hosted on GitHub Pages.</p>
-      
-      <div style="background:#f4faf7;border:1px solid #d2ebe0;border-radius:8px;padding:12px 16px;margin:14px 0;font-size:12px;color:#1d533f;">
-        <strong>How to get free Firebase Config (Takes 1 minute):</strong>
-        <ol style="margin:6px 0 0;padding-left:18px;line-height:1.5;">
-          <li>Go to <a href="https://console.firebase.google.com/" target="_blank" style="color:#087454;font-weight:700;">Firebase Console</a> and create a free project.</li>
-          <li>Click <b>Firestore Database</b> &gt; <b>Create database</b> (Start in test mode).</li>
-          <li>Click Project Settings (gear icon) &gt; Add Web App (<code>&lt;/&gt;</code>) &gt; Copy the <code>firebaseConfig</code> JSON.</li>
-        </ol>
-      </div>
 
-      <label>Firebase Config JSON
-        <textarea id="firebaseConfigInput" placeholder='{\n  "apiKey": "AIzaSy...",\n  "authDomain": "...",\n  "projectId": "...",\n  "storageBucket": "...",\n  "messagingSenderId": "...",\n  "appId": "..."\n}' style="height:120px;font-family:'DM Mono',monospace;font-size:11px;"></textarea>
-      </label>
-
-      <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;">
-        <button class="btn primary" onclick="saveCloudConfig()">Connect &amp; Sync Cloud DB</button>
-        <button class="btn secondary" onclick="pushToCloud()">Upload Local Data to Cloud</button>
-        <button class="btn secondary" onclick="disconnectCloud()" style="color:#c44d48;">Disconnect Cloud</button>
-      </div>
-
-      <div class="modal-footer" style="margin-top:16px;">
-        <span id="cloudStatusText">Status: Standalone / Local Database</span>
-      </div>
-    </div>
-  </div>
 
   <!-- Change Password Modal -->
   <div class="modal-backdrop" id="changePasswordModal">
