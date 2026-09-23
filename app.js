@@ -1323,7 +1323,10 @@ function schedule() {
     const d = days(m.nextDate);
     const oldest = oldestDueDate(m);
     let badge;
-    if (locked) {
+    const out = totalOutstanding(m);
+    if (out < 0) {
+      badge = `<span class="status advance" style="background:#e8f4ef; color:#087454; font-weight:800; border:1px solid #c0e7d5;">ADVANCE (${money(Math.abs(out))})</span>`;
+    } else if (locked) {
       badge = `<span class="status overdue" style="background:#faeceb; color:#c44d48; font-weight:800; border:1px solid #f5c6cb;">⊘ GP LOCKED (${days(oldest)}d)</span>`;
     } else if (!m.nextDate) {
       badge = '<span class="status closed">CLOSED</span>';
@@ -1335,13 +1338,14 @@ function schedule() {
       badge = `<span class="status active">UPCOMING</span>`;
     }
     const due = alreadyDueAmount(m);
+    const balDisplay = out < 0 ? `<b style="color:#087454;">-${money(Math.abs(out))} (Adv)</b>` : money(out);
     return `
       <tr>
         <td><span class="case-name">${escapeHtml(m.marka)}</span></td>
         <td>${escapeHtml(m.master)}</td>
         <td>${fmt(oldestDueDate(m))}</td>
         <td class="money" style="${due > 0 ? 'font-weight:700;color:#c44d48;' : ''}">${money(due)}</td>
-        <td class="money">${money(totalOutstanding(m))}</td>
+        <td class="money">${balDisplay}</td>
         <td>${escapeHtml(ownerOf(m))}</td>
         <td>${followUpCount(m)}</td>
         <td>${fmt(m.nextDate)}</td>
@@ -2318,13 +2322,15 @@ function markaView() {
   if (markaTbody) {
     markaTbody.innerHTML = list.length ? list.map(m => {
       const due = alreadyDueAmount(m);
+      const out = totalOutstanding(m);
+      const balDisplay = out < 0 ? `<b style="color:#087454;">-${money(Math.abs(out))} (Adv)</b>` : money(out);
       return `
         <tr>
           <td><span class="case-name">${escapeHtml(m.marka)}</span></td>
           <td>${escapeHtml(m.master)}</td>
           <td>Due: ${fmt(oldestDueDate(m))}<br><small style="color:#788882;">Next follow-up: ${fmt(m.nextDate)}</small></td>
           <td class="money" style="${due > 0 ? 'font-weight:700;color:#c44d48;' : ''}">${money(due)}</td>
-          <td class="money">${money(totalOutstanding(m))}</td>
+          <td class="money">${balDisplay}</td>
           <td>${activeBills(m).length}</td>
           <td><span class="status ${ownerOf(m) === 'Unassigned' ? 'overdue' : 'active'}">${escapeHtml(ownerOf(m))}</span></td>
           <td><span class="status active" style="background:#e8f4ef; color:#087454; font-weight:700;">${escapeHtml(crrOf(m))}</span></td>
@@ -3725,8 +3731,15 @@ function populateFollowPayBills(m) {
   if (!container || !m) return;
   
   const bills = activeBills(m).sort((a, b) => a.firstDate.localeCompare(b.firstDate));
+  const tot = totalOutstanding(m);
   if (!bills.length) {
-    container.innerHTML = '<p class="modal-copy">No active unpaid bills for this Marka.</p>';
+    const advText = tot < 0 ? `Current Marka Balance: <b style="color:#087454;">Advance Credit ${money(Math.abs(tot))}</b>` : 'No pending unpaid invoices for this Marka.';
+    container.innerHTML = `
+      <div style="background:#edf7f2; border:1px solid #c0e7d5; padding:8px 10px; border-radius:6px; font-size:12px; color:#087454;">
+        ${advText}
+        <div style="margin-top:2px; font-size:11px; color:#334d43;">Payment received will be recorded as an <b>Advance Payment Credit</b>.</div>
+      </div>
+    `;
     return;
   }
 
@@ -3808,7 +3821,21 @@ function updateFollowPayAllocations(source = 'amount') {
   
   const summaryEl = document.getElementById('followAllocationSummary');
   if (summaryEl) {
-    summaryEl.textContent = `${money(allocatedSum)} allocated across ${checkedCount} invoice(s)`;
+    const diff = totalReceived - allocatedSum;
+    if (diff > 0) {
+      if (allocatedSum > 0) {
+        summaryEl.textContent = `${money(allocatedSum)} allocated across ${checkedCount} invoice(s) · ${money(diff)} Advance Credit · Matched ✓`;
+      } else {
+        summaryEl.textContent = `${money(diff)} Advance Payment Credit · Matched ✓`;
+      }
+      summaryEl.style.color = '#287553';
+    } else if (diff === 0 && totalReceived > 0) {
+      summaryEl.textContent = `${money(allocatedSum)} allocated across ${checkedCount} invoice(s) · Matched ✓`;
+      summaryEl.style.color = '#287553';
+    } else {
+      summaryEl.textContent = `${money(allocatedSum)} allocated across ${checkedCount} invoice(s) · ${money(Math.abs(diff))} remaining`;
+      summaryEl.style.color = '#c44d48';
+    }
   }
 }
 
@@ -4051,8 +4078,32 @@ async function saveFollowup(e) {
       }
     });
 
-    if (allocations.length === 0) {
+    const totalAllocated = allocations.reduce((sum, a) => sum + a.amount, 0);
+    if (activeBills(m).length > 0 && allocations.length === 0 && payAmount < totalOutstanding(m)) {
       return toast('Please allocate payment against at least one invoice.');
+    }
+
+    const advanceAmount = Math.max(0, payAmount - totalAllocated);
+    if (advanceAmount > 0) {
+      const advBillId = 'adv_' + uid();
+      if (!m.bills) m.bills = [];
+      const advRefNo = (payRef && payRef !== 'N/A') ? `ADV/${payRef}` : `ADV/${Date.now().toString().slice(-4)}`;
+      m.bills.push({
+        id: advBillId,
+        firstDate: followDate,
+        balance: -advanceAmount,
+        sourceAmount: -advanceAmount,
+        billCount: 1,
+        billNos: [advRefNo],
+        policyDate: followDate,
+        policyName: 'ADVANCE PAYMENT'
+      });
+      allocations.push({
+        billId: advBillId,
+        amount: advanceAmount,
+        settled: true,
+        isAdvance: true
+      });
     }
   }
 
@@ -4060,8 +4111,8 @@ async function saveFollowup(e) {
   // Apply updates locally and save to localStorage immediately
   if (isPayment) {
     allocations.forEach(a => {
-      const b = m.bills.find(x => x.id === a.billId);
-      if (b) {
+      const b = m.bills.find(x => String(x.id) === String(a.billId));
+      if (b && !a.isAdvance) {
         b.balance = Math.max(0, b.balance - a.amount);
       }
     });
@@ -4091,7 +4142,11 @@ async function saveFollowup(e) {
   }
 
   if (isPayment) {
-    if (stillDue === 0 || payType === 'Full Payment') {
+    if (stillDue < 0) {
+      finalStatus = 'Advance Payment';
+      finalNext = '';
+      finalRemark = finalRemark || `Payment ${money(payAmount)} received (${payMode} ref: ${payRef}). Advance credit balance: ${money(Math.abs(stillDue))}. Follow-up closed.`;
+    } else if (stillDue === 0 || payType === 'Full Payment') {
       finalStatus = 'Payment Received';
       finalNext = '';
       finalRemark = finalRemark || `Full payment ${money(payAmount)} received (${payMode} ref: ${payRef}). All dues cleared.`;
@@ -4261,9 +4316,11 @@ function openPayment(optionalMarkaId) {
   onPayModeChange();
   
   const sel = document.getElementById('payMarkaSelect');
-  sel.innerHTML = '<option value="">Choose Marka...</option>' + activeMarkas().map(m => 
-    `<option value="${m.id}">${escapeHtml(m.marka)} · ${escapeHtml(m.master)} · ${money(totalOutstanding(m))}</option>`
-  ).join('');
+  sel.innerHTML = '<option value="">Choose Marka...</option>' + markas.slice().sort((a,b) => (a.marka || '').localeCompare(b.marka || '')).map(m => {
+    const out = totalOutstanding(m);
+    const labelText = out < 0 ? `ADVANCE (${money(Math.abs(out))})` : money(out);
+    return `<option value="${m.id}">${escapeHtml(m.marka)} · ${escapeHtml(m.master)} · ${labelText}</option>`;
+  }).join('');
   
   if (optionalMarkaId) {
     sel.value = optionalMarkaId;
@@ -4305,10 +4362,10 @@ function onPayTypeChange() {
   const tot = totalOutstanding(m);
   const amtInput = document.getElementById('payAmount');
   if (pType === 'Full') {
-    amtInput.value = tot;
+    amtInput.value = tot > 0 ? tot : '';
     updatePayAllocations('amount');
   } else {
-    if (+amtInput.value >= tot || !amtInput.value) {
+    if ((+amtInput.value >= tot || !amtInput.value) && tot > 0) {
       amtInput.value = Math.max(1, Math.floor(tot / 2));
     }
     updatePayAllocations('amount');
@@ -4327,21 +4384,32 @@ function onPayMarkaSelectChange() {
   if (container) container.style.display = 'block';
   const list = document.getElementById('payBillsList');
   const bills = activeBills(m).sort((a, b) => a.firstDate.localeCompare(b.firstDate));
+  const tot = totalOutstanding(m);
   
   if (list) {
-    list.innerHTML = bills.map(b => `
-      <div class="pay-bill-item">
-        <input type="checkbox" class="pay-bill-check" data-bill-id="${b.id}" checked onchange="updatePayAllocations('check')">
-        <div>
-          <b>Bill ${fmt(b.firstDate)}</b>
-          <small>${(b.billNos || []).map(escapeHtml).join(', ') || 'No invoice ref'}</small>
+    if (bills.length > 0) {
+      list.innerHTML = bills.map(b => `
+        <div class="pay-bill-item">
+          <input type="checkbox" class="pay-bill-check" data-bill-id="${b.id}" checked onchange="updatePayAllocations('check')">
+          <div>
+            <b>Bill ${fmt(b.firstDate)}</b>
+            <small>${(b.billNos || []).map(escapeHtml).join(', ') || 'No invoice ref'}</small>
+          </div>
+          <div style="font-family:'DM Mono',monospace; font-size:11px;">Due: ${money(b.balance)}</div>
+          <div>
+            <input type="number" class="pay-bill-alloc" data-bill-id="${b.id}" min="0" max="${b.balance}" value="${b.balance}" oninput="onPayBillAllocInput('${b.id}', this.value)">
+          </div>
         </div>
-        <div style="font-family:'DM Mono',monospace; font-size:11px;">Due: ${money(b.balance)}</div>
-        <div>
-          <input type="number" class="pay-bill-alloc" data-bill-id="${b.id}" min="0" max="${b.balance}" value="${b.balance}" oninput="onPayBillAllocInput('${b.id}', this.value)">
+      `).join('');
+    } else {
+      const advText = tot < 0 ? `Current Marka Balance: <b style="color:#087454;">Advance Credit ${money(Math.abs(tot))}</b>` : 'No pending unpaid invoices for this Marka.';
+      list.innerHTML = `
+        <div style="background:#edf7f2; border:1px solid #c0e7d5; padding:10px; border-radius:6px; font-size:12px; color:#087454;">
+          ${advText}
+          <div style="margin-top:4px; font-size:11px; color:#334d43;">Any payment entered will be recorded as an <b>Advance Payment Credit</b>.</div>
         </div>
-      </div>
-    `).join('') || '<p class="modal-copy">No active unpaid bills found.</p>';
+      `;
+    }
   }
   
   onPayTypeChange();
@@ -4408,11 +4476,18 @@ function updatePayAllocations(triggerSource) {
   } else {
     const totalEntered = +payAmountInput.value || 0;
     const diff = totalEntered - sumAllocated;
-    summaryEl.textContent = `${money(sumAllocated)} allocated · ${money(diff)} remaining`;
-    if (diff === 0 && totalEntered > 0) {
-      summaryEl.textContent += ' · matched ✓';
+    if (diff > 0) {
+      if (sumAllocated > 0) {
+        summaryEl.textContent = `${money(sumAllocated)} applied to bills · ${money(diff)} Advance Credit · Matched ✓`;
+      } else {
+        summaryEl.textContent = `${money(diff)} Advance Payment Credit · Matched ✓`;
+      }
+      summaryEl.style.color = '#287553';
+    } else if (diff === 0 && totalEntered > 0) {
+      summaryEl.textContent = `${money(sumAllocated)} allocated · matched ✓`;
       summaryEl.style.color = '#287553';
     } else {
+      summaryEl.textContent = `${money(sumAllocated)} allocated · ${money(Math.abs(diff))} remaining`;
       summaryEl.style.color = '#c44d48';
     }
   }
@@ -4445,13 +4520,38 @@ async function savePayment(e) {
     }
   });
   
-  if (allocations.length === 0) {
-    return toast('Please select at least one bill and enter allocation.');
+  const totalAllocated = allocations.reduce((sum, a) => sum + a.amount, 0);
+  if (payType === 'Part' && totalAllocated > payAmount) {
+    return toast(`Allocated sum (${money(totalAllocated)}) cannot exceed Total Received (${money(payAmount)}).`);
   }
   
-  const totalAllocated = allocations.reduce((sum, a) => sum + a.amount, 0);
-  if (payType === 'Part' && totalAllocated !== payAmount) {
-    return toast(`Allocated sum (${money(totalAllocated)}) must match Total Received (${money(payAmount)}).`);
+  if (activeBills(m).length > 0 && allocations.length === 0 && payAmount < totalOutstanding(m)) {
+    return toast('Please select at least one bill and enter allocation.');
+  }
+
+  // Handle overpayment / pure advance
+  const advanceAmount = Math.max(0, payAmount - totalAllocated);
+  let advBillId = null;
+  if (advanceAmount > 0) {
+    advBillId = 'adv_' + uid();
+    if (!m.bills) m.bills = [];
+    const advRefNo = (payRef && payRef !== 'N/A') ? `ADV/${payRef}` : `ADV/${Date.now().toString().slice(-4)}`;
+    m.bills.push({
+      id: advBillId,
+      firstDate: payDate,
+      balance: -advanceAmount,
+      sourceAmount: -advanceAmount,
+      billCount: 1,
+      billNos: [advRefNo],
+      policyDate: payDate,
+      policyName: 'ADVANCE PAYMENT'
+    });
+    allocations.push({
+      billId: advBillId,
+      amount: advanceAmount,
+      settled: true,
+      isAdvance: true
+    });
   }
   
   const payload = {
@@ -4465,20 +4565,34 @@ async function savePayment(e) {
   };
   
   // Apply allocations locally and save
+  if (!m.history) m.history = [];
   allocations.forEach(a => {
     const b = m.bills.find(x => String(x.id) === String(a.billId));
     if (b) {
-      b.balance = Math.max(0, b.balance - a.amount);
-      m.history.push({
-        type: 'payment',
-        date: payDate,
-        status: b.balance === 0 ? 'Payment Received' : 'Part Payment',
-        remark: `Payment of ${money(a.amount)} received (${payMode} ref: ${payRef}) allocated to bill ${fmt(b.firstDate)}.`,
-        amount: a.amount,
-        ref: payRef,
-        receiptImage: receiptImage,
-        billId: b.id
-      });
+      if (!a.isAdvance) {
+        b.balance = Math.max(0, b.balance - a.amount);
+        m.history.push({
+          type: 'payment',
+          date: payDate,
+          status: b.balance === 0 ? 'Payment Received' : 'Part Payment',
+          remark: `Payment of ${money(a.amount)} received (${payMode} ref: ${payRef}) allocated to bill ${fmt(b.firstDate)}.`,
+          amount: a.amount,
+          ref: payRef,
+          receiptImage: receiptImage,
+          billId: b.id
+        });
+      } else {
+        m.history.push({
+          type: 'payment',
+          date: payDate,
+          status: 'Advance Payment',
+          remark: `Advance payment credit of ${money(a.amount)} recorded (${payMode} ref: ${payRef}).`,
+          amount: a.amount,
+          ref: payRef,
+          receiptImage: receiptImage,
+          billId: b.id
+        });
+      }
     }
   });
   
@@ -4487,6 +4601,10 @@ async function savePayment(e) {
     m.nextDate = iso(new Date(today.getTime() + 2 * 86400000));
     m.remark = `Payment ${money(payAmount)} received; ${money(stillDue)} still due. Follow-up in 2 days.`;
     m.lastStatus = 'Payment Received';
+  } else if (stillDue < 0) {
+    m.nextDate = '';
+    m.remark = `Payment ${money(payAmount)} received. Advance balance: ${money(Math.abs(stillDue))}. Follow-up closed.`;
+    m.lastStatus = 'Advance Payment';
   } else {
     m.nextDate = '';
     m.remark = 'All dues cleared. Follow-up closed.';
@@ -4504,7 +4622,7 @@ async function savePayment(e) {
     receiptImage: receiptImage,
     allocations: allocations.map(a => {
       const b = m.bills.find(x => String(x.id) === String(a.billId));
-      return { billId: a.billId, amount: a.amount, settled: b ? b.balance === 0 : false };
+      return { billId: a.billId, amount: a.amount, settled: b ? b.balance <= 0 : false, isAdvance: !!a.isAdvance };
     })
   });
   
