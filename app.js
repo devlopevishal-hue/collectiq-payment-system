@@ -3782,32 +3782,27 @@ function updateFollowPayAllocations(source = 'amount') {
       }
     });
   } else if (source === 'check') {
-    let sum = 0;
+    // When a checkbox state changes, zero out any unselected bill input
     bills.forEach(b => {
       const chk = document.querySelector(`.follow-pay-check[data-bill-id="${b.id}"]`);
       const input = document.querySelector(`.follow-pay-amt[data-bill-id="${b.id}"]`);
       if (chk && input) {
-        if (chk.checked) {
-          if (+input.value === 0) input.value = b.balance;
-          sum += +input.value;
-        } else {
+        if (!chk.checked) {
           input.value = 0;
+        } else if (+input.value === 0) {
+          input.value = b.balance;
         }
       }
     });
-    amtInput.value = sum;
   } else if (source === 'custom') {
-    let sum = 0;
     bills.forEach(b => {
       const chk = document.querySelector(`.follow-pay-check[data-bill-id="${b.id}"]`);
       const input = document.querySelector(`.follow-pay-amt[data-bill-id="${b.id}"]`);
       if (chk && input) {
         const val = +input.value || 0;
         if (val > 0) chk.checked = true;
-        sum += val;
       }
     });
-    amtInput.value = sum;
   }
 
   let allocatedSum = 0;
@@ -4448,6 +4443,20 @@ function updatePayAllocations(triggerSource) {
         remaining -= alloc;
         if (chk) chk.checked = true;
         if (inp) inp.value = alloc;
+      }
+    });
+  } else if (triggerSource === 'check') {
+    // When a checkbox is toggled, update its allocation input accordingly
+    const activeList = activeBills(m);
+    activeList.forEach(b => {
+      const chk = document.querySelector(`.pay-bill-check[data-bill-id="${b.id}"]`);
+      const inp = document.querySelector(`.pay-bill-alloc[data-bill-id="${b.id}"]`);
+      if (chk && inp) {
+        if (!chk.checked) {
+          inp.value = 0;
+        } else if (+inp.value === 0) {
+          inp.value = b.balance;
+        }
       }
     });
   }
