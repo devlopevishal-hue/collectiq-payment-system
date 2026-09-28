@@ -221,7 +221,33 @@ function isOnlineMode() {
   return isLocalServer();
 }
 
+function ensureSeedDataLoaded() {
+  if ((!markas || markas.length === 0) && window.latestReportCases && Array.isArray(window.latestReportCases) && window.latestReportCases.length > 0) {
+    markas = JSON.parse(JSON.stringify(window.latestReportCases));
+    markas.forEach(m => {
+      if (!m.escalations) m.escalations = [];
+      if (!m.history) m.history = [];
+      if (!m.bills) m.bills = [];
+      if (!m.fmsTasks) m.fmsTasks = [];
+      if (!m.owner || m.owner === 'Unassigned') {
+        const defaultOwner = getMasterFollowper(m.master);
+        if (defaultOwner && defaultOwner !== 'Unassigned') {
+          m.owner = defaultOwner;
+        }
+      }
+      if (!m.crr || m.crr === 'Unassigned') {
+        const defaultCrr = getMasterCrr(m.master);
+        if (defaultCrr && defaultCrr !== 'Unassigned') {
+          m.crr = defaultCrr;
+        }
+      }
+    });
+    localStorage.setItem('collectiq_markas_v4', JSON.stringify(markas));
+  }
+}
+
 function checkAuth() {
+  ensureSeedDataLoaded();
   const storedUser = localStorage.getItem('collectiq_current_user');
   if (storedUser) {
     currentUser = JSON.parse(storedUser);
@@ -7076,9 +7102,15 @@ function updateDbStatusBadge(mode) {
 
 // Start
 load();
+ensureSeedDataLoaded();
 initFirebase();
 renderAll();
 syncWithDatabase();
+
+window.addEventListener('load', () => {
+  ensureSeedDataLoaded();
+  renderAll();
+});
 
 // Live auto-polling every 3 seconds for real-time direct database sync across all users & devices
 setInterval(() => {
