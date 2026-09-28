@@ -214,7 +214,7 @@ let hasLoadedCloudData = false;
 function isLocalServer() {
   const host = (window.location && window.location.hostname) || '';
   const port = (window.location && window.location.port) || '';
-  return (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || port === '3000' || port === '3899' || port === '3911');
+  return (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || port === '3000' || port === '3899' || port === '3911' || host.startsWith('192.168.') || host.startsWith('10.') || host.startsWith('172.'));
 }
 
 function isOnlineMode() {
@@ -524,43 +524,46 @@ const APP_STORAGE_VERSION = 'v5_fresh_start_2026_09_02';
 
 function load() {
   try {
-    if (localStorage.getItem('collectiq_storage_ver') !== APP_STORAGE_VERSION) {
-      localStorage.removeItem('collectiq_markas_v4');
-      localStorage.removeItem('collectiq_rokad_v4');
-      localStorage.removeItem('collectiq_markas_v3');
-      localStorage.removeItem('collectiq_rojkad_v3');
-      localStorage.removeItem('collectiq_help_tickets_v4');
-      localStorage.setItem('collectiq_storage_ver', APP_STORAGE_VERSION);
-      markas = [];
-      payments = [];
-      helpTickets = [];
-    }
-
     const mf = localStorage.getItem('collectiq_master_followpers_v4');
     if (mf) {
-      masterFollowpers = { ...DEFAULT_MASTER_FOLLOWPERS, ...JSON.parse(mf) };
+      try { masterFollowpers = { ...DEFAULT_MASTER_FOLLOWPERS, ...JSON.parse(mf) }; } catch(e) { masterFollowpers = { ...DEFAULT_MASTER_FOLLOWPERS }; }
     } else {
       masterFollowpers = { ...DEFAULT_MASTER_FOLLOWPERS };
     }
 
     const mc = localStorage.getItem('collectiq_master_crrs_v4');
     if (mc) {
-      masterCrrs = { ...DEFAULT_MASTER_CRR, ...JSON.parse(mc) };
+      try { masterCrrs = { ...DEFAULT_MASTER_CRR, ...JSON.parse(mc) }; } catch(e) { masterCrrs = { ...DEFAULT_MASTER_CRR }; }
     } else {
       masterCrrs = { ...DEFAULT_MASTER_CRR };
     }
 
     const v4 = localStorage.getItem('collectiq_markas_v4');
     if (v4) {
-      markas = JSON.parse(v4);
+      try {
+        const parsed = JSON.parse(v4);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          markas = parsed;
+        } else {
+          markas = [];
+        }
+      } catch(e) {
+        markas = [];
+      }
     } else {
       markas = [];
     }
     
+    // Seed fallback if markas is empty (fresh phone / new session)
+    if ((!markas || markas.length === 0) && window.latestReportCases && Array.isArray(window.latestReportCases) && window.latestReportCases.length > 0) {
+      markas = JSON.parse(JSON.stringify(window.latestReportCases));
+    }
+
     markas.forEach(m => {
       if (!m.escalations) m.escalations = [];
       if (!m.history) m.history = [];
       if (!m.bills) m.bills = [];
+      if (!m.fmsTasks) m.fmsTasks = [];
       if (!m.owner || m.owner === 'Unassigned') {
         const defaultOwner = getMasterFollowper(m.master);
         if (defaultOwner && defaultOwner !== 'Unassigned') {
@@ -6835,25 +6838,36 @@ function initFirebase() {
     
     // Auto-seed cloud database if document does not exist yet on first boot
     firestoreDb.collection('collectiq').doc('main').get().then(doc => {
-      if (!doc.exists) {
-        console.log('⚡ Initializing Firebase Cloud database with fresh clean state...');
-        hasLoadedCloudData = true;
-        markas = [];
-        payments = [];
-        helpTickets = [];
-        saveCloud();
-        renderAll();
+      if (!doc.exists || !doc.data() || !Array.isArray(doc.data().markas) || doc.data().markas.length === 0) {
+        if (markas.length > 0) {
+          hasLoadedCloudData = true;
+          console.log('⚡ Initializing Firebase Cloud database with ' + markas.length + ' active Markas...');
+          saveCloud();
+        }
       } else {
         hasLoadedCloudData = true;
         const d = doc.data();
         if (d) {
-          if (Array.isArray(d.users) && d.users.length > 0) {
-            users = d.users;
-            window.users = users;
-            localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
-          }
-          if (Array.isArray(d.markas)) {
+          if (Array.isArray(d.markas) && d.markas.length > 0) {
             markas = d.markas;
+            markas.forEach(m => {
+              if (!m.escalations) m.escalations = [];
+              if (!m.history) m.history = [];
+              if (!m.bills) m.bills = [];
+              if (!m.fmsTasks) m.fmsTasks = [];
+              if (!m.owner || m.owner === 'Unassigned') {
+                const defaultOwner = getMasterFollowper(m.master);
+                if (defaultOwner && defaultOwner !== 'Unassigned') {
+                  m.owner = defaultOwner;
+                }
+              }
+              if (!m.crr || m.crr === 'Unassigned') {
+                const defaultCrr = getMasterCrr(m.master);
+                if (defaultCrr && defaultCrr !== 'Unassigned') {
+                  m.crr = defaultCrr;
+                }
+              }
+            });
             localStorage.setItem('collectiq_markas_v4', JSON.stringify(markas));
           }
           if (Array.isArray(d.payments)) {
@@ -6872,6 +6886,11 @@ function initFirebase() {
             masterCrrs = { ...DEFAULT_MASTER_CRR, ...d.masterCrrs };
             localStorage.setItem('collectiq_master_crrs_v4', JSON.stringify(masterCrrs));
           }
+          if (Array.isArray(d.users) && d.users.length > 0) {
+            users = d.users;
+            window.users = users;
+            localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
+          }
           renderAll();
         }
       }
@@ -6883,12 +6902,25 @@ function initFirebase() {
         hasLoadedCloudData = true;
         const d = doc.data();
         if (d) {
-          if (Array.isArray(d.markas)) {
+          if (Array.isArray(d.markas) && d.markas.length > 0) {
             markas = d.markas;
             markas.forEach(m => {
               if (!m.escalations) m.escalations = [];
               if (!m.history) m.history = [];
               if (!m.bills) m.bills = [];
+              if (!m.fmsTasks) m.fmsTasks = [];
+              if (!m.owner || m.owner === 'Unassigned') {
+                const defaultOwner = getMasterFollowper(m.master);
+                if (defaultOwner && defaultOwner !== 'Unassigned') {
+                  m.owner = defaultOwner;
+                }
+              }
+              if (!m.crr || m.crr === 'Unassigned') {
+                const defaultCrr = getMasterCrr(m.master);
+                if (defaultCrr && defaultCrr !== 'Unassigned') {
+                  m.crr = defaultCrr;
+                }
+              }
             });
             localStorage.setItem('collectiq_markas_v4', JSON.stringify(markas));
           }
@@ -6931,8 +6963,8 @@ function initFirebase() {
 
 async function saveCloud() {
   if (firestoreDb) {
-    if (!hasLoadedCloudData && markas.length === 0 && payments.length === 0 && helpTickets.length === 0) {
-      console.warn('saveCloud skipped: cloud data not yet loaded into memory.');
+    if (markas.length === 0 && !window._explicitAdminReset) {
+      console.warn('saveCloud skipped: preventing empty wipe of Firestore DB.');
       return;
     }
     try {

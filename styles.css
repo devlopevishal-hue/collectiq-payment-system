@@ -1031,4 +1031,261 @@ th.sort-active .sort-icon { opacity: 1; color: #087454; font-weight: bold; }
   transform: translateY(-50%) scale(0.92);
 }
 
+/* ==========================================
+   ADVANCED MOBILE CARD & TOUCH UI STYLES
+   ========================================== */
+@media (max-width: 768px) {
+  body {
+    font-size: 13.5px;
+  }
+
+  main {
+    padding: 12px 12px 90px 12px !important;
+  }
+
+  header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+  }
+
+  header h1 {
+    font-size: 19px !important;
+  }
+
+  .header-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .header-actions .btn {
+    min-height: 42px;
+    font-size: 12px;
+    padding: 8px 10px;
+    justify-content: center;
+  }
+
+  /* Metrics Grid */
+  .metrics {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .metric {
+    padding: 12px 10px;
+    border-radius: 10px;
+  }
+
+  .metric strong {
+    font-size: 18px;
+  }
+
+  .metric small {
+    font-size: 10px;
+  }
+
+  /* Filter Bar on Mobile */
+  .filterbar, .filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px;
+    background: #ffffff;
+    border-radius: 10px;
+    margin-bottom: 14px;
+    border: 1px solid #d4dfdb;
+  }
+
+  .filter-input, .filters select, .filters input {
+    flex: 1 1 calc(50% - 6px);
+    min-width: 130px;
+    min-height: 42px;
+    font-size: 14px !important;
+    border-radius: 8px;
+  }
+
+  /* Tabs Bar on Mobile */
+  .toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  .tabs {
+    display: flex;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    gap: 6px;
+    padding-bottom: 4px;
+  }
+
+  .tab {
+    white-space: nowrap;
+    min-height: 38px;
+    padding: 6px 12px;
+    font-size: 12px;
+    border-radius: 20px;
+  }
+
+  /* Table to Responsive Card View for Schedule, Locks, Markas */
+  .table-panel {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  .table-panel table {
+    display: block;
+    width: 100%;
+    min-width: 0 !important;
+  }
+
+  .table-panel thead {
+    display: none;
+  }
+
+  .table-panel tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+  }
+
+  .table-panel tbody tr {
+    display: flex;
+    flex-direction: column;
+    background: #ffffff;
+    border: 1px solid #d8e4e0;
+    border-radius: 12px;
+    padding: 14px 14px;
+    box-shadow: 0 2px 8px rgba(18, 50, 43, 0.05);
+    gap: 10px;
+    position: relative;
+  }
+
+  .table-panel tbody tr:hover {
+    background: #ffffff;
+  }
+
+  .table-panel tbody td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 !important;
+    border: none !important;
+    font-size: 12.5px;
+    width: 100%;
+  }
+
+  /* Top Row: Marka Name + Status Badge */
+  .table-panel tbody tr td:first-child {
+    font-size: 16px;
+    font-weight: 800;
+    color: #12322b;
+    border-bottom: 1px solid #edf2f0 !important;
+    padding-bottom: 8px !important;
+    margin-bottom: 2px;
+  }
+
+  .table-panel tbody tr td:first-child .case-name {
+    font-size: 16px;
+    font-weight: 800;
+  }
+
+  /* Card Action Buttons Row */
+  .table-panel tbody tr td:last-child {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr 1fr 1.2fr;
+    gap: 6px;
+    margin-top: 6px;
+    padding-top: 10px !important;
+    border-top: 1px dashed #e2ebe8 !important;
+  }
+
+  .row-action {
+    min-height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 6px 8px;
+    border-radius: 8px;
+    text-align: center;
+    margin-right: 0 !important;
+  }
+
+  /* Bottom sheet modal styling on mobile */
+  .modal {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: auto !important;
+    max-height: 90vh !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 20px 20px 0 0 !important;
+    padding: 20px 16px 24px 16px !important;
+    margin: 0 !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.25) !important;
+    animation: sheetSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+
+  @keyframes sheetSlideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+
+  .modal-form {
+    gap: 12px;
+  }
+
+  .modal input, .modal select, .modal textarea {
+    min-height: 44px;
+    font-size: 15px !important;
+    border-radius: 8px;
+  }
+
+  .modal-footer {
+    position: sticky;
+    bottom: 0;
+    background: #ffffff;
+    padding-top: 12px;
+    border-top: 1px solid #edf1ef;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 14px;
+    z-index: 10;
+  }
+
+  .modal-footer .btn, .modal-footer button {
+    width: 100%;
+    min-height: 46px;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  /* Touch-friendly login card on mobile */
+  .login-card {
+    width: 92% !important;
+    max-width: 380px !important;
+    padding: 24px 18px !important;
+    border-radius: 16px !important;
+  }
+}
+
 
