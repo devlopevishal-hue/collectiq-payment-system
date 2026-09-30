@@ -5543,8 +5543,17 @@ function parseCsvDate(str) {
   return '';
 }
 
-// RFC-4180 compliant CSV parser that handles multiline headers & quoted values
-function parseRFC4180Csv(text) {
+// Universal CSV parser supporting comma, semicolon, tab and quoted multiline values
+function parseUniversalCsv(text) {
+  if (!text) return [];
+  const sample = text.slice(0, 2000);
+  const countComma = (sample.match(/,/g) || []).length;
+  const countSemi = (sample.match(/;/g) || []).length;
+  const countTab = (sample.match(/\t/g) || []).length;
+  let delim = ',';
+  if (countSemi > countComma && countSemi > countTab) delim = ';';
+  else if (countTab > countComma && countTab > countSemi) delim = '\t';
+
   const rows = [];
   let row = [];
   let cur = '';
@@ -5559,14 +5568,14 @@ function parseRFC4180Csv(text) {
       } else {
         inQuotes = !inQuotes;
       }
-    } else if (char === ',' && !inQuotes) {
+    } else if (char === delim && !inQuotes) {
       row.push(cur.trim());
       cur = '';
     } else if ((char === '\r' || char === '\n') && !inQuotes) {
       if (char === '\r' && next === '\n') i++;
       row.push(cur.trim());
       cur = '';
-      if (row.length > 0 && row.some(cell => cell.trim() !== '')) {
+      if (row.length > 0 && row.some(cell => cell !== '')) {
         rows.push(row);
       }
       row = [];
@@ -5576,7 +5585,7 @@ function parseRFC4180Csv(text) {
   }
   if (cur || row.length > 0) {
     row.push(cur.trim());
-    if (row.some(cell => cell.trim() !== '')) {
+    if (row.some(cell => cell !== '')) {
       rows.push(row);
     }
   }
@@ -5586,7 +5595,7 @@ function parseRFC4180Csv(text) {
 window.parseCsvLine = parseCsvLine;
 window.parseAmount = parseAmount;
 window.parseCsvDate = parseCsvDate;
-window.parseRFC4180Csv = parseRFC4180Csv;
+window.parseUniversalCsv = parseUniversalCsv;
 
 function importFile(e) {
   const f = e.target.files[0];
@@ -5597,13 +5606,30 @@ function importFile(e) {
   const parseWithXlsx = (buffer) => {
     try {
       const workbook = XLSX.read(buffer, { type: 'array', cellDates: true, raw: false });
-      const sheetName = workbook.SheetNames[0];
-      const sheet = workbook.Sheets[sheetName];
-      const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
-      if (!rawRows || !rawRows.length) {
-        return toast('No data rows found in ' + f.name);
+      
+      let bestSheet = null;
+      let maxRows = 0;
+      (workbook.SheetNames || []).forEach(sName => {
+        const s = workbook.Sheets[sName];
+        if (s) {
+          const rows = XLSX.utils.sheet_to_json(s, { header: 1, defval: '', raw: false });
+          if (rows && rows.length > maxRows) {
+            maxRows = rows.length;
+            bestSheet = s;
+          }
+        }
+      });
+
+      if (!bestSheet || maxRows === 0) {
+        return parseAsTextFallback();
       }
-      processImportedRows(rawRows, f.name);
+
+      const grid = XLSX.utils.sheet_to_json(bestSheet, { header: 1, defval: '', raw: false });
+      if (!grid || !grid.length) {
+        return parseAsTextFallback();
+      }
+
+      processImportedRows(grid, f.name);
     } catch (err) {
       console.warn('XLSX engine notice:', err);
       parseAsTextFallback();
@@ -5615,21 +5641,11 @@ function importFile(e) {
     reader.onload = () => {
       try {
         const text = reader.result;
-        const rawGrid = parseRFC4180Csv(text);
-        if (!rawGrid || !rawGrid.length) return toast('Empty CSV file.');
-        const rawHeaders = rawGrid[0];
-        const rawRows = [];
-        for (let i = 1; i < rawGrid.length; i++) {
-          const r = rawGrid[i];
-          const rowObj = {};
-          rawHeaders.forEach((h, idx) => {
-            rowObj[h] = r[idx] || '';
-          });
-          rawRows.push(rowObj);
-        }
-        processImportedRows(rawRows, f.name);
+        const grid = parseUniversalCsv(text);
+        if (!grid || !grid.length) return toast('Empty file or unreadable format.');
+        processImportedRows(grid, f.name);
       } catch (err) {
-        console.error('CSV parse error:', err);
+        console.error('Fallback CSV parsing error:', err);
         toast('Failed to parse file: ' + err.message);
       }
     };
@@ -5653,67 +5669,156 @@ function importFile(e) {
   reader.readAsArrayBuffer(f);
 }
 
-// Keep backwards-compatible alias
 const importCSV = importFile;
 window.importFile = importFile;
 window.importCSV = importCSV;
 
-function processImportedRows(rawRows, fileName = 'Imported File') {
-  if (!rawRows || !rawRows.length) {
+function processImportedRows(rawInput, fileName = 'Imported File') {
+  if (!rawInput || !rawInput.length) {
     return toast('The uploaded file is empty.');
   }
   window._explicitAdminReset = false;
   localStorage.removeItem('collectiq_admin_cleared');
 
+  let rowsToProcess = [];
+
+  // 1. If input is 2D array of rows
+  if (Array.isArray(rawInput) && rawInput.length > 0 && Array.isArray(rawInput[0])) {
+    let headerRowIdx = -1;
+    for (let i = 0; i < Math.min(15, rawInput.length); i++) {
+      const lineStr = rawInput[i].map(c => String(c || '').toLowerCase()).join(' ');
+      if (
+        (lineStr.includes('marka') || lineStr.includes('party') || lineStr.includes('group') || lineStr.includes('customer') || lineStr.includes('ledger')) ||
+        (lineStr.includes('balance') || lineStr.includes('outstanding') || lineStr.includes('amount') || lineStr.includes('bill')) ||
+        (lineStr.includes('master') || lineStr.includes('policy'))
+      ) {
+        headerRowIdx = i;
+        break;
+      }
+    }
+
+    if (headerRowIdx === -1) headerRowIdx = 0;
+
+    const rawHeaders = rawInput[headerRowIdx].map(h => String(h || '').trim());
+    const cleanHeaders = rawHeaders.map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
+
+    for (let r = headerRowIdx + 1; r < rawInput.length; r++) {
+      const line = rawInput[r];
+      if (!line || !line.some(c => String(c || '').trim() !== '')) continue;
+      const rowObj = {};
+      cleanHeaders.forEach((h, colIdx) => {
+        if (h) rowObj[h] = line[colIdx] !== undefined ? line[colIdx] : '';
+        else rowObj['col_' + colIdx] = line[colIdx] !== undefined ? line[colIdx] : '';
+      });
+      rowObj._rawLine = line;
+      rowsToProcess.push(rowObj);
+    }
+  } 
+  // 2. If input is array of objects
+  else if (Array.isArray(rawInput) && rawInput.length > 0 && typeof rawInput[0] === 'object') {
+    rowsToProcess = rawInput;
+  }
+
+  if (!rowsToProcess.length) {
+    return toast('No data rows found to process in ' + fileName);
+  }
+
   const markaMap = new Map();
   let totalBillsCount = 0;
 
-  rawRows.forEach(rawRow => {
-    // Normalize keys: lowercase without special characters or dots
+  rowsToProcess.forEach(rawRow => {
     const row = {};
     for (const [k, v] of Object.entries(rawRow)) {
-      if (!k) continue;
-      const cleanKey = String(k).toLowerCase().trim().replace(/[\s\-_/\\+.\r\n]+/g, '');
+      if (k === '_rawLine') continue;
+      const cleanKey = String(k).toLowerCase().trim().replace(/[^a-z0-9]/g, '');
       row[cleanKey] = v;
     }
 
-    // 1. First check for Marka / Group
+    // Extract Marka / Party
     let markaName = (
-      row['markagroup'] || row['marka'] || row['group'] || row['markaname'] || ''
-    ).trim();
-
-    // 2. Fallback to Party / Account Name
+      row['markagroup'] || row['markagrou'] || row['marka'] || row['group'] || row['markaname'] || ''
+    );
     if (!markaName) {
       markaName = (
         row['party'] || row['partyname'] || row['accaddress'] || row['accaddr'] ||
         row['customername'] || row['accountname'] || row['particulars'] || row['ledger'] || row['name'] || ''
-      ).trim();
+      );
+    }
+    // Positional fallback: Column C (index 2) or Column B (index 1)
+    if (!markaName && rawRow._rawLine && Array.isArray(rawRow._rawLine)) {
+      if (rawRow._rawLine[2] && String(rawRow._rawLine[2]).trim()) {
+        markaName = String(rawRow._rawLine[2]);
+      } else if (rawRow._rawLine[1] && String(rawRow._rawLine[1]).trim()) {
+        markaName = String(rawRow._rawLine[1]);
+      }
     }
 
+    markaName = String(markaName || '').trim();
     if (!markaName) return;
 
-    const rawBillDate = row['billdate'] || row['date'] || row['firstdate'] || row['invoicedate'] || row['voucherdate'] || row['invdate'] || row['docdate'] || '';
+    // Extract Bill Date
+    let rawBillDate = (
+      row['billdate'] || row['date'] || row['firstdate'] || row['invoicedate'] || row['voucherdate'] || row['invdate'] || row['docdate'] || ''
+    );
+    if (!rawBillDate && rawRow._rawLine && rawRow._rawLine[3]) rawBillDate = rawRow._rawLine[3];
     const billDate = parseCsvDate(rawBillDate) || iso(today);
 
-    const rawBalance = (row['balance'] !== undefined && row['balance'] !== '') ? row['balance'] : (
-      row['outstanding'] || row['balamt'] || row['netbalance'] || row['billamt'] ||
-      row['debit'] || row['dramount'] || row['closingbalance'] || row['amount'] || row['billamount'] || 0
+    // Extract Balance
+    let rawBalance = (
+      row['balance'] !== undefined && row['balance'] !== '' ? row['balance'] :
+      row['outstanding'] !== undefined && row['outstanding'] !== '' ? row['outstanding'] :
+      row['balamt'] !== undefined && row['balamt'] !== '' ? row['balamt'] :
+      row['netbalance'] !== undefined && row['netbalance'] !== '' ? row['netbalance'] :
+      row['billamt'] !== undefined && row['billamt'] !== '' ? row['billamt'] :
+      row['debit'] !== undefined && row['debit'] !== '' ? row['debit'] :
+      row['dramount'] !== undefined && row['dramount'] !== '' ? row['dramount'] :
+      row['amount'] !== undefined && row['amount'] !== '' ? row['amount'] : 0
     );
+    if (rawBalance === 0 && rawRow._rawLine && rawRow._rawLine[14] !== undefined) {
+      rawBalance = rawRow._rawLine[14];
+    }
     const balance = parseAmount(rawBalance);
 
-    const master = (row['master'] || row['mastername'] || row['salesmaster'] || row['agent'] || row['broker'] || 'Unassigned Master').trim();
-    const own = (row['collectionperson'] || row['collectionp'] || row['collection'] || row['followper'] || row['doer'] || row['salesperson'] || row['assignedto'] || row['executive'] || '').trim();
-    const billNo = String(row['billno'] || row['invoiceno'] || row['vchno'] || row['refno'] || row['billnumber'] || row['invno'] || '').trim();
+    // Extract Master
+    let master = (
+      row['master'] || row['mastername'] || row['salesmaster'] || row['agent'] || row['broker'] || ''
+    );
+    if (!master && rawRow._rawLine && rawRow._rawLine[17]) master = rawRow._rawLine[17];
+    master = String(master || 'Unassigned Master').trim();
 
-    const rawPolicyDate = row['policydate'] || row['duedate'] || row['policyduedate'] || row['dueon'] || '';
+    // Extract Collection Person / Followper
+    let own = (
+      row['collectionperson'] || row['collectionp'] || row['collection'] || row['followper'] || row['doer'] || row['salesperson'] || row['assignedto'] || row['executive'] || ''
+    );
+    if (!own && rawRow._rawLine && rawRow._rawLine[18]) own = rawRow._rawLine[18];
+    own = String(own || '').trim();
+
+    // Extract Bill No
+    let billNo = (
+      row['billno'] || row['invoiceno'] || row['vchno'] || row['refno'] || row['billnumber'] || row['invno'] || ''
+    );
+    if (!billNo && rawRow._rawLine && rawRow._rawLine[4]) billNo = rawRow._rawLine[4];
+    billNo = String(billNo || '').trim();
+
+    // Extract Policy Date
+    let rawPolicyDate = (
+      row['policydate'] || row['policyduedate'] || row['duedate'] || row['dueon'] || ''
+    );
+    if (!rawPolicyDate && rawRow._rawLine && rawRow._rawLine[20]) rawPolicyDate = rawRow._rawLine[20];
     const policyDate = parseCsvDate(rawPolicyDate) || billDate;
-    const policyName = (row['policyname'] || row['policy'] || 'NET').trim();
+
+    // Extract Policy Name
+    let policyName = (
+      row['policyname'] || row['policy'] || ''
+    );
+    if (!policyName && rawRow._rawLine && rawRow._rawLine[21]) policyName = rawRow._rawLine[21];
+    policyName = String(policyName || 'NET').trim();
 
     totalBillsCount++;
 
-    const cleanMarkaKey = markaName.trim().toUpperCase();
+    const cleanMarkaKey = markaName.toUpperCase();
     if (!markaMap.has(cleanMarkaKey)) {
-      markaMap.set(cleanMarkaKey, { marka: markaName.trim(), master, own, bills: [] });
+      markaMap.set(cleanMarkaKey, { marka: markaName, master, own, bills: [] });
     }
     const mg = markaMap.get(cleanMarkaKey);
 
@@ -5744,7 +5849,7 @@ function processImportedRows(rawRows, fileName = 'Imported File') {
   });
 
   if (markaMap.size === 0) {
-    return toast('⚠️ No valid Markas found in file. Please check column headers.');
+    return toast('⚠️ No valid Markas found in file. Please ensure columns include Marka / Party.');
   }
 
   let updated = 0;
@@ -5863,7 +5968,6 @@ async function clearAllData() {
 
   if (firestoreDb) {
     try {
-      // 1. Delete all markas from cloud collection
       const mSnap = await firestoreDb.collection('collectiq_markas').get();
       const batches = [];
       let curBatch = firestoreDb.batch();
@@ -5882,19 +5986,16 @@ async function clearAllData() {
         await b.commit();
       }
 
-      // 2. Delete all help tickets
       const htSnap = await firestoreDb.collection('collectiq_help_tickets').get();
       const htBatch = firestoreDb.batch();
       htSnap.docs.forEach(doc => htBatch.delete(doc.ref));
       await htBatch.commit();
 
-      // 3. Delete all payments
       const pSnap = await firestoreDb.collection('collectiq_payments').get();
       const pBatch = firestoreDb.batch();
       pSnap.docs.forEach(doc => pBatch.delete(doc.ref));
       await pBatch.commit();
 
-      // 4. Update config settings with broadcast clear timestamp
       const clearTimestamp = new Date().toISOString();
       localStorage.setItem('collectiq_last_cleared_at', clearTimestamp);
       await firestoreDb.collection('collectiq_config').doc('settings').set({
@@ -5906,7 +6007,6 @@ async function clearAllData() {
         updatedAt: clearTimestamp
       });
 
-      // 5. Update legacy main doc
       await firestoreDb.collection('collectiq').doc('main').set({
         markas: [],
         payments: [],
@@ -5940,7 +6040,6 @@ async function clearAllData() {
   if (modal) modal.classList.add('open');
   toast('Clean slate ready! Choose your new Excel or CSV file to upload.');
 }
-
 function exportExcel() {
   const list = filtered();
   const rows = list.flatMap(m => m.bills.map(b => {
