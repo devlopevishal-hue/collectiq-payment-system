@@ -5853,14 +5853,26 @@ async function clearAllData() {
       pSnap.docs.forEach(doc => pBatch.delete(doc.ref));
       await pBatch.commit();
 
-      // 4. Update legacy main doc
+      // 4. Update config settings with broadcast clear timestamp
+      const clearTimestamp = new Date().toISOString();
+      localStorage.setItem('collectiq_last_cleared_at', clearTimestamp);
+      await firestoreDb.collection('collectiq_config').doc('settings').set({
+        masterFollowpers,
+        masterCrrs,
+        users,
+        lastClearedAt: clearTimestamp,
+        version: APP_STORAGE_VERSION,
+        updatedAt: clearTimestamp
+      });
+
+      // 5. Update legacy main doc
       await firestoreDb.collection('collectiq').doc('main').set({
         markas: [],
         payments: [],
         helpTickets: [],
         users: users,
         masterFollowpers: masterFollowpers,
-        updatedAt: new Date().toISOString()
+        updatedAt: clearTimestamp
       });
 
       toast('✓ Cloud DB collections completely cleared.');
@@ -7114,7 +7126,15 @@ function initFirebase() {
     // 1. Real-time Live Listener for Markas (Updates within <1-2s across all devices)
     firestoreDb.collection('collectiq_markas').onSnapshot(snapshot => {
       hasLoadedCloudData = true;
-      if (snapshot.empty) return;
+      if (snapshot.empty) {
+        if (markas.length > 0) {
+          markas = [];
+          localStorage.removeItem('collectiq_markas_v4');
+          renderAll();
+        }
+        updateDbStatusBadge('firebase');
+        return;
+      }
       
       let hasChanges = false;
       snapshot.docChanges().forEach(change => {
@@ -7164,6 +7184,15 @@ function initFirebase() {
 
     // 2. Real-time Live Listener for Help Tickets
     firestoreDb.collection('collectiq_help_tickets').onSnapshot(snapshot => {
+      if (snapshot.empty) {
+        if (helpTickets.length > 0) {
+          helpTickets = [];
+          localStorage.removeItem('collectiq_help_tickets_v4');
+          window.helpTickets = [];
+          renderAll();
+        }
+        return;
+      }
       let hasChanges = false;
       snapshot.docChanges().forEach(change => {
         const data = change.doc.data();
@@ -7194,6 +7223,14 @@ function initFirebase() {
 
     // 3. Real-time Live Listener for Payments (Rokad)
     firestoreDb.collection('collectiq_payments').onSnapshot(snapshot => {
+      if (snapshot.empty) {
+        if (payments.length > 0) {
+          payments = [];
+          localStorage.removeItem('collectiq_rokad_v4');
+          renderAll();
+        }
+        return;
+      }
       let hasChanges = false;
       snapshot.docChanges().forEach(change => {
         const data = change.doc.data();
@@ -7226,6 +7263,22 @@ function initFirebase() {
       if (doc.exists) {
         const d = doc.data();
         if (d) {
+          // React immediately to global clear broadcasts across all user sessions
+          if (d.lastClearedAt) {
+            const localClearedAt = localStorage.getItem('collectiq_last_cleared_at');
+            if (!localClearedAt || new Date(d.lastClearedAt) > new Date(localClearedAt)) {
+              localStorage.setItem('collectiq_last_cleared_at', d.lastClearedAt);
+              if (markas.length > 0) {
+                markas = [];
+                payments = [];
+                helpTickets = [];
+                localStorage.removeItem('collectiq_markas_v4');
+                localStorage.removeItem('collectiq_rokad_v4');
+                localStorage.removeItem('collectiq_help_tickets_v4');
+                renderAll();
+              }
+            }
+          }
           if (d.masterFollowpers) {
             masterFollowpers = { ...DEFAULT_MASTER_FOLLOWPERS, ...d.masterFollowpers };
             localStorage.setItem('collectiq_master_followpers_v4', JSON.stringify(masterFollowpers));
