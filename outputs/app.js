@@ -222,6 +222,7 @@ function isOnlineMode() {
 }
 
 function ensureSeedDataLoaded() {
+  if (window._explicitAdminReset || localStorage.getItem('collectiq_admin_cleared')) return;
   if ((!markas || markas.length === 0) && window.latestReportCases && Array.isArray(window.latestReportCases) && window.latestReportCases.length > 0) {
     markas = JSON.parse(JSON.stringify(window.latestReportCases));
     markas.forEach(m => {
@@ -585,7 +586,7 @@ function load() {
     }
     
     // Seed fallback if markas is empty (fresh phone / new session)
-    if ((!markas || markas.length === 0) && window.latestReportCases && Array.isArray(window.latestReportCases) && window.latestReportCases.length > 0) {
+    if (!window._explicitAdminReset && !localStorage.getItem('collectiq_admin_cleared') && (!markas || markas.length === 0) && window.latestReportCases && Array.isArray(window.latestReportCases) && window.latestReportCases.length > 0) {
       markas = JSON.parse(JSON.stringify(window.latestReportCases));
     }
 
@@ -5620,6 +5621,8 @@ function processImportedRows(rawRows, fileName = 'Imported File') {
   if (!rawRows || !rawRows.length) {
     return toast('The uploaded file is empty.');
   }
+  window._explicitAdminReset = false;
+  localStorage.removeItem('collectiq_admin_cleared');
 
   const markaMap = new Map();
   let totalRows = 0;
@@ -5780,6 +5783,8 @@ async function clearAllData() {
     return;
   }
 
+  window._explicitAdminReset = true;
+  localStorage.setItem('collectiq_admin_cleared', 'true');
   markas = [];
   payments = [];
   helpTickets = [];
@@ -5791,6 +5796,38 @@ async function clearAllData() {
 
   if (firestoreDb) {
     try {
+      // 1. Delete all markas from cloud collection
+      const mSnap = await firestoreDb.collection('collectiq_markas').get();
+      const batches = [];
+      let curBatch = firestoreDb.batch();
+      let opCount = 0;
+      mSnap.docs.forEach(doc => {
+        curBatch.delete(doc.ref);
+        opCount++;
+        if (opCount >= 400) {
+          batches.push(curBatch);
+          curBatch = firestoreDb.batch();
+          opCount = 0;
+        }
+      });
+      if (opCount > 0) batches.push(curBatch);
+      for (const b of batches) {
+        await b.commit();
+      }
+
+      // 2. Delete all help tickets
+      const htSnap = await firestoreDb.collection('collectiq_help_tickets').get();
+      const htBatch = firestoreDb.batch();
+      htSnap.docs.forEach(doc => htBatch.delete(doc.ref));
+      await htBatch.commit();
+
+      // 3. Delete all payments
+      const pSnap = await firestoreDb.collection('collectiq_payments').get();
+      const pBatch = firestoreDb.batch();
+      pSnap.docs.forEach(doc => pBatch.delete(doc.ref));
+      await pBatch.commit();
+
+      // 4. Update legacy main doc
       await firestoreDb.collection('collectiq').doc('main').set({
         markas: [],
         payments: [],
@@ -5799,7 +5836,8 @@ async function clearAllData() {
         masterFollowpers: masterFollowpers,
         updatedAt: new Date().toISOString()
       });
-      toast('✓ Cloud DB collections cleared.');
+
+      toast('✓ Cloud DB collections completely cleared.');
     } catch (e) {
       console.warn('Cloud DB clear error:', e);
     }
@@ -5821,7 +5859,7 @@ async function clearAllData() {
   switchView('import');
   const modal = document.querySelector('#importModal');
   if (modal) modal.classList.add('open');
-  toast('Clean slate ready! Choose your new CSV file to upload.');
+  toast('Clean slate ready! Choose your new Excel or CSV file to upload.');
 }
 
 function exportExcel() {
