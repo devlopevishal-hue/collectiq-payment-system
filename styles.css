@@ -1,3 +1,25 @@
+
+/* Desktop defaults for case-row and bills pill */
+.m-card-badge-mobile {
+  display: none;
+}
+.case-row .col-actions .m-card-actions-grid {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.bills-pill {
+  display: inline-block;
+  margin-left: 6px;
+  cursor: pointer;
+  background: #e8f4f0;
+  color: #087454;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid #bfe7d4;
+}
 :root {
   --ink: #14231f;
   --muted: #71807b;
@@ -1156,95 +1178,334 @@ th.sort-active .sort-icon { opacity: 1; color: #087454; font-weight: bold; }
     border-radius: 20px;
   }
 
-  /* Table to Responsive Card View for Schedule, Locks, Markas */
-  .table-panel {
-    background: transparent !important;
-    border: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    box-shadow: none !important;
-    overflow: visible !important;
+  /* Modern Mobile Filter Bar */
+  .filterbar {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    padding: 10px 12px !important;
+    background: #ffffff !important;
+    border-radius: 12px !important;
+    border: 1px solid #d4dfdb !important;
+    margin-bottom: 12px !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03) !important;
   }
 
-  .table-panel table {
-    display: block;
-    width: 100%;
-    min-width: 0 !important;
+  .filter-mobile-search-row {
+    display: flex !important;
+    gap: 8px !important;
+    width: 100% !important;
   }
 
-  .table-panel thead {
-    display: none;
+  .filter-mobile-search-row .search-input {
+    flex: 1 !important;
+    min-height: 42px !important;
+    font-size: 13.5px !important;
+    border-radius: 8px !important;
+    border: 1.5px solid #087454 !important;
+    padding: 8px 12px !important;
+    max-width: 100% !important;
+    box-shadow: 0 1px 4px rgba(8, 116, 84, 0.08) !important;
   }
 
-  .table-panel tbody {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    width: 100%;
+  .filter-adv-toggle-btn {
+    min-height: 42px !important;
+    padding: 0 12px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    background: #f0f6f3 !important;
+    color: #12322b !important;
+    border: 1px solid #d0dfd8 !important;
+    border-radius: 8px !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px !important;
   }
 
-  .table-panel tbody tr {
-    display: flex;
-    flex-direction: column;
-    background: #ffffff;
-    border: 1px solid #d8e4e0;
-    border-radius: 12px;
-    padding: 14px 14px;
-    box-shadow: 0 2px 8px rgba(18, 50, 43, 0.05);
-    gap: 10px;
-    position: relative;
+  .filter-adv-toggle-btn.has-active {
+    background: #e8f4ef !important;
+    border-color: #087454 !important;
+    color: #087454 !important;
   }
 
-  .table-panel tbody tr:hover {
-    background: #ffffff;
+  .filter-adv-toggle-btn .filter-dot {
+    color: #c44d48 !important;
+    font-size: 16px !important;
+    line-height: 0 !important;
   }
 
-  .table-panel tbody td {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0 !important;
-    border: none !important;
-    font-size: 12.5px;
-    width: 100%;
-  }
-
-  /* Top Row: Marka Name + Status Badge */
-  .table-panel tbody tr td:first-child {
-    font-size: 16px;
-    font-weight: 800;
-    color: #12322b;
-    border-bottom: 1px solid #edf2f0 !important;
-    padding-bottom: 8px !important;
-    margin-bottom: 2px;
-  }
-
-  .table-panel tbody tr td:first-child .case-name {
-    font-size: 16px;
-    font-weight: 800;
-  }
-
-  /* Card Action Buttons Row */
-  .table-panel tbody tr td:last-child {
+  .filter-primary-row {
     display: grid !important;
-    grid-template-columns: 1fr 1fr 1fr 1.2fr;
-    gap: 6px;
-    margin-top: 6px;
-    padding-top: 10px !important;
-    border-top: 1px dashed #e2ebe8 !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    width: 100% !important;
   }
 
-  .row-action {
-    min-height: 38px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 11.5px;
-    font-weight: 700;
-    padding: 6px 8px;
-    border-radius: 8px;
-    text-align: center;
-    margin-right: 0 !important;
+  .filter-primary-row .filter-input {
+    min-height: 38px !important;
+    font-size: 12px !important;
+    border-radius: 6px !important;
+    padding: 6px 8px !important;
+    max-width: 100% !important;
+  }
+
+  .filter-adv-panel {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    padding-top: 8px !important;
+    margin-top: 4px !important;
+    border-top: 1px dashed #e2ede8 !important;
+    width: 100% !important;
+  }
+
+  .filter-adv-panel .filter-input {
+    flex: 1 1 calc(50% - 4px) !important;
+    min-height: 38px !important;
+    font-size: 12px !important;
+    max-width: 100% !important;
+  }
+
+  .filter-adv-panel .clear-filter-btn {
+    width: 100% !important;
+    min-height: 38px !important;
+    font-size: 12px !important;
+    margin-top: 4px !important;
+    background: #faeceb !important;
+    color: #c44d48 !important;
+    border: 1px solid #f5c6cb !important;
+    border-radius: 6px !important;
+    font-weight: 700 !important;
+    cursor: pointer !important;
+  }
+
+  /* Scoped Mobile Cards for Schedule, Markas, and GP Lock */
+  #schedule table thead, #markas #markaSubtabMarkas table thead, #gplock table thead {
+    display: none !important;
+  }
+
+  #schedule table, #markas #markaSubtabMarkas table, #gplock table {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    border: none !important;
+    background: transparent !important;
+  }
+
+  #schedule table tbody, #markas #markaSubtabMarkas table tbody, #gplock table tbody {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    width: 100% !important;
+  }
+
+  /* The High-Performance Mobile Card */
+  tr.case-row {
+    display: flex !important;
+    flex-direction: column !important;
+    background: #ffffff !important;
+    border: 1px solid #d4e2dc !important;
+    border-radius: 14px !important;
+    padding: 14px 15px !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05) !important;
+    gap: 8px !important;
+    position: relative !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  tr.case-row td {
+    padding: 0 !important;
+    border: none !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Top of Card: Name + Status Badge */
+  .m-card-top-header {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    width: 100% !important;
+    border-bottom: 1.5px solid #edf4f1 !important;
+    padding-bottom: 10px !important;
+    margin-bottom: 4px !important;
+  }
+
+  .m-card-top-header .case-name {
+    font-size: 18px !important;
+    font-weight: 800 !important;
+    color: #0d2820 !important;
+    letter-spacing: -0.3px !important;
+  }
+
+  .m-card-badge-mobile {
+    display: block !important;
+  }
+
+  .m-card-badge-mobile .status {
+    font-size: 11px !important;
+    font-weight: 800 !important;
+    padding: 4px 8px !important;
+    border-radius: 6px !important;
+    display: inline-block !important;
+  }
+
+  /* Side-by-side Finance Summary Box */
+  tr.case-row .col-due, tr.case-row .col-balance {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    background: #f7faf8 !important;
+    border: 1px solid #e2ece7 !important;
+    border-radius: 8px !important;
+    padding: 8px 12px !important;
+  }
+
+  tr.case-row td[data-label]::before {
+    content: attr(data-label) !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    color: #657b72 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.4px !important;
+  }
+
+  tr.case-row .col-due .m-val {
+    font-size: 15px !important;
+    font-weight: 800 !important;
+    color: #12322b !important;
+  }
+
+  tr.case-row .col-due.is-overdue .m-val {
+    color: #c44d48 !important;
+  }
+
+  tr.case-row .col-balance .m-val {
+    font-size: 15px !important;
+    font-weight: 800 !important;
+    color: #087454 !important;
+  }
+
+  /* Details Rows: Master, Followper, Due Date, Next Follow-up */
+  tr.case-row .col-master, tr.case-row .col-oldest, tr.case-row .col-owner, tr.case-row .col-next, tr.case-row .col-crr, tr.case-row .col-count, tr.case-row .col-lockdate, tr.case-row .col-hod {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    padding: 5px 0 !important;
+    font-size: 13px !important;
+    border-bottom: 1px dashed #eef4f1 !important;
+  }
+
+  tr.case-row .m-val {
+    font-weight: 600 !important;
+    color: #18332b !important;
+  }
+
+  tr.case-row .m-val.font-bold {
+    font-weight: 800 !important;
+    color: #087454 !important;
+  }
+
+  tr.case-row .hide-on-mobile {
+    display: none !important;
+  }
+
+  /* Card Action Buttons */
+  .m-card-actions-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    width: 100% !important;
+    margin-top: 6px !important;
+    padding-top: 10px !important;
+    border-top: 1.5px solid #edf4f1 !important;
+  }
+
+  .btn-update-primary {
+    grid-column: 1 / -1 !important;
+    min-height: 44px !important;
+    font-size: 14px !important;
+    background: #087454 !important;
+    color: #ffffff !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-weight: 800 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-shadow: 0 2px 8px rgba(8, 116, 84, 0.25) !important;
+    cursor: pointer !important;
+  }
+
+  .m-card-actions-grid .row-action:not(.btn-update-primary) {
+    min-height: 40px !important;
+    background: #f4f8f6 !important;
+    color: #18332b !important;
+    border: 1px solid #d4dfdb !important;
+    border-radius: 8px !important;
+    font-size: 12.5px !important;
+    font-weight: 700 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    margin: 0 !important;
+  }
+
+  /* =======================================================
+     MODALS & FINANCIAL STATEMENTS: PRESERVE REAL TABLES!
+     (Fixes ADT 128 bills & payment history table formatting)
+     ======================================================= */
+  .modal table, #billTable, #payHistTable, #rokadTable, #escTable, #helpTicketsTable, #masterTable {
+    display: table !important;
+    width: 100% !important;
+    min-width: 650px !important;
+    border-collapse: collapse !important;
+  }
+
+  .modal thead, #billModal thead, #paymentHistoryModal thead, #masterTable thead {
+    display: table-header-group !important;
+  }
+
+  .modal thead th, #billModal thead th {
+    background: #f4f8f6 !important;
+    color: #3b534b !important;
+    font-size: 11px !important;
+    font-weight: 800 !important;
+    padding: 8px 10px !important;
+    border-bottom: 1.5px solid #d0dfd8 !important;
+    white-space: nowrap !important;
+  }
+
+  .modal tr, #billTable tr, #payHistTable tr, #rokadTable tr, #masterTable tr {
+    display: table-row !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+  }
+
+  .modal td, #billTable td, #payHistTable td, #rokadTable td, #masterTable td {
+    display: table-cell !important;
+    padding: 10px 10px !important;
+    border-bottom: 1px solid #eef3f1 !important;
+    font-size: 12px !important;
+    white-space: nowrap !important;
+    vertical-align: middle !important;
+  }
+
+  .modal .table-panel, .table-panel.modal-table {
+    display: block !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    max-height: 65vh !important;
+    border: 1px solid #d4dfdb !important;
+    border-radius: 10px !important;
+    background: #ffffff !important;
+    padding: 0 !important;
   }
 
   /* Bottom sheet modal styling on mobile */
@@ -1586,39 +1847,7 @@ th.sort-active .sort-icon { opacity: 1; color: #087454; font-weight: bold; }
     justify-content: center !important;
   }
 
-  /* Action Buttons 2x2 grid on cards */
-  .table-panel tbody tr td:last-child {
-    display: grid !important;
-    grid-template-columns: 1fr 1fr !important;
-    gap: 8px !important;
-    margin-top: 6px !important;
-    padding-top: 10px !important;
-    border-top: 1px dashed #e2ebe8 !important;
-    width: 100% !important;
-  }
-
-  .row-action {
-    min-height: 42px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    font-size: 12.5px !important;
-    font-weight: 700 !important;
-    padding: 8px 10px !important;
-    border-radius: 8px !important;
-    text-align: center !important;
-    margin: 0 !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
-  }
-
-  /* Clean horizontal scrolling for sub-tables */
-  #billTable, #rokadTable, #escTable, #helpTicketsTable {
-    display: block !important;
-    overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-    width: 100% !important;
-  }
+  /* Card actions handled by .m-card-actions-grid */
 }
 
 /* ==========================================

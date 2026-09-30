@@ -1144,23 +1144,42 @@ function filters(containerId) {
     ? `<option value="${escapeHtml(currentUser.followperName)}" selected>${escapeHtml(currentUser.followperName)}</option>`
     : `<option value="all">All Followpers</option>` + followpers.map(f => `<option value="${escapeHtml(f)}" ${F.followper === f ? 'selected' : ''}>${escapeHtml(f)}</option>`).join('');
 
+  const hasAdv = Boolean(F.min || F.max || F.minCount || F.maxCount || F.from || F.to);
   container.innerHTML = `
-    <select class="filter-input" data-k="followper" onchange="setF(this)" ${isUserRole ? 'disabled' : ''}>
-      ${followperOptions}
-    </select>
-    <select class="filter-input" data-k="master" onchange="setF(this)">
-      <option value="all">All Masters</option>
-      ${masters.map(m => `<option value="${escapeHtml(m)}" ${F.master === m ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('')}
-    </select>
-    <input class="filter-input" type="text" data-k="marka" placeholder="Search Marka / Party" value="${escapeHtml(F.marka || '')}" oninput="setF(this)">
-    <input class="filter-input" type="number" data-k="min" placeholder="Min amount ₹" value="${F.min || ''}" oninput="setF(this)">
-    <input class="filter-input" type="number" data-k="max" placeholder="Max amount ₹" value="${F.max || ''}" oninput="setF(this)">
-    <input class="filter-input" type="number" data-k="minCount" placeholder="Min follow-ups" value="${F.minCount || ''}" oninput="setF(this)">
-    <input class="filter-input" type="number" data-k="maxCount" placeholder="Max follow-ups" value="${F.maxCount || ''}" oninput="setF(this)">
-    <input class="filter-input" type="date" data-k="from" title="From Due Date" value="${F.from || ''}" onchange="setF(this)">
-    <input class="filter-input" type="date" data-k="to" title="To Due Date" value="${F.to || ''}" onchange="setF(this)">
-    <button onclick="clearFilters()" class="tiny-btn" style="margin-top:0;align-self:center;">Clear</button>
+    <div class="filter-mobile-search-row">
+      <input class="filter-input search-input" type="text" data-k="marka" placeholder="🔍 Search Party / Marka name..." value="${escapeHtml(F.marka || '')}" oninput="setF(this)">
+      <button type="button" class="filter-adv-toggle-btn ${hasAdv ? 'has-active' : ''}" onclick="toggleAdvFilters(this)">
+        ⚙ Filters ${hasAdv ? '<span class="filter-dot">•</span>' : ''}
+      </button>
+    </div>
+    <div class="filter-primary-row">
+      <select class="filter-input" data-k="followper" onchange="setF(this)" ${isUserRole ? 'disabled' : ''}>
+        ${followperOptions}
+      </select>
+      <select class="filter-input" data-k="master" onchange="setF(this)">
+        <option value="all">All Masters</option>
+        ${masters.map(m => `<option value="${escapeHtml(m)}" ${F.master === m ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="filter-adv-panel" style="${hasAdv ? 'display:flex;' : 'display:none;'}">
+      <input class="filter-input" type="number" data-k="min" placeholder="Min amount ₹" value="${F.min || ''}" oninput="setF(this)">
+      <input class="filter-input" type="number" data-k="max" placeholder="Max amount ₹" value="${F.max || ''}" oninput="setF(this)">
+      <input class="filter-input" type="number" data-k="minCount" placeholder="Min follow-ups" value="${F.minCount || ''}" oninput="setF(this)">
+      <input class="filter-input" type="number" data-k="maxCount" placeholder="Max follow-ups" value="${F.maxCount || ''}" oninput="setF(this)">
+      <input class="filter-input" type="date" data-k="from" title="From Due Date" value="${F.from || ''}" onchange="setF(this)">
+      <input class="filter-input" type="date" data-k="to" title="To Due Date" value="${F.to || ''}" onchange="setF(this)">
+      <button type="button" onclick="clearFilters()" class="tiny-btn clear-filter-btn">Clear All</button>
+    </div>
   `;
+}
+
+
+function toggleAdvFilters(btn) {
+  const panel = btn.closest('.filterbar').querySelector('.filter-adv-panel');
+  if (!panel) return;
+  const isHidden = panel.style.display === 'none' || !panel.style.display;
+  panel.style.display = isHidden ? 'flex' : 'none';
+  btn.classList.toggle('active', isHidden);
 }
 
 let setFDebounceTimer = null;
@@ -1527,25 +1546,32 @@ function schedule() {
     const due = alreadyDueAmount(m);
     const balDisplay = out < 0 ? `<b style="color:#087454;">-${money(Math.abs(out))} (Adv)</b>` : money(out);
     return `
-      <tr>
-        <td>
-          <span class="case-name">${escapeHtml(m.marka)}</span>
-          <span onclick="openBillDetails('${m.id}')" style="display:inline-block;margin-left:6px;cursor:pointer;background:#e8f4f0;color:#087454;padding:2px 7px;border-radius:10px;font-size:11px;font-weight:700;border:1px solid #bfe7d4;" title="Click to view all ${(m.bills||[]).length} bills">📄 ${(m.bills||[]).length} Bills ▾</span>
+      <tr class="case-row">
+        <td class="col-marka">
+          <div class="m-card-top-header">
+            <div>
+              <span class="case-name">${escapeHtml(m.marka)}</span>
+              <span onclick="openBillDetails('${m.id}')" class="bills-pill" title="Click to view all ${(m.bills||[]).length} bills">📄 ${(m.bills||[]).length} Bills ▾</span>
+            </div>
+            <div class="m-card-badge-mobile">${badge}</div>
+          </div>
         </td>
-        <td>${escapeHtml(m.master)}</td>
-        <td>${fmt(oldestDueDate(m))}</td>
-        <td class="money" style="${due > 0 ? 'font-weight:700;color:#c44d48;' : ''}">${money(due)}</td>
-        <td class="money">${balDisplay}</td>
-        <td>${escapeHtml(ownerOf(m))}</td>
-        <td>${followUpCount(m)}</td>
-        <td>${fmt(m.nextDate)}</td>
-        <td>${fmt(m.lastDate)}</td>
-        <td>${badge}</td>
-        <td>
-          <button onclick="openHistory('${m.id}')" class="row-action">History</button>
-          <button onclick="openBillDetails('${m.id}')" class="row-action">Bills</button>
-          <button onclick="openPaymentHistory('${m.id}')" class="row-action">₹ Payments</button>
-          <button onclick="openFollowup('${m.id}')" class="row-action" style="background:#087454;color:#fff;">Update</button>
+        <td class="col-master" data-label="Master"><span class="m-val">${escapeHtml(m.master)}</span></td>
+        <td class="col-oldest" data-label="Policy Due Date"><span class="m-val">${fmt(oldestDueDate(m))}</span></td>
+        <td class="money col-due ${due > 0 ? 'is-overdue' : ''}" data-label="Already Due"><span class="m-val">${money(due)}</span></td>
+        <td class="money col-balance" data-label="Total Outstanding"><span class="m-val">${balDisplay}</span></td>
+        <td class="col-owner" data-label="Followper"><span class="m-val">${escapeHtml(ownerOf(m))}</span></td>
+        <td class="col-count hide-on-mobile" data-label="Follow-ups"><span class="m-val">${followUpCount(m)}</span></td>
+        <td class="col-next" data-label="Next Follow-up"><span class="m-val font-bold">${fmt(m.nextDate)}</span></td>
+        <td class="col-last hide-on-mobile" data-label="Last Contact"><span class="m-val">${fmt(m.lastDate)}</span></td>
+        <td class="col-status hide-on-mobile">${badge}</td>
+        <td class="col-actions">
+          <div class="m-card-actions-grid">
+            <button onclick="openFollowup('${m.id}')" class="row-action btn-update-primary" style="background:#087454;color:#fff;font-weight:800;">Update Follow-up</button>
+            <button onclick="openBillDetails('${m.id}')" class="row-action">📄 Bills</button>
+            <button onclick="openPaymentHistory('${m.id}')" class="row-action">₹ Payments</button>
+            <button onclick="openHistory('${m.id}')" class="row-action">History</button>
+          </div>
         </td>
       </tr>
     `;
@@ -1617,23 +1643,27 @@ function locks() {
       ` : '<span style="color:#9ab0a6; font-size:11px;">निर्णय प्रतीक्षारत (Pending HOD)</span>';
 
       return `
-        <tr>
-          <td><span class="case-name">${escapeHtml(m.marka)}</span><span class="case-sub">${escapeHtml(m.master)}</span></td>
-          <td><b>${fmt(oldest)}</b></td>
-          <td>
-            <b style="color:#991b1b;">${fmt(gpLockDate)}</b>
-            <small style="display:block; color:#dc2626; font-weight:700; font-size:10px;">Locked ${daysLocked} day${daysLocked > 1 ? 's' : ''} ago</small>
+        <tr class="case-row">
+          <td class="col-marka">
+            <div class="m-card-top-header">
+              <div>
+                <span class="case-name">${escapeHtml(m.marka)}</span>
+                <span class="case-sub">${escapeHtml(m.master)}</span>
+              </div>
+              <span class="status overdue" style="font-weight:800;">${totalOverdueDays}D OVERDUE</span>
+            </div>
           </td>
-          <td><span class="status overdue" style="font-weight:800;">${totalOverdueDays} DAYS OVERDUE</span></td>
-          <td class="money"><b>${money(totalOutstanding(m))}</b></td>
-          <td>${escapeHtml(ownerOf(m))}</td>
-          <td style="max-width:260px;">${hodBadge}</td>
-          <td>${fmt(m.lastDate)}<br><small style="color:#788882;">${escapeHtml((m.remark || '').substring(0, 40))}</small></td>
-          <td>
-            <div style="display:flex; gap:4px; flex-wrap:wrap;">
-              <button onclick="openPayment('${m.id}')" class="row-action" style="background:#087454; color:#fff; font-weight:700;">+ Clear Payment ₹</button>
-              <button onclick="openSalesHodModal('${m.id}')" class="row-action" style="background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; font-weight:700;">Sales HOD Action</button>
-              <button onclick="openBillDetails('${m.id}')" class="row-action">Bills</button>
+          <td class="col-oldest" data-label="First Due Date"><span class="m-val">${fmt(oldest)}</span></td>
+          <td class="col-lockdate" data-label="GP Lock Date"><span class="m-val" style="color:#991b1b; font-weight:800;">${fmt(gpLockDate)} (${daysLocked}d ago)</span></td>
+          <td class="money col-balance" data-label="Total Outstanding"><span class="m-val" style="font-size:15px; font-weight:800; color:#b91c1c;">${money(totalOutstanding(m))}</span></td>
+          <td class="col-owner" data-label="Followper"><span class="m-val">${escapeHtml(ownerOf(m))}</span></td>
+          <td class="col-hod" data-label="HOD Directive" style="max-width:100%;"><div class="m-val">${hodBadge}</div></td>
+          <td class="col-last hide-on-mobile" data-label="Last Contact"><span class="m-val">${fmt(m.lastDate)}</span></td>
+          <td class="col-actions">
+            <div class="m-card-actions-grid">
+              <button onclick="openPayment('${m.id}')" class="row-action btn-update-primary" style="background:#087454; color:#fff; font-weight:700;">+ Clear Payment ₹</button>
+              <button onclick="openSalesHodModal('${m.id}')" class="row-action" style="background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; font-weight:700;">HOD Action</button>
+              <button onclick="openBillDetails('${m.id}')" class="row-action">📄 Bills</button>
               <button onclick="openHistory('${m.id}')" class="row-action">History</button>
             </div>
           </td>
@@ -2534,20 +2564,25 @@ function markaView() {
       const out = totalOutstanding(m);
       const balDisplay = out < 0 ? `<b style="color:#087454;">-${money(Math.abs(out))} (Adv)</b>` : money(out);
       return `
-        <tr>
-          <td>
-          <span class="case-name">${escapeHtml(m.marka)}</span>
-          <span onclick="openBillDetails('${m.id}')" style="display:inline-block;margin-left:6px;cursor:pointer;background:#e8f4f0;color:#087454;padding:2px 7px;border-radius:10px;font-size:11px;font-weight:700;border:1px solid #bfe7d4;" title="Click to view all ${(m.bills||[]).length} bills">📄 ${(m.bills||[]).length} Bills ▾</span>
-        </td>
-          <td>${escapeHtml(m.master)}</td>
-          <td>Due: ${fmt(oldestDueDate(m))}<br><small style="color:#788882;">Next follow-up: ${fmt(m.nextDate)}</small></td>
-          <td class="money" style="${due > 0 ? 'font-weight:700;color:#c44d48;' : ''}">${money(due)}</td>
-          <td class="money">${balDisplay}</td>
-          <td>${activeBills(m).length}</td>
-          <td><span class="status ${ownerOf(m) === 'Unassigned' ? 'overdue' : 'active'}">${escapeHtml(ownerOf(m))}</span></td>
-          <td><span class="status active" style="background:#e8f4ef; color:#087454; font-weight:700;">${escapeHtml(crrOf(m))}</span></td>
-          <td>
-            <button onclick="assign('${escapeHtml(m.marka).replace(/'/g, "\\'")}', '${escapeHtml(ownerOf(m)).replace(/'/g, "\\'")}', '${escapeHtml(crrOf(m)).replace(/'/g, "\\'")}')" class="row-action">${ownerOf(m) === 'Unassigned' ? 'Assign' : 'Reassign'}</button>
+        <tr class="case-row">
+          <td class="col-marka">
+            <div class="m-card-top-header">
+              <div>
+                <span class="case-name">${escapeHtml(m.marka)}</span>
+                <span onclick="openBillDetails('${m.id}')" class="bills-pill" title="Click to view all ${(m.bills||[]).length} bills">📄 ${(m.bills||[]).length} Bills ▾</span>
+              </div>
+              <span class="status ${ownerOf(m) === 'Unassigned' ? 'overdue' : 'active'}">${escapeHtml(ownerOf(m))}</span>
+            </div>
+          </td>
+          <td class="col-master" data-label="Master"><span class="m-val">${escapeHtml(m.master)}</span></td>
+          <td class="col-oldest" data-label="Due & Next Follow-up"><span class="m-val">Due: ${fmt(oldestDueDate(m))}<br><small style="color:#788882;">Next: ${fmt(m.nextDate)}</small></span></td>
+          <td class="money col-due ${due > 0 ? 'is-overdue' : ''}" data-label="Already Due"><span class="m-val">${money(due)}</span></td>
+          <td class="money col-balance" data-label="Total Outstanding"><span class="m-val">${balDisplay}</span></td>
+          <td class="col-count" data-label="Active Bills"><span class="m-val">${activeBills(m).length} Bills</span></td>
+          <td class="col-owner hide-on-mobile" data-label="Followper"><span class="status ${ownerOf(m) === 'Unassigned' ? 'overdue' : 'active'}">${escapeHtml(ownerOf(m))}</span></td>
+          <td class="col-crr" data-label="CRR Person"><span class="status active" style="background:#e8f4ef; color:#087454; font-weight:700;">${escapeHtml(crrOf(m))}</span></td>
+          <td class="col-actions">
+            <button onclick="assign('${escapeHtml(m.marka).replace(/'/g, "\\'")}', '${escapeHtml(ownerOf(m)).replace(/'/g, "\\'")}', '${escapeHtml(crrOf(m)).replace(/'/g, "\\'")}')" class="row-action btn-update-primary" style="background:#087454;color:#fff;font-weight:700;width:100%;">${ownerOf(m) === 'Unassigned' ? 'Assign Personnel' : 'Reassign Personnel'}</button>
           </td>
         </tr>
       `;
