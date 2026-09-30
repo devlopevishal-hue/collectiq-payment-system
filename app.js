@@ -5461,7 +5461,8 @@ function parseCsvLine(text) {
 function parseAmount(val) {
   if (typeof val === 'number') return val;
   if (!val) return 0;
-  const clean = String(val).replace(/[₹\s,"']/g, '').trim();
+  let clean = String(val).replace(/[₹\s'"]/g, '').trim();
+  clean = clean.replace(/,/g, '');
   const n = parseFloat(clean);
   return isNaN(n) ? 0 : n;
 }
@@ -5542,74 +5543,114 @@ function parseCsvDate(str) {
   return '';
 }
 
+// RFC-4180 compliant CSV parser that handles multiline headers & quoted values
+function parseRFC4180Csv(text) {
+  const rows = [];
+  let row = [];
+  let cur = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const next = text[i + 1];
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        cur += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      row.push(cur.trim());
+      cur = '';
+    } else if ((char === '\r' || char === '\n') && !inQuotes) {
+      if (char === '\r' && next === '\n') i++;
+      row.push(cur.trim());
+      cur = '';
+      if (row.length > 0 && row.some(cell => cell.trim() !== '')) {
+        rows.push(row);
+      }
+      row = [];
+    } else {
+      cur += char;
+    }
+  }
+  if (cur || row.length > 0) {
+    row.push(cur.trim());
+    if (row.some(cell => cell.trim() !== '')) {
+      rows.push(row);
+    }
+  }
+  return rows;
+}
+
 window.parseCsvLine = parseCsvLine;
 window.parseAmount = parseAmount;
 window.parseCsvDate = parseCsvDate;
+window.parseRFC4180Csv = parseRFC4180Csv;
 
 function importFile(e) {
   const f = e.target.files[0];
   if (!f) return;
   
-  const ext = (f.name.split('.').pop() || '').toLowerCase();
-  
-  if (ext === 'xlsx' || ext === 'xls') {
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const data = new Uint8Array(evt.target.result);
-      const parseExcel = () => {
-        try {
-          const workbook = XLSX.read(data, { type: 'array', cellDates: true, raw: false });
-          const sheetName = workbook.SheetNames[0];
-          const sheet = workbook.Sheets[sheetName];
-          const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
-          processImportedRows(rawRows, f.name);
-        } catch (err) {
-          console.error('Error reading Excel file:', err);
-          toast('Failed to read Excel file: ' + err.message);
-        }
-      };
+  toast('Processing ' + f.name + '...');
 
-      if (typeof XLSX === 'undefined') {
-        toast('Loading Excel engine...');
-        const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
-        s.onload = parseExcel;
-        s.onerror = () => {
-          toast('Failed to load Excel parser. Please check internet connection or export as CSV.');
-        };
-        document.head.appendChild(s);
-      } else {
-        parseExcel();
+  const parseWithXlsx = (buffer) => {
+    try {
+      const workbook = XLSX.read(buffer, { type: 'array', cellDates: true, raw: false });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+      if (!rawRows || !rawRows.length) {
+        return toast('No data rows found in ' + f.name);
       }
-    };
-    reader.readAsArrayBuffer(f);
-  } else {
+      processImportedRows(rawRows, f.name);
+    } catch (err) {
+      console.warn('XLSX engine notice:', err);
+      parseAsTextFallback();
+    }
+  };
+
+  const parseAsTextFallback = () => {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const lines = reader.result.trim().split(/\r?\n/);
-        if (!lines.length) return;
-        const headerLine = lines.shift();
-        const rawHeaders = parseCsvLine(headerLine);
-        
+        const text = reader.result;
+        const rawGrid = parseRFC4180Csv(text);
+        if (!rawGrid || !rawGrid.length) return toast('Empty CSV file.');
+        const rawHeaders = rawGrid[0];
         const rawRows = [];
-        lines.forEach(line => {
-          if (!line.trim()) return;
-          const cols = parseCsvLine(line);
+        for (let i = 1; i < rawGrid.length; i++) {
+          const r = rawGrid[i];
           const rowObj = {};
-          rawHeaders.forEach((h, i) => {
-            rowObj[h] = cols[i] || '';
+          rawHeaders.forEach((h, idx) => {
+            rowObj[h] = r[idx] || '';
           });
           rawRows.push(rowObj);
-        });
+        }
         processImportedRows(rawRows, f.name);
       } catch (err) {
-        console.error('Error reading CSV file:', err);
-        toast('Failed to read CSV file: ' + err.message);
+        console.error('CSV parse error:', err);
+        toast('Failed to parse file: ' + err.message);
       }
     };
     reader.readAsText(f);
-  }
+  };
+
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    const data = new Uint8Array(evt.target.result);
+    if (typeof XLSX !== 'undefined') {
+      parseWithXlsx(data);
+    } else {
+      toast('Loading Excel engine...');
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+      s.onload = () => parseWithXlsx(data);
+      s.onerror = () => parseAsTextFallback();
+      document.head.appendChild(s);
+    }
+  };
+  reader.readAsArrayBuffer(f);
 }
 
 // Keep backwards-compatible alias
@@ -5625,21 +5666,31 @@ function processImportedRows(rawRows, fileName = 'Imported File') {
   localStorage.removeItem('collectiq_admin_cleared');
 
   const markaMap = new Map();
-  let totalRows = 0;
+  let totalBillsCount = 0;
 
   rawRows.forEach(rawRow => {
     // Normalize keys: lowercase without special characters or dots
     const row = {};
     for (const [k, v] of Object.entries(rawRow)) {
-      const cleanKey = k.toLowerCase().trim().replace(/[\s\-_/\\+.]+/g, '');
+      if (!k) continue;
+      const cleanKey = String(k).toLowerCase().trim().replace(/[\s\-_/\\+.\r\n]+/g, '');
       row[cleanKey] = v;
     }
 
-    const markaName = (
-      row['markagroup'] || row['markagrou'] || row['marka'] || row['group'] || row['party'] ||
-      row['partyname'] || row['accaddr'] || row['accaddress'] || row['customername'] || row['accountname'] || row['particulars'] ||
-      row['ledger'] || row['name'] || row['markaname'] || ''
+    // 1. First check for Marka / Group
+    let markaName = (
+      row['markagroup'] || row['marka'] || row['group'] || row['markaname'] || ''
     ).trim();
+
+    // 2. Fallback to Party / Account Name
+    if (!markaName) {
+      markaName = (
+        row['party'] || row['partyname'] || row['accaddress'] || row['accaddr'] ||
+        row['customername'] || row['accountname'] || row['particulars'] || row['ledger'] || row['name'] || ''
+      ).trim();
+    }
+
+    if (!markaName) return;
 
     const rawBillDate = row['billdate'] || row['date'] || row['firstdate'] || row['invoicedate'] || row['voucherdate'] || row['invdate'] || row['docdate'] || '';
     const billDate = parseCsvDate(rawBillDate) || iso(today);
@@ -5658,8 +5709,7 @@ function processImportedRows(rawRows, fileName = 'Imported File') {
     const policyDate = parseCsvDate(rawPolicyDate) || billDate;
     const policyName = (row['policyname'] || row['policy'] || 'NET').trim();
 
-    if (!markaName) return;
-    totalRows++;
+    totalBillsCount++;
 
     const cleanMarkaKey = markaName.trim().toUpperCase();
     if (!markaMap.has(cleanMarkaKey)) {
@@ -5692,6 +5742,10 @@ function processImportedRows(rawRows, fileName = 'Imported File') {
       });
     }
   });
+
+  if (markaMap.size === 0) {
+    return toast('⚠️ No valid Markas found in file. Please check column headers.');
+  }
 
   let updated = 0;
   let addedBills = 0;
@@ -5739,7 +5793,7 @@ function processImportedRows(rawRows, fileName = 'Imported File') {
         m.nextDate = '';
       }
     } else {
-      const existingOwner = markas.find(x => x.marka === markaName);
+      const existingOwner = markas.find(x => x.marka && x.marka.trim().toUpperCase() === cleanMarkaKey);
       const bills = [];
       data.bills.forEach((b) => {
         bills.push({
@@ -5747,15 +5801,15 @@ function processImportedRows(rawRows, fileName = 'Imported File') {
           firstDate: b.firstDate,
           balance: b.balance,
           sourceAmount: b.sourceAmount,
-          billCount: b.billCount,
-          billNos: b.billNos,
+          billCount: b.billCount || 1,
+          billNos: b.billNos || [],
           policyDate: b.policyDate,
           policyName: b.policyName
         });
       });
       markas.push({
         id: uid(),
-        marka: markaName,
+        marka: targetMarkaName,
         master: data.master,
         owner: data.own || (existingOwner && ownerOf(existingOwner)) || getMasterFollowper(data.master) || 'Unassigned',
         nextDate: iso(new Date(today.getTime() + 86400000)),
@@ -5778,20 +5832,7 @@ function processImportedRows(rawRows, fileName = 'Imported File') {
   renderAll();
   switchView('schedule');
 
-  if (isOnlineMode()) {
-    fetch('/api/import-sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ markas })
-    }).then(r => r.json()).then(data => {
-      toast(`✓ ${updated} Markas synchronized with SQLite database (${fileName}).`);
-    }).catch(err => {
-      console.warn('SQLite sync notice:', err);
-      toast(`${updated} Markas processed locally.`);
-    });
-  } else {
-    toast(`${updated} Markas processed (${fileName}).`);
-  }
+  toast(`✓ Successfully imported ${updated} Markas (${totalBillsCount} bills processed) from ${fileName}!`);
 }
 
 async function clearAllData() {
