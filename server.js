@@ -1260,6 +1260,135 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (pathname === '/api/sync' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try {
+        const payload = JSON.parse(body);
+        const { markas: syncMarkas, payments: syncPayments, helpTickets: syncTickets, masterFollowpers: syncMF, masterCrrs: syncMC, users: syncUsers } = payload;
+        const now = new Date().toISOString();
+
+        db.exec('BEGIN TRANSACTION;');
+
+        if (Array.isArray(syncMarkas) && syncMarkas.length > 0) {
+          const insMarka = db.prepare(`
+            INSERT INTO markas (id, marka, master, owner, next_date, last_date, last_status, remark, ptp, expected, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(marka) DO UPDATE SET
+              master = excluded.master,
+              owner = excluded.owner,
+              next_date = excluded.next_date,
+              last_date = excluded.last_date,
+              last_status = excluded.last_status,
+              remark = excluded.remark,
+              ptp = excluded.ptp,
+              expected = excluded.expected,
+              updated_at = excluded.updated_at
+          `);
+
+          const insBill = db.prepare(`
+            INSERT INTO bills (id, marka_id, first_date, balance, source_amount, bill_count, bill_nos_json, policy_date, policy_name, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              balance = excluded.balance,
+              source_amount = excluded.source_amount,
+              updated_at = excluded.updated_at
+          `);
+
+          syncMarkas.forEach(m => {
+            insMarka.run(
+              m.id, m.marka, m.master, m.owner || 'Unassigned',
+              m.nextDate || '', m.lastDate || '', m.lastStatus || '', m.remark || '',
+              m.ptp || '', m.expected || 0, now, now
+            );
+            (m.bills || []).forEach(b => {
+              insBill.run(
+                String(b.id), m.id, b.firstDate, b.balance, b.sourceAmount,
+                b.billCount || 1, JSON.stringify(b.billNos || []),
+                b.policyDate || '', b.policyName || '', now
+              );
+            });
+          });
+        }
+
+        if (Array.isArray(syncTickets)) {
+          const insTicket = db.prepare(`
+            INSERT INTO help_tickets (id, marka_id, marka_name, date, requested_by, assigned_helper, priority, subject, remark, status, next_date, history_json, resolution_type, resolution_note, resolved_by, resolved_at, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              assigned_helper = excluded.assigned_helper,
+              priority = excluded.priority,
+              subject = excluded.subject,
+              remark = excluded.remark,
+              status = excluded.status,
+              next_date = excluded.next_date,
+              history_json = excluded.history_json,
+              resolution_type = excluded.resolution_type,
+              resolution_note = excluded.resolution_note,
+              resolved_by = excluded.resolved_by,
+              resolved_at = excluded.resolved_at,
+              updated_at = excluded.updated_at
+          `);
+
+          syncTickets.forEach(t => {
+            insTicket.run(
+              t.id, t.markaId || '', t.markaName || '', t.date || now.slice(0, 10),
+              t.requestedBy || '', t.assignedHelper || '', t.priority || 'Normal',
+              t.subject || '', t.remark || '', t.status || 'Open', t.nextDate || '',
+              JSON.stringify(t.history || []), t.resolutionType || '', t.resolutionNote || '',
+              t.resolvedBy || '', t.resolvedAt || '', t.createdAt || now, now
+            );
+          });
+        }
+
+        if (Array.isArray(syncPayments)) {
+          const insPay = db.prepare(`
+            INSERT INTO payments (id, date, ref, mode, amount, marka, allocations_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO NOTHING
+          `);
+          syncPayments.forEach(p => {
+            insPay.run(p.id, p.date, p.ref, p.mode, p.amount, p.marka, JSON.stringify(p.allocations || []), now);
+          });
+        }
+
+        if (syncMF && typeof syncMF === 'object') {
+          const insMF = db.prepare(`
+            INSERT INTO masters (master_name, followper_name, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(master_name) DO UPDATE SET followper_name = excluded.followper_name, updated_at = excluded.updated_at
+          `);
+          Object.entries(syncMF).forEach(([m, f]) => {
+            insMF.run(m, f, now);
+          });
+        }
+
+        if (syncMC && typeof syncMC === 'object') {
+          const insMC = db.prepare(`
+            INSERT INTO master_crrs (master_name, crr_name, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(master_name) DO UPDATE SET crr_name = excluded.crr_name, updated_at = excluded.updated_at
+          `);
+          Object.entries(syncMC).forEach(([m, c]) => {
+            insMC.run(m, c, now);
+          });
+        }
+
+        db.exec('COMMIT;');
+
+        const fullData = getFullData();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, message: 'Sync complete.', data: fullData }));
+      } catch (err) {
+        try { db.exec('ROLLBACK;'); } catch (e) {}
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
+    return;
+  }
+
   // Static File Serving
   let filePath = path.join(STATIC_DIR, pathname === '/' ? 'index.html' : pathname);
   

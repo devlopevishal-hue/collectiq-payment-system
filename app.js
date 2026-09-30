@@ -445,7 +445,7 @@ function logout() {
 window.handleLoginSubmit = handleLoginSubmit;
 window.logout = logout;
 
-function save() {
+function save(skipRemoteSync = false) {
   window.markas = markas;
   window.helpTickets = helpTickets;
   window.users = users;
@@ -455,7 +455,11 @@ function save() {
   localStorage.setItem('collectiq_master_followpers_v4', JSON.stringify(masterFollowpers));
   localStorage.setItem('collectiq_master_crrs_v4', JSON.stringify(masterCrrs));
   localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
-  saveCloud();
+  
+  if (!skipRemoteSync) {
+    saveCloud();
+    syncToServer();
+  }
 }
 
 function migrateV3(oldCases) {
@@ -6987,6 +6991,42 @@ function initFirebase() {
   }
 }
 
+async function syncToServer() {
+  const serverUrl = getActiveServerUrl();
+  if (serverUrl === null) return;
+
+  try {
+    const res = await fetch(`${serverUrl}/api/sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        markas,
+        payments,
+        helpTickets,
+        masterFollowpers,
+        masterCrrs,
+        users
+      })
+    });
+    if (res.ok) {
+      updateDbStatusBadge('sqlite');
+    }
+  } catch (err) {
+    console.warn('Backend server sync notice:', err);
+  }
+}
+
+function getActiveServerUrl() {
+  const custom = localStorage.getItem('collectiq_custom_backend_url');
+  if (custom && custom.trim()) {
+    return custom.trim().replace(/\/+$/, '');
+  }
+  if (isLocalServer()) {
+    return '';
+  }
+  return null;
+}
+
 async function saveCloud() {
   if (firestoreDb) {
     if (markas.length === 0 && !window._explicitAdminReset) {
@@ -7004,26 +7044,65 @@ async function saveCloud() {
         version: APP_STORAGE_VERSION,
         updatedAt: new Date().toISOString()
       });
+      updateDbStatusBadge('firebase');
     } catch (err) {
       console.error('Error writing to Firestore:', err);
+      if (err && (err.code === 'permission-denied' || String(err).includes('permission'))) {
+        updateDbStatusBadge('firebase_permission_denied');
+      }
     }
   }
 }
 
 function openCloudModal() {
-  // Direct backend database connection is automatic
-  syncWithDatabase();
-  toast('Database live sync active and connected.');
-}
+  const modal = document.getElementById('cloudModal');
+  if (!modal) return;
 
-function saveCloudConfig() {
-  toast('Database connection is automatically configured from backend.');
+  const currentUrl = localStorage.getItem('collectiq_custom_backend_url') || '';
+  const inputEl = document.getElementById('customBackendUrl');
+  if (inputEl) inputEl.value = currentUrl;
+
+  openModal('cloudModal');
 }
+window.openCloudModal = openCloudModal;
+
+async function saveCloudConfig(e) {
+  if (e && typeof e.preventDefault === 'function') e.preventDefault();
+  const inputEl = document.getElementById('customBackendUrl');
+  const urlVal = (inputEl ? inputEl.value : '').trim().replace(/\/+$/, '');
+
+  if (urlVal) {
+    localStorage.setItem('collectiq_custom_backend_url', urlVal);
+    toast('Testing connection to: ' + urlVal + ' ...');
+    try {
+      const res = await fetch(`${urlVal}/api/data`);
+      if (res.ok) {
+        toast('✓ Connected successfully to central SaaS cloud server!');
+        closeModal('cloudModal');
+        await syncWithDatabase();
+        return;
+      } else {
+        toast('⚠️ Server responded with error status: ' + res.status);
+      }
+    } catch (err) {
+      toast('⚠️ Could not connect to server: ' + err.message);
+    }
+  } else {
+    localStorage.removeItem('collectiq_custom_backend_url');
+    toast('Reset to default direct connection mode.');
+    closeModal('cloudModal');
+    syncWithDatabase();
+  }
+}
+window.saveCloudConfig = saveCloudConfig;
 
 async function pushToCloud() {
+  toast('Synchronizing all records to central database...');
   await saveCloud();
+  await syncToServer();
   toast('✓ All records synchronized to central database!');
 }
+window.pushToCloud = pushToCloud;
 
 function disconnectCloud() {
   toast('Direct database connection is active.');
@@ -7034,14 +7113,16 @@ let isSyncing = false;
 async function syncWithDatabase() {
   if (isSyncing) return;
 
-  // If connected via HTTP, sync directly with SQLite database as single source of truth
-  if (isLocalServer()) {
+  const serverUrl = getActiveServerUrl();
+
+  // 1. Sync with central SQLite server (local or hosted cloud)
+  if (serverUrl !== null) {
     try {
       isSyncing = true;
-      const res = await fetch('/api/data');
+      const res = await fetch(`${serverUrl}/api/data`);
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data.markas)) {
+        if (Array.isArray(data.markas) && data.markas.length > 0) {
           markas = data.markas;
           markas.forEach(m => {
             if (!m.escalations) m.escalations = [];
@@ -7063,22 +7144,20 @@ async function syncWithDatabase() {
           }
           isServerConnected = true;
           window.isServerConnected = true;
-          save();
+          save(true); // skip remote sync on incoming read
           renderAll();
           updateDbStatusBadge('sqlite');
           return;
         }
       }
     } catch (e) {
-      console.warn('Backend SQLite server offline; using local cache.', e);
+      console.warn('Central database server offline; using local cache.', e);
     } finally {
       isSyncing = false;
     }
-    updateDbStatusBadge('local');
-    return;
   }
 
-  // 1. Try Firebase (for Web / GitHub Pages deployment)
+  // 2. Try Firebase (for Web / GitHub Pages deployment)
   if (initFirebase()) {
     return;
   }
@@ -7087,15 +7166,26 @@ async function syncWithDatabase() {
 function updateDbStatusBadge(mode) {
   const el = document.getElementById('dbBadge');
   if (el) {
-    if (mode === 'firebase' || firestoreDb) {
-      el.innerHTML = '<span style="color:#4ba779;">●</span> Live Database (Connected)';
-      el.title = 'Direct Connection to Central Database (Real-time live sync for all doers)';
+    if (mode === 'firebase') {
+      el.innerHTML = '<span style="color:#4ba779;">●</span> Live Cloud Database (Connected)';
+      el.title = 'Real-time live multi-device sync active via Cloud Firestore';
+      el.onclick = openCloudModal;
+      el.style.cursor = 'pointer';
+    } else if (mode === 'firebase_permission_denied') {
+      el.innerHTML = '<span style="color:#e97954;">⚠️</span> Cloud Sync (Rules Needed - Click)';
+      el.title = 'Click here to view the 1-step Firestore rules setup guide';
+      el.onclick = openCloudModal;
+      el.style.cursor = 'pointer';
     } else if (mode === 'sqlite' || mode === true) {
-      el.innerHTML = '<span style="color:#4ba779;">●</span> SQLite Database (Live Connected)';
-      el.title = 'Direct Live Connection to SQLite Database (Multi-user real-time sync)';
+      el.innerHTML = '<span style="color:#4ba779;">●</span> Live Central Database (Connected)';
+      el.title = 'Real-time multi-device sync active via central SaaS server';
+      el.onclick = openCloudModal;
+      el.style.cursor = 'pointer';
     } else {
       el.innerHTML = '<span style="color:#4ba779;">●</span> Live Database (Connecting...)';
       el.title = 'Connecting to central live database...';
+      el.onclick = openCloudModal;
+      el.style.cursor = 'pointer';
     }
   }
 }
@@ -7114,7 +7204,7 @@ window.addEventListener('load', () => {
 
 // Live auto-polling every 3 seconds for real-time direct database sync across all users & devices
 setInterval(() => {
-  if (isLocalServer() && !document.hidden) {
+  if (!document.hidden) {
     syncWithDatabase();
   }
 }, 3000);

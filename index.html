@@ -79,6 +79,11 @@
       <div class="mark">C</div>
       <span>collect<span>IQ</span></span>
     </div>
+    <div style="padding:4px 14px 10px 14px;">
+      <div id="dbBadge" onclick="openCloudModal()" style="font-size:11px; font-weight:700; color:#c9f36a; background:#183e35; border:1px solid #285d51; padding:5px 10px; border-radius:20px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:all 0.15s;" title="Click to view Live Database connection status">
+        <span style="color:#4ba779;">●</span> Live Database (Connecting...)
+      </div>
+    </div>
     <div class="workspace">MARKA COLLECTIONS</div>
     <nav>
       <button class="nav active" data-view="dashboard"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg></i> Dashboard</button>
@@ -1361,6 +1366,49 @@
       <div class="modal-footer" style="justify-content:center;">
         <button type="button" class="btn secondary" onclick="closeModal('receiptViewModal')">Close Viewer</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Cloud Database & SaaS Sync Modal -->
+  <div class="modal-backdrop" id="cloudModal">
+    <div class="modal" style="max-width:580px;">
+      <button type="button" class="close" onclick="closeModal('cloudModal')">×</button>
+      <p class="eyebrow">CENTRAL DATABASE &amp; SAAS LIVE SYNC</p>
+      <h2>Central SaaS Live Sync Engine</h2>
+      <p class="modal-copy" style="margin-bottom:14px;">CollectIQ automatically keeps all data synchronized across all devices, mobile phones, and admins in real time.</p>
+
+      <form onsubmit="saveCloudConfig(event)" style="display:flex; flex-direction:column; gap:14px;">
+        <div style="background:#f0faf5; border:1px solid #bfe7d4; border-radius:10px; padding:14px;">
+          <strong style="color:#087454; font-size:13px; display:block; margin-bottom:4px;">🌐 Central SaaS Cloud Server Connection:</strong>
+          <p style="font-size:12px; color:#2c4b3f; margin-bottom:8px;">Connect to your central SQLite / SaaS cloud server backend so all mobile phones and remote PCs sync live automatically.</p>
+          <label style="font-size:12px; font-weight:700; color:#18332b;">Custom Cloud Server URL (Optional for Remote Multi-Device Sync):
+            <input type="text" id="customBackendUrl" placeholder="e.g. https://my-collectiq.onrender.com or http://192.168.1.15:3000" style="width:100%; margin-top:4px; padding:9px 12px; border:1.5px solid #c0dcd0; border-radius:6px; font-family:inherit; font-size:13px;">
+          </label>
+          <div style="display:flex; gap:8px; margin-top:10px;">
+            <button type="submit" class="btn primary" style="font-size:12px; padding:6px 14px;">Save &amp; Test Connection</button>
+            <button type="button" class="btn secondary" onclick="pushToCloud()" style="font-size:12px; padding:6px 14px;">⚡ Force Sync All Records Now</button>
+          </div>
+        </div>
+
+        <div style="background:#fefce8; border:1px solid #fef08a; border-radius:10px; padding:14px;">
+          <strong style="color:#854d0e; font-size:13px; display:block; margin-bottom:4px;">🔥 Firebase Firestore Cloud Sync Rules (If using Firebase):</strong>
+          <p style="font-size:11.5px; color:#713f12; margin-bottom:6px;">If your live status shows "Rules Needed", update your Firestore Security Rules in Firebase Console to allow global multi-device sync:</p>
+          <pre style="background:#1e293b; color:#e2e8f0; padding:10px; border-radius:6px; font-size:11px; font-family:'DM Mono',monospace; overflow-x:auto; margin:6px 0;">rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}</pre>
+          <a href="https://console.firebase.google.com/project/collectiq-ba467/firestore/rules" target="_blank" style="font-size:11.5px; color:#2563eb; font-weight:700; text-decoration:underline;">Open Firebase Console Rules Page ↗</a>
+        </div>
+
+        <div class="modal-footer" style="margin-top:4px;">
+          <span>All changes, help tickets, payments &amp; follow-ups auto-sync every 3 seconds.</span>
+          <button type="button" class="btn secondary" onclick="closeModal('cloudModal')">Done</button>
+        </div>
+      </form>
     </div>
   </div>
 
