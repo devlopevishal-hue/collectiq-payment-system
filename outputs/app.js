@@ -4761,15 +4761,18 @@ function openBillDetails(markaId) {
       '<span class="status active">DUE TODAY</span>' :
       `<span class="status closed" style="background:#e8f4f0;color:#186149;">UPCOMING (${Math.abs(d)}d)</span>`;
 
+    const payBtn = b.balance > 0 ? 
+      `<button onclick="event.stopPropagation(); paySpecificBill('${m.id}', ${b.id}, ${b.balance})" class="btn-xs primary" style="margin-left:6px;padding:2px 7px;font-size:11px;border-radius:4px;cursor:pointer;">Pay</button>` : '';
+
     return `
-      <tr>
+      <tr style="${b.balance === 0 ? 'opacity:0.65;background:#fafafa;' : ''}">
         <td>${fmt(b.firstDate)}</td>
         <td><b>${fmt(b.policyDate || b.firstDate)}</b></td>
         <td>${escapeHtml(b.policyName || 'NET')}</td>
         <td>${(b.billNos || []).map(escapeHtml).join(', ') || '—'}</td>
         <td class="money">${money(b.sourceAmount)}</td>
         <td class="money" style="${b.balance < 0 ? 'color:#512da8;font-weight:700;' : ''}">${money(b.balance)}</td>
-        <td>${statusBadge}</td>
+        <td>${statusBadge} ${payBtn}</td>
       </tr>
     `;
   }).join('');
@@ -5852,14 +5855,19 @@ function processImportedRows(rawInput, fileName = 'Imported File') {
     return toast('⚠️ No valid Markas found in file. Please ensure columns include Marka / Party.');
   }
 
+  const syncModeEl = document.querySelector('input[name="importSyncMode"]:checked');
+  const syncMode = syncModeEl ? syncModeEl.value : 'sync';
+
   let updated = 0;
   let addedBills = 0;
   let updatedBills = 0;
+  let clearedBills = 0;
 
   markaMap.forEach((data, cleanMarkaKey) => {
     const targetMarkaName = data.marka;
     let m = markas.find(x => x.marka && x.marka.trim().toUpperCase() === cleanMarkaKey);
     if (m) {
+      const matchedBillIds = new Set();
       data.bills.forEach((newBill) => {
         const existingBill = (m.bills || []).find(b => 
           (newBill.billNos.length > 0 && (b.billNos || []).some(no => newBill.billNos.includes(no))) ||
@@ -5876,10 +5884,12 @@ function processImportedRows(rawInput, fileName = 'Imported File') {
               if (!existingBill.billNos.includes(no)) existingBill.billNos.push(no);
             });
           }
+          matchedBillIds.add(existingBill.id);
           updatedBills++;
         } else {
+          const newId = Date.now() + updated + addedBills++;
           m.bills.push({
-            id: Date.now() + updated + addedBills++,
+            id: newId,
             firstDate: newBill.firstDate,
             balance: newBill.balance,
             sourceAmount: newBill.sourceAmount,
@@ -5888,8 +5898,20 @@ function processImportedRows(rawInput, fileName = 'Imported File') {
             policyDate: newBill.policyDate,
             policyName: newBill.policyName
           });
+          matchedBillIds.add(newId);
         }
       });
+
+      // If in Sync mode: any bill in m.bills that was previously unpaid but not in the new report was settled in ERP
+      if (syncMode === 'sync') {
+        (m.bills || []).forEach(b => {
+          if (!matchedBillIds.has(b.id) && b.balance > 0) {
+            b.balance = 0; // Mark settled/cleared
+            clearedBills++;
+          }
+        });
+      }
+
       m.master = data.master || m.master;
       if (ownerOf(m) === 'Unassigned' && data.own) m.owner = data.own;
       if (totalOutstanding(m) > 0 && !m.nextDate) {
@@ -7650,3 +7672,15 @@ setInterval(() => {
     syncWithDatabase();
   }
 }, 3000);
+
+
+function paySpecificBill(markaId, billId, billBalance) {
+  closeModal('billModal');
+  openPayment(markaId);
+  const amtInput = document.getElementById('payAmount');
+  if (amtInput) {
+    amtInput.value = billBalance > 0 ? billBalance : '';
+    if (typeof updatePayAllocations === 'function') updatePayAllocations('amount');
+  }
+}
+window.paySpecificBill = paySpecificBill;
