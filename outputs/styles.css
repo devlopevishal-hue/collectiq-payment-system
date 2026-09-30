@@ -1713,3 +1713,157 @@ body.modal-open #mobileQuickFab {
     padding: 20px 16px 28px 16px !important;
   }
 }
+
+
+/* ==========================================
+   PAGINATION & MOBILE PWA PERFORMANCE
+   ========================================== */
+html, body, button, input, select, textarea {
+  touch-action: manipulation;
+}
+
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 18px;
+  background: #ffffff;
+  border-top: 1px solid #e5ece8;
+  border-radius: 0 0 12px 12px;
+  box-sizing: border-box;
+}
+
+.pagination-info {
+  font-size: 13px;
+  color: #556b62;
+  font-weight: 500;
+}
+
+.pagination-info b {
+  color: #123126;
+  font-weight: 700;
+}
+
+.pagination-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pag-btn {
+  background: #f0f6f3;
+  color: #123126;
+  border: 1px solid #d4e0da;
+  padding: 6px 14px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+}
+
+.pag-btn:hover:not(:disabled) {
+  background: #087454;
+  color: #ffffff;
+  border-color: #087454;
+}
+
+.pag-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.pag-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.pag-page-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #244136;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
+.pag-select {
+  padding: 6px 10px;
+  border-radius: 7px;
+  border: 1px solid #d4e0da;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #123126;
+  background: #ffffff;
+  min-height: 36px;
+  cursor: pointer;
+}
+
+/* Fast scrolling optimization */
+.table-panel tbody tr {
+  content-visibility: auto;
+  contain-intrinsic-size: 65px;
+}
+
+@media (max-width: 768px) {
+  .pagination-bar {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 12px;
+    gap: 10px;
+  }
+  
+  .pagination-info {
+    text-align: center;
+    font-size: 12px;
+  }
+  
+  .pagination-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    gap: 6px;
+  }
+  
+  .pag-btn {
+    flex: 1;
+    min-height: 44px;
+    font-size: 13.5px;
+  }
+
+  .pag-page-label {
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  
+  .pag-select {
+    min-height: 44px;
+    font-size: 12px;
+    padding: 4px 6px;
+  }
+
+  /* Bottom nav phone safe-area */
+  .mobile-bottom-nav {
+    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px)) !important;
+    min-height: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  
+  /* PWA install buttons */
+  .pwa-install-nav {
+    background: #144937 !important;
+    color: #c9f36a !important;
+    border: 1px solid #256b53 !important;
+    font-weight: 700 !important;
+    margin-top: 8px !important;
+  }
+  .pwa-install-nav svg {
+    stroke: #c9f36a !important;
+  }
+}

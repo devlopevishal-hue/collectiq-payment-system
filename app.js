@@ -1163,9 +1163,23 @@ function filters(containerId) {
   `;
 }
 
+let setFDebounceTimer = null;
 function setF(el) {
   F[el.dataset.k] = el.value;
-  renderAll();
+  if (typeof PAGINATION !== 'undefined') {
+    if (PAGINATION.schedule) PAGINATION.schedule.page = 1;
+    if (PAGINATION.markas) PAGINATION.markas.page = 1;
+    if (PAGINATION.gplock) PAGINATION.gplock.page = 1;
+  }
+
+  if (el.tagName === 'INPUT' && (el.type === 'text' || el.type === 'number')) {
+    clearTimeout(setFDebounceTimer);
+    setFDebounceTimer = setTimeout(() => {
+      renderAll();
+    }, 160);
+  } else {
+    renderAll();
+  }
 }
 
 function clearFilters() {
@@ -1346,6 +1360,94 @@ function dashboard() {
   }).join('') || '<p class="modal-copy">No follow-up conversations logged.</p>';
 }
 
+// ==========================================
+// PAGINATION & MOBILE PERFORMANCE ENGINE
+// ==========================================
+const PAGINATION = {
+  schedule: { page: 1, pageSize: 25 },
+  markas: { page: 1, pageSize: 25 },
+  gplock: { page: 1, pageSize: 25 }
+};
+
+function renderPaginationControls(containerId, totalItems, stateKey, onPageChangeCallbackName) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const state = PAGINATION[stateKey];
+  if (!state) return;
+
+  if (totalItems <= 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  const isAll = state.pageSize === 'all';
+  const effectiveSize = isAll ? totalItems : state.pageSize;
+  const totalPages = isAll ? 1 : Math.ceil(totalItems / effectiveSize);
+  if (!isAll && state.page > totalPages) state.page = Math.max(1, totalPages);
+
+  const startItem = isAll ? 1 : (state.page - 1) * effectiveSize + 1;
+  const endItem = isAll ? totalItems : Math.min(totalItems, state.page * effectiveSize);
+
+  container.innerHTML = `
+    <div class="pagination-info">
+      Showing <b>${startItem.toLocaleString('en-IN')}–${endItem.toLocaleString('en-IN')}</b> of <b>${totalItems.toLocaleString('en-IN')}</b>
+    </div>
+    <div class="pagination-actions">
+      <button class="pag-btn" ${state.page <= 1 || isAll ? 'disabled' : ''} onclick="${onPageChangeCallbackName}(${state.page - 1})">‹ Prev</button>
+      <span class="pag-page-label">Page ${isAll ? 1 : state.page} of ${totalPages}</span>
+      <button class="pag-btn" ${state.page >= totalPages || isAll ? 'disabled' : ''} onclick="${onPageChangeCallbackName}(${state.page + 1})">Next ›</button>
+      <select class="pag-select" onchange="changePageSize('${stateKey}', this.value)">
+        <option value="25" ${state.pageSize === 25 ? 'selected' : ''}>25 / page</option>
+        <option value="50" ${state.pageSize === 50 ? 'selected' : ''}>50 / page</option>
+        <option value="100" ${state.pageSize === 100 ? 'selected' : ''}>100 / page</option>
+        <option value="all" ${isAll ? 'selected' : ''}>Show All</option>
+      </select>
+    </div>
+  `;
+}
+
+function changePageSize(stateKey, newSize) {
+  PAGINATION[stateKey].pageSize = newSize === 'all' ? 'all' : parseInt(newSize, 10);
+  PAGINATION[stateKey].page = 1;
+  if (stateKey === 'schedule') schedule();
+  else if (stateKey === 'markas') markaView();
+  else if (stateKey === 'gplock') locks();
+}
+
+function changeSchedulePage(newPage) {
+  PAGINATION.schedule.page = Math.max(1, newPage);
+  schedule();
+  const el = document.getElementById('schedule');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function changeMarkaPage(newPage) {
+  PAGINATION.markas.page = Math.max(1, newPage);
+  markaView();
+  const el = document.getElementById('markas');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function changeLockPage(newPage) {
+  PAGINATION.gplock.page = Math.max(1, newPage);
+  locks();
+  const el = document.getElementById('gplock');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function filterBillModalRows(query) {
+  const q = (query || '').toLowerCase().trim();
+  const rows = document.querySelectorAll('#billTable tr');
+  rows.forEach(r => {
+    if (!q) {
+      r.style.display = '';
+    } else {
+      const txt = r.textContent.toLowerCase();
+      r.style.display = txt.includes(q) ? '' : 'none';
+    }
+  });
+}
+
 function schedule() {
   const container = document.getElementById('schedule');
   if (!container) return;
@@ -1394,9 +1496,16 @@ function schedule() {
   });
   
   updateSortIcons('schedule');
-  document.getElementById('scheduleSummary').textContent = `${list.length.toLocaleString('en-IN')} cases · sorted by ${col} (${dir})`;
+  const totalCount = list.length;
+  document.getElementById('scheduleSummary').textContent = `${totalCount.toLocaleString('en-IN')} cases · sorted by ${col} (${dir})`;
   
-  document.getElementById('scheduleTable').innerHTML = list.length ? list.map(m => {
+  let pageList = list;
+  if (PAGINATION.schedule.pageSize !== 'all') {
+    const start = (PAGINATION.schedule.page - 1) * PAGINATION.schedule.pageSize;
+    pageList = list.slice(start, start + PAGINATION.schedule.pageSize);
+  }
+  
+  document.getElementById('scheduleTable').innerHTML = pageList.length ? pageList.map(m => {
     const locked = isLocked(m);
     const d = days(m.nextDate);
     const oldest = oldestDueDate(m);
@@ -1441,6 +1550,7 @@ function schedule() {
       </tr>
     `;
   }).join('') : '<tr><td colspan="11" style="text-align:center;color:#788882;padding:24px;">No cases match these filters.</td></tr>';
+  renderPaginationControls('schedulePagination', totalCount, 'schedule', 'changeSchedulePage');
 }
 
 function locks() {
@@ -1487,7 +1597,13 @@ function locks() {
   
   const tbody = document.getElementById('lockTable');
   if (tbody) {
-    tbody.innerHTML = lockedList.length ? lockedList.map(m => {
+    const totalLockCount = lockedList.length;
+    let pageList = lockedList;
+    if (PAGINATION.gplock.pageSize !== 'all') {
+      const start = (PAGINATION.gplock.page - 1) * PAGINATION.gplock.pageSize;
+      pageList = lockedList.slice(start, start + PAGINATION.gplock.pageSize);
+    }
+    tbody.innerHTML = pageList.length ? pageList.map(m => {
       const oldest = oldestDueDate(m);
       const gpLockDate = addDaysToIso(oldest, 19);
       const daysLocked = Math.max(1, days(gpLockDate));
@@ -2407,7 +2523,13 @@ function markaView() {
   // 1. Marka-wise table
   const markaTbody = document.getElementById('markaTable');
   if (markaTbody) {
-    markaTbody.innerHTML = list.length ? list.map(m => {
+    const totalMarkaCount = list.length;
+    let pageList = list;
+    if (PAGINATION.markas.pageSize !== 'all') {
+      const start = (PAGINATION.markas.page - 1) * PAGINATION.markas.pageSize;
+      pageList = list.slice(start, start + PAGINATION.markas.pageSize);
+    }
+    markaTbody.innerHTML = pageList.length ? pageList.map(m => {
       const due = alreadyDueAmount(m);
       const out = totalOutstanding(m);
       const balDisplay = out < 0 ? `<b style="color:#087454;">-${money(Math.abs(out))} (Adv)</b>` : money(out);
@@ -2430,6 +2552,7 @@ function markaView() {
         </tr>
       `;
     }).join('') : '<tr><td colspan="9" style="text-align:center;color:#788882;padding:24px;">No Markas found.</td></tr>';
+    renderPaginationControls('markaPagination', totalMarkaCount, 'markas', 'changeMarkaPage');
   }
   
   // 2. Master-wise table
@@ -7028,38 +7151,59 @@ function _executeRenderAll() {
   else if (cur === 'users' || cur === 'userManagement') usersView();
   
   const filteredList = filtered();
+  const todayIso = iso(today);
   
-  const sb = document.getElementById('scheduleBadge');
-  if (sb) sb.textContent = filteredList.filter(m => (m.nextDate && days(m.nextDate) >= 0) || isLocked(m)).length || filteredList.length;
-  const mobSb = document.getElementById('mobScheduleBadge');
-  if (mobSb) mobSb.textContent = sb ? sb.textContent : '0';
-  
-  const fb = document.getElementById('fmsBadge');
-  if (fb) {
-    let pendingFms = 0;
-    filteredList.forEach(m => {
-      getFmsTasks(m).forEach(t => {
-        if (!t.isDone) pendingFms++;
-      });
-    });
-    fb.textContent = pendingFms;
-    const mobFb = document.getElementById('mobFmsBadge');
-    if (mobFb) mobFb.textContent = pendingFms;
-  }
+  // Single-pass high-performance badge counter
+  let schedCount = 0;
+  let pendingFms = 0;
+  let todayVis = 0;
+  let openEscs = 0;
+  let lockCount = 0;
 
-  const vb = document.getElementById('visitsBadge');
-  if (vb) {
-    const todayIso = iso(today);
-    let todayVis = 0;
-    filteredList.forEach(m => {
-      (m.history || []).forEach(h => {
+  for (let i = 0; i < filteredList.length; i++) {
+    const m = filteredList[i];
+    const locked = isLocked(m);
+    if (locked) lockCount++;
+    if (locked || (m.nextDate && days(m.nextDate) >= 0)) schedCount++;
+
+    if (m.bills && m.bills.length) {
+      const tasks = getFmsTasks(m);
+      for (let j = 0; j < tasks.length; j++) {
+        if (!tasks[j].isDone) pendingFms++;
+      }
+    }
+
+    if (m.history && m.history.length) {
+      for (let j = 0; j < m.history.length; j++) {
+        const h = m.history[j];
         if (h.date === todayIso && h.mode && (h.mode.toLowerCase().includes('person') || h.mode.toLowerCase().includes('visit'))) {
           todayVis++;
         }
-      });
-    });
-    vb.textContent = todayVis;
+      }
+    }
+
+    if (m.escalations && m.escalations.length) {
+      for (let j = 0; j < m.escalations.length; j++) {
+        const e = m.escalations[j];
+        if (e.type !== 'Help Ticket' && e.type !== 'Help' && (e.status || 'Open').toLowerCase() === 'open') {
+          openEscs++;
+        }
+      }
+    }
   }
+
+  const sb = document.getElementById('scheduleBadge');
+  if (sb) sb.textContent = schedCount || filteredList.length;
+  const mobSb = document.getElementById('mobScheduleBadge');
+  if (mobSb) mobSb.textContent = sb ? sb.textContent : '0';
+
+  const fb = document.getElementById('fmsBadge');
+  if (fb) fb.textContent = pendingFms;
+  const mobFb = document.getElementById('mobFmsBadge');
+  if (mobFb) mobFb.textContent = pendingFms;
+
+  const vb = document.getElementById('visitsBadge');
+  if (vb) vb.textContent = todayVis;
 
   const hb = document.getElementById('helpBadge');
   if (hb) {
@@ -7070,22 +7214,12 @@ function _executeRenderAll() {
   }
 
   const eb = document.getElementById('escalationBadge');
-  if (eb) {
-    let openEscs = 0;
-    filteredList.forEach(m => {
-      (m.escalations || []).forEach(e => {
-        if (e.type !== 'Help Ticket' && e.type !== 'Help' && (e.status || 'Open').toLowerCase() === 'open') {
-          openEscs++;
-        }
-      });
-    });
-    eb.textContent = openEscs;
-    const mobCb = document.getElementById('mobCrmBadge');
-    if (mobCb) mobCb.textContent = openEscs;
-  }
+  if (eb) eb.textContent = openEscs;
+  const mobCb = document.getElementById('mobCrmBadge');
+  if (mobCb) mobCb.textContent = openEscs;
 
   const lb = document.getElementById('lockBadge');
-  if (lb) lb.textContent = filteredList.filter(isLocked).length;
+  if (lb) lb.textContent = lockCount;
   
   populateFollowperDropdowns();
 }
@@ -7831,3 +7965,45 @@ function paySpecificBill(markaId, billId, billBalance) {
   }
 }
 window.paySpecificBill = paySpecificBill;
+
+
+// ==========================================
+// PWA INSTALLATION PROMPT HANDLER
+// ==========================================
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const btn1 = document.getElementById('installAppBtn');
+  const btn2 = document.getElementById('sideInstallAppBtn');
+  if (btn1) btn1.style.display = 'inline-flex';
+  if (btn2) btn2.style.display = 'flex';
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredPrompt = null;
+  const btn1 = document.getElementById('installAppBtn');
+  const btn2 = document.getElementById('sideInstallAppBtn');
+  if (btn1) btn1.style.display = 'none';
+  if (btn2) btn2.style.display = 'none';
+  if (typeof showToast === 'function') showToast('✓ CollectIQ installed as Mobile App!');
+});
+
+function triggerInstallPrompt() {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then(choiceResult => {
+      if (choiceResult.outcome === 'accepted') {
+        if (typeof showToast === 'function') showToast('Installing CollectIQ...');
+      }
+      deferredPrompt = null;
+    });
+  } else {
+    const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    if (isIos) {
+      alert("To install CollectIQ on iPhone / iPad:\n\n1. Tap the Safari Share button ⎋ at bottom\n2. Tap 'Add to Home Screen' ➕\n3. Tap 'Add' in top right.");
+    } else {
+      alert("To install CollectIQ on Android:\n\n1. Tap the three dots (⋮) in Chrome\n2. Select 'Add to Home screen' or 'Install app'.");
+    }
+  }
+}
