@@ -1547,6 +1547,7 @@ async function saveSalesHodAction(e) {
   });
 
   save();
+  saveMarkaCloud(m);
   closeModal('salesHodModal');
   renderAll();
   toast(`✓ Sales HOD Action (${action}) saved successfully!`);
@@ -1903,6 +1904,10 @@ async function saveBulkFmsDone(e) {
   });
 
   save();
+  checked.forEach(cb => {
+    const m = markas.find(x => x.id === cb.dataset.marka);
+    if (m) saveMarkaCloud(m);
+  });
   closeModal('bulkFmsModal');
   renderAll();
   toast(`✓ Successfully marked ${count} FMS milestone tasks as Done!`);
@@ -2021,6 +2026,7 @@ async function saveFmsTask(e) {
   });
 
   save();
+  saveMarkaCloud(m);
   closeModal('fmsModal');
   renderAll();
   toast(`✓ ${taskCode} marked done (${score} pt).`);
@@ -2701,6 +2707,11 @@ async function saveReassignTicket(e) {
   }
 
   save();
+  if (t) saveHelpTicketCloud(t);
+  if (t && t.markaId) {
+    const m = markas.find(x => x.id === t.markaId);
+    if (m) saveMarkaCloud(m);
+  }
   closeModal('reassignTicketModal');
   renderAll();
   toast(`✓ Help ticket successfully reassigned to ${newHelper}.`);
@@ -2753,6 +2764,8 @@ async function saveHelpTicket(e) {
   }
 
   save();
+  saveHelpTicketCloud(ticketObj);
+  if (m) saveMarkaCloud(m);
 
   if (isLocalServer()) {
     try {
@@ -3001,6 +3014,13 @@ async function saveResolveTicket(e) {
     } catch (err) {
       console.warn('API error:', err);
     }
+  }
+
+  save();
+  if (t) saveHelpTicketCloud(t);
+  if (t && t.markaId) {
+    const m = markas.find(x => x.id === t.markaId || x.marka === t.markaName);
+    if (m) saveMarkaCloud(m);
   }
 
   closeModal('resolveTicketModal');
@@ -3268,6 +3288,7 @@ async function saveResolveEscalation(e) {
       remark: `[${resolutionType}] ${resolutionNote} (Settled: ₹${money(settledAmount)}). Resolved by ${resolvedBy}.`
     });
     save();
+    saveMarkaCloud(m);
   }
 
   if (isOnlineMode()) {
@@ -4276,6 +4297,10 @@ async function saveFollowup(e) {
   }
 
   save();
+  saveMarkaCloud(m);
+  if (isHelp && typeof ticketObj !== 'undefined' && ticketObj) {
+    saveHelpTicketCloud(ticketObj);
+  }
   closeModal('followupModal');
   renderAll();
 
@@ -4669,6 +4694,9 @@ async function savePayment(e) {
   });
   
   save();
+  saveMarkaCloud(m);
+  const latestPay = payments[payments.length - 1];
+  if (latestPay) savePaymentCloud(latestPay);
   closeModal('paymentModal');
   renderAll();
 
@@ -4807,6 +4835,7 @@ function saveAssignment(e) {
     }
   });
   save();
+  markas.filter(m => (m.marka || '').trim().toLowerCase() === markaName.toLowerCase()).forEach(m => saveMarkaCloud(m));
   closeModal('assignmentModal');
   renderAll();
   toast(`✓ Personnel assigned to ${count} Marka profile(s) for ${markaName}.`);
@@ -4870,6 +4899,15 @@ function saveMasterAssignment(e) {
   }
   
   save();
+  saveConfigCloud();
+  if (syncMarkas) {
+    const affected = markas.filter(m => {
+      const mMaster = (m.master || '').trim().toLowerCase();
+      const targetMaster = masterName.toLowerCase();
+      return mMaster === targetMaster || mMaster.includes(targetMaster) || targetMaster.includes(mMaster);
+    });
+    saveAllMarkasCloud(affected);
+  }
   closeModal('masterAssignmentModal');
   renderAll();
   toast(`Master accountability saved: ${masterName} → Followper: ${newFollowper}, CRR: ${newCrr}${syncMarkas ? ` (${count} Markas updated)` : ''}`);
@@ -5706,6 +5744,7 @@ function processImportedRows(rawRows, fileName = 'Imported File') {
   });
 
   save();
+  saveAllMarkasCloud(markas);
   closeModal('importModal');
   renderAll();
   switchView('schedule');
@@ -6341,6 +6380,7 @@ async function handleSaveEditUser(e) {
   }
 
   save();
+  saveConfigCloud();
   closeModal('editUserModal');
   renderAll();
   toast(`User "${email}" access & password updated successfully!`);
@@ -6854,6 +6894,109 @@ function getCloudConfig() {
   return DEFAULT_FIREBASE_CONFIG;
 }
 
+// Granular Ultra-Fast Cloud Database Helpers (<100ms writes)
+async function saveMarkaCloud(m) {
+  if (!firestoreDb || !m || !m.id) return;
+  try {
+    await firestoreDb.collection('collectiq_markas').doc(String(m.id)).set(m);
+    updateDbStatusBadge('firebase');
+  } catch (err) {
+    console.warn('saveMarkaCloud error:', err);
+    if (err && (err.code === 'permission-denied' || String(err).includes('permission'))) {
+      updateDbStatusBadge('firebase_permission_denied');
+    }
+  }
+}
+
+async function saveHelpTicketCloud(t) {
+  if (!firestoreDb || !t || !t.id) return;
+  try {
+    await firestoreDb.collection('collectiq_help_tickets').doc(String(t.id)).set(t);
+    updateDbStatusBadge('firebase');
+  } catch (err) {
+    console.warn('saveHelpTicketCloud error:', err);
+  }
+}
+
+async function savePaymentCloud(p) {
+  if (!firestoreDb || !p || !p.id) return;
+  try {
+    await firestoreDb.collection('collectiq_payments').doc(String(p.id)).set(p);
+    updateDbStatusBadge('firebase');
+  } catch (err) {
+    console.warn('savePaymentCloud error:', err);
+  }
+}
+
+async function saveConfigCloud() {
+  if (!firestoreDb) return;
+  try {
+    await firestoreDb.collection('collectiq_config').doc('settings').set({
+      masterFollowpers,
+      masterCrrs,
+      users,
+      version: APP_STORAGE_VERSION,
+      updatedAt: new Date().toISOString()
+    });
+    updateDbStatusBadge('firebase');
+  } catch (err) {
+    console.warn('saveConfigCloud error:', err);
+  }
+}
+
+async function saveAllMarkasCloud(list) {
+  if (!firestoreDb || !Array.isArray(list) || list.length === 0) return;
+  try {
+    const CHUNK_SIZE = 400;
+    for (let i = 0; i < list.length; i += CHUNK_SIZE) {
+      const batch = firestoreDb.batch();
+      const chunk = list.slice(i, i + CHUNK_SIZE);
+      chunk.forEach(m => {
+        if (m && m.id) {
+          const docRef = firestoreDb.collection('collectiq_markas').doc(String(m.id));
+          batch.set(docRef, m);
+        }
+      });
+      await batch.commit();
+    }
+    updateDbStatusBadge('firebase');
+  } catch (err) {
+    console.warn('saveAllMarkasCloud error:', err);
+  }
+}
+
+async function saveCloud(options = {}) {
+  if (!firestoreDb) return;
+  if (options && options.marka) return saveMarkaCloud(options.marka);
+  if (options && options.ticket) return saveHelpTicketCloud(options.ticket);
+  if (options && options.payment) return savePaymentCloud(options.payment);
+  if (options && options.configOnly) return saveConfigCloud();
+
+  if (markas.length === 0 && !window._explicitAdminReset) {
+    console.warn('saveCloud skipped: preventing empty wipe of Firestore DB.');
+    return;
+  }
+
+  try {
+    await saveAllMarkasCloud(markas);
+    await saveConfigCloud();
+    for (const t of (helpTickets || [])) {
+      await saveHelpTicketCloud(t);
+    }
+    for (const p of (payments || [])) {
+      await savePaymentCloud(p);
+    }
+    updateDbStatusBadge('firebase');
+  } catch (err) {
+    console.error('Error writing to Firestore:', err);
+    if (err && (err.code === 'permission-denied' || String(err).includes('permission'))) {
+      updateDbStatusBadge('firebase_permission_denied');
+    }
+  }
+}
+
+let isInitialMarkasCloudLoaded = false;
+
 function initFirebase() {
   const cfg = getCloudConfig();
   if (!cfg || typeof firebase === 'undefined') return false;
@@ -6866,102 +7009,159 @@ function initFirebase() {
       firestoreDb.enablePersistence({ synchronizeTabs: true }).catch(() => {});
     } catch(e) {}
     
-    // Auto-seed cloud database if document does not exist yet on first boot
-    firestoreDb.collection('collectiq').doc('main').get().then(doc => {
-      if (!doc.exists || !doc.data() || !Array.isArray(doc.data().markas) || doc.data().markas.length === 0) {
-        if (markas.length > 0) {
-          hasLoadedCloudData = true;
-          console.log('⚡ Initializing Firebase Cloud database with ' + markas.length + ' active Markas...');
-          saveCloud();
-        }
-      } else {
-        hasLoadedCloudData = true;
-        const d = doc.data();
-        if (d) {
-          if (Array.isArray(d.markas) && d.markas.length > 0) {
+    // Check initial seed state
+    firestoreDb.collection('collectiq_markas').limit(5).get().then(snapshot => {
+      if (snapshot.empty) {
+        // Check legacy single-doc main
+        firestoreDb.collection('collectiq').doc('main').get().then(legacyDoc => {
+          if (legacyDoc.exists && legacyDoc.data() && Array.isArray(legacyDoc.data().markas) && legacyDoc.data().markas.length > 0) {
+            console.log('⚡ Migrating ' + legacyDoc.data().markas.length + ' Markas to real-time SaaS cloud collections...');
+            const d = legacyDoc.data();
             markas = d.markas;
-            markas.forEach(m => {
-              if (!m.escalations) m.escalations = [];
-              if (!m.history) m.history = [];
-              if (!m.bills) m.bills = [];
-              if (!m.fmsTasks) m.fmsTasks = [];
-              if (!m.owner || m.owner === 'Unassigned') {
-                const defaultOwner = getMasterFollowper(m.master);
-                if (defaultOwner && defaultOwner !== 'Unassigned') {
-                  m.owner = defaultOwner;
-                }
-              }
-              if (!m.crr || m.crr === 'Unassigned') {
-                const defaultCrr = getMasterCrr(m.master);
-                if (defaultCrr && defaultCrr !== 'Unassigned') {
-                  m.crr = defaultCrr;
-                }
-              }
-            });
-            localStorage.setItem('collectiq_markas_v4', JSON.stringify(markas));
+            saveAllMarkasCloud(markas);
+            if (Array.isArray(d.helpTickets)) {
+              helpTickets = d.helpTickets;
+              helpTickets.forEach(t => saveHelpTicketCloud(t));
+            }
+            if (Array.isArray(d.payments)) {
+              payments = d.payments;
+              payments.forEach(p => savePaymentCloud(p));
+            }
+            saveConfigCloud();
+          } else if (markas.length > 0) {
+            console.log('⚡ Initializing cloud database with ' + markas.length + ' active Markas...');
+            saveAllMarkasCloud(markas);
+            saveConfigCloud();
           }
-          if (Array.isArray(d.payments)) {
-            payments = d.payments;
-            localStorage.setItem('collectiq_rokad_v4', JSON.stringify(payments));
+        }).catch(err => {
+          if (markas.length > 0) {
+            saveAllMarkasCloud(markas);
+            saveConfigCloud();
           }
-          if (Array.isArray(d.helpTickets)) {
-            helpTickets = d.helpTickets;
-            localStorage.setItem('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
-          }
-          if (d.masterFollowpers) {
-            masterFollowpers = { ...DEFAULT_MASTER_FOLLOWPERS, ...d.masterFollowpers };
-            localStorage.setItem('collectiq_master_followpers_v4', JSON.stringify(masterFollowpers));
-          }
-          if (d.masterCrrs) {
-            masterCrrs = { ...DEFAULT_MASTER_CRR, ...d.masterCrrs };
-            localStorage.setItem('collectiq_master_crrs_v4', JSON.stringify(masterCrrs));
-          }
-          if (Array.isArray(d.users) && d.users.length > 0) {
-            users = d.users;
-            window.users = users;
-            localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
-          }
-          renderAll();
-        }
+        });
       }
-    }).catch(err => console.warn('Firestore initial check:', err));
+    }).catch(err => {
+      console.warn('Firestore initial check:', err);
+      if (err && (err.code === 'permission-denied' || String(err).includes('permission'))) {
+        updateDbStatusBadge('firebase_permission_denied');
+      }
+    });
 
-    // Real-time listener for live multi-user sync on GitHub Pages / Web
-    firestoreDb.collection('collectiq').doc('main').onSnapshot(doc => {
+    // 1. Real-time Live Listener for Markas (Updates within <1-2s across all devices)
+    firestoreDb.collection('collectiq_markas').onSnapshot(snapshot => {
+      hasLoadedCloudData = true;
+      if (snapshot.empty) return;
+      
+      let hasChanges = false;
+      snapshot.docChanges().forEach(change => {
+        const data = change.doc.data();
+        if (!data || !data.id) return;
+
+        if (!data.escalations) data.escalations = [];
+        if (!data.history) data.history = [];
+        if (!data.bills) data.bills = [];
+        if (!data.fmsTasks) data.fmsTasks = [];
+        if (!data.owner || data.owner === 'Unassigned') {
+          const defaultOwner = getMasterFollowper(data.master);
+          if (defaultOwner && defaultOwner !== 'Unassigned') data.owner = defaultOwner;
+        }
+        if (!data.crr || data.crr === 'Unassigned') {
+          const defaultCrr = getMasterCrr(data.master);
+          if (defaultCrr && defaultCrr !== 'Unassigned') data.crr = defaultCrr;
+        }
+
+        const idx = markas.findIndex(m => String(m.id) === String(data.id) || (m.marka && data.marka && m.marka.toUpperCase() === data.marka.toUpperCase()));
+        if (change.type === 'removed') {
+          if (idx !== -1) {
+            markas.splice(idx, 1);
+            hasChanges = true;
+          }
+        } else {
+          if (idx !== -1) {
+            markas[idx] = data;
+          } else {
+            markas.push(data);
+          }
+          hasChanges = true;
+        }
+      });
+
+      if (hasChanges) {
+        localStorage.setItem('collectiq_markas_v4', JSON.stringify(markas));
+        renderAll();
+      }
+      updateDbStatusBadge('firebase');
+    }, err => {
+      console.warn('Firestore markas listener error:', err);
+      if (err && (err.code === 'permission-denied' || String(err).includes('permission'))) {
+        updateDbStatusBadge('firebase_permission_denied');
+      }
+    });
+
+    // 2. Real-time Live Listener for Help Tickets
+    firestoreDb.collection('collectiq_help_tickets').onSnapshot(snapshot => {
+      let hasChanges = false;
+      snapshot.docChanges().forEach(change => {
+        const data = change.doc.data();
+        if (!data || !data.id) return;
+        const idx = helpTickets.findIndex(t => String(t.id) === String(data.id));
+        if (change.type === 'removed') {
+          if (idx !== -1) {
+            helpTickets.splice(idx, 1);
+            hasChanges = true;
+          }
+        } else {
+          if (idx !== -1) {
+            helpTickets[idx] = data;
+          } else {
+            helpTickets.unshift(data);
+          }
+          hasChanges = true;
+        }
+      });
+      if (hasChanges) {
+        localStorage.setItem('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
+        window.helpTickets = helpTickets;
+        renderAll();
+      }
+    }, err => {
+      console.warn('Firestore help_tickets listener error:', err);
+    });
+
+    // 3. Real-time Live Listener for Payments (Rokad)
+    firestoreDb.collection('collectiq_payments').onSnapshot(snapshot => {
+      let hasChanges = false;
+      snapshot.docChanges().forEach(change => {
+        const data = change.doc.data();
+        if (!data || !data.id) return;
+        const idx = payments.findIndex(p => String(p.id) === String(data.id));
+        if (change.type === 'removed') {
+          if (idx !== -1) {
+            payments.splice(idx, 1);
+            hasChanges = true;
+          }
+        } else {
+          if (idx !== -1) {
+            payments[idx] = data;
+          } else {
+            payments.unshift(data);
+          }
+          hasChanges = true;
+        }
+      });
+      if (hasChanges) {
+        localStorage.setItem('collectiq_rokad_v4', JSON.stringify(payments));
+        renderAll();
+      }
+    }, err => {
+      console.warn('Firestore payments listener error:', err);
+    });
+
+    // 4. Real-time Live Listener for Settings / Account Mappings / Users
+    firestoreDb.collection('collectiq_config').doc('settings').onSnapshot(doc => {
       if (doc.exists) {
-        hasLoadedCloudData = true;
         const d = doc.data();
         if (d) {
-          if (Array.isArray(d.markas) && d.markas.length > 0) {
-            markas = d.markas;
-            markas.forEach(m => {
-              if (!m.escalations) m.escalations = [];
-              if (!m.history) m.history = [];
-              if (!m.bills) m.bills = [];
-              if (!m.fmsTasks) m.fmsTasks = [];
-              if (!m.owner || m.owner === 'Unassigned') {
-                const defaultOwner = getMasterFollowper(m.master);
-                if (defaultOwner && defaultOwner !== 'Unassigned') {
-                  m.owner = defaultOwner;
-                }
-              }
-              if (!m.crr || m.crr === 'Unassigned') {
-                const defaultCrr = getMasterCrr(m.master);
-                if (defaultCrr && defaultCrr !== 'Unassigned') {
-                  m.crr = defaultCrr;
-                }
-              }
-            });
-            localStorage.setItem('collectiq_markas_v4', JSON.stringify(markas));
-          }
-          if (Array.isArray(d.payments)) {
-            payments = d.payments;
-            localStorage.setItem('collectiq_rokad_v4', JSON.stringify(payments));
-          }
-          if (Array.isArray(d.helpTickets)) {
-            helpTickets = d.helpTickets;
-            localStorage.setItem('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
-          }
           if (d.masterFollowpers) {
             masterFollowpers = { ...DEFAULT_MASTER_FOLLOWPERS, ...d.masterFollowpers };
             localStorage.setItem('collectiq_master_followpers_v4', JSON.stringify(masterFollowpers));
@@ -6976,11 +7176,10 @@ function initFirebase() {
             localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
           }
           renderAll();
-          updateDbStatusBadge('firebase');
         }
       }
     }, err => {
-      console.warn('Firestore live listener error:', err);
+      console.warn('Firestore config listener error:', err);
     });
 
     updateDbStatusBadge('firebase');
@@ -7027,33 +7226,6 @@ function getActiveServerUrl() {
   return null;
 }
 
-async function saveCloud() {
-  if (firestoreDb) {
-    if (markas.length === 0 && !window._explicitAdminReset) {
-      console.warn('saveCloud skipped: preventing empty wipe of Firestore DB.');
-      return;
-    }
-    try {
-      await firestoreDb.collection('collectiq').doc('main').set({
-        markas,
-        payments,
-        masterFollowpers,
-        masterCrrs,
-        users,
-        helpTickets,
-        version: APP_STORAGE_VERSION,
-        updatedAt: new Date().toISOString()
-      });
-      updateDbStatusBadge('firebase');
-    } catch (err) {
-      console.error('Error writing to Firestore:', err);
-      if (err && (err.code === 'permission-denied' || String(err).includes('permission'))) {
-        updateDbStatusBadge('firebase_permission_denied');
-      }
-    }
-  }
-}
-
 function openCloudModal() {
   const modal = document.getElementById('cloudModal');
   if (!modal) return;
@@ -7097,7 +7269,7 @@ async function saveCloudConfig(e) {
 window.saveCloudConfig = saveCloudConfig;
 
 async function pushToCloud() {
-  toast('Synchronizing all records to central database...');
+  toast('Synchronizing all records to central cloud database...');
   await saveCloud();
   await syncToServer();
   toast('✓ All records synchronized to central database!');
