@@ -225,6 +225,23 @@ function ensureSeedDataLoaded() {
   if (window._explicitAdminReset || localStorage.getItem('collectiq_admin_cleared') || localStorage.getItem('collectiq_live_mode')) return;
   if ((!markas || markas.length === 0) && window.latestReportCases && Array.isArray(window.latestReportCases) && window.latestReportCases.length > 0) {
     markas = JSON.parse(JSON.stringify(window.latestReportCases));
+    // Guarantee ALL parties/Markas have their complete bill list from the latest report
+    if (window.latestReportCases && Array.isArray(window.latestReportCases)) {
+      window.latestReportCases.forEach(fresh => {
+        const cleanKey = (fresh.marka || '').trim().toUpperCase();
+        const existing = markas.find(x => (x.marka || '').trim().toUpperCase() === cleanKey);
+        if (existing) {
+          if ((existing.bills || []).length < (fresh.bills || []).length) {
+            existing.bills = JSON.parse(JSON.stringify(fresh.bills));
+            existing.master = fresh.master || existing.master;
+          }
+        } else {
+          markas.push(JSON.parse(JSON.stringify(fresh)));
+        }
+      });
+      localStorage.setItem('collectiq_markas_v4', JSON.stringify(markas));
+    }
+
     markas.forEach(m => {
       if (!m.escalations) m.escalations = [];
       if (!m.history) m.history = [];
@@ -551,7 +568,7 @@ function migrateV3(oldCases) {
   return newMarkas;
 }
 
-const APP_STORAGE_VERSION = 'v7_fresh_excel_2026_09_30';
+const APP_STORAGE_VERSION = 'v8_fresh_excel_all_parties_2026_09_30';
 
 function load() {
   try {
@@ -598,6 +615,23 @@ function load() {
     // Seed fallback if markas is empty (fresh phone / new session)
     if (!window._explicitAdminReset && !localStorage.getItem('collectiq_admin_cleared') && (!markas || markas.length === 0) && window.latestReportCases && Array.isArray(window.latestReportCases) && window.latestReportCases.length > 0) {
       markas = JSON.parse(JSON.stringify(window.latestReportCases));
+    }
+
+    // Guarantee ALL parties/Markas have their complete bill list from the latest report
+    if (window.latestReportCases && Array.isArray(window.latestReportCases)) {
+      window.latestReportCases.forEach(fresh => {
+        const cleanKey = (fresh.marka || '').trim().toUpperCase();
+        const existing = markas.find(x => (x.marka || '').trim().toUpperCase() === cleanKey);
+        if (existing) {
+          if ((existing.bills || []).length < (fresh.bills || []).length) {
+            existing.bills = JSON.parse(JSON.stringify(fresh.bills));
+            existing.master = fresh.master || existing.master;
+          }
+        } else {
+          markas.push(JSON.parse(JSON.stringify(fresh)));
+        }
+      });
+      localStorage.setItem('collectiq_markas_v4', JSON.stringify(markas));
     }
 
     markas.forEach(m => {
@@ -7423,18 +7457,20 @@ function initFirebase() {
           if (defaultCrr && defaultCrr !== 'Unassigned') data.crr = defaultCrr;
         }
 
-        // Prevent stale Firestore records from downgrading SAN if it has fewer than 9 bills
-        if (data.marka && data.marka.trim().toUpperCase() === 'SAN' && (data.bills || []).length < 9) {
-          const freshSan = (window.latestReportCases || []).find(x => x.marka === 'SAN');
-          if (freshSan && freshSan.bills && freshSan.bills.length >= 9) {
-            data.bills = freshSan.bills;
-            if (typeof saveMarkaCloud === 'function') {
-              saveMarkaCloud(data);
-            }
+        // Universal Protection for ALL Parties/Markas (ADT, SAN, ACT, etc.):
+        // NEVER let a stale Firestore document with fewer bills overwrite our complete Excel dataset!
+        const cleanMarkaKey = (data.marka || '').trim().toUpperCase();
+        const freshCase = (window.latestReportCases || []).find(x => (x.marka || '').trim().toUpperCase() === cleanMarkaKey);
+
+        if (freshCase && Array.isArray(freshCase.bills) && (data.bills || []).length < freshCase.bills.length) {
+          data.bills = JSON.parse(JSON.stringify(freshCase.bills));
+          data.master = freshCase.master || data.master;
+          if (typeof saveMarkaCloud === 'function') {
+            saveMarkaCloud(data);
           }
         }
 
-        const idx = markas.findIndex(m => String(m.id) === String(data.id) || (m.marka && data.marka && m.marka.toUpperCase() === data.marka.toUpperCase()));
+        const idx = markas.findIndex(m => String(m.id) === String(data.id) || (m.marka && data.marka && m.marka.toUpperCase() === cleanMarkaKey));
         if (change.type === 'removed') {
           if (idx !== -1) {
             markas.splice(idx, 1);
@@ -7442,12 +7478,13 @@ function initFirebase() {
           }
         } else {
           if (idx !== -1) {
-            // Keep the version with more complete bill details if both exist
-            if (markas[idx].marka === 'SAN' && (markas[idx].bills || []).length >= 9 && (data.bills || []).length < 9) {
-              // preserve existing 9 bills
-            } else {
-              markas[idx] = data;
+            // Preserve the richer bills list if existing has more bills than incoming
+            const existingBillsCount = (markas[idx].bills || []).length;
+            const incomingBillsCount = (data.bills || []).length;
+            if (existingBillsCount > incomingBillsCount) {
+              data.bills = markas[idx].bills;
             }
+            markas[idx] = data;
           } else {
             markas.push(data);
           }
