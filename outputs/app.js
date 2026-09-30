@@ -551,10 +551,20 @@ function migrateV3(oldCases) {
   return newMarkas;
 }
 
-const APP_STORAGE_VERSION = 'v5_fresh_start_2026_09_02';
+const APP_STORAGE_VERSION = 'v7_fresh_excel_2026_09_30';
 
 function load() {
   try {
+    const currentStoredVer = localStorage.getItem('collectiq_storage_version');
+    if (currentStoredVer !== APP_STORAGE_VERSION) {
+      localStorage.removeItem('collectiq_markas_v4');
+      localStorage.removeItem('collectiq_admin_cleared');
+      localStorage.setItem('collectiq_storage_version', APP_STORAGE_VERSION);
+      if (window.latestReportCases && Array.isArray(window.latestReportCases) && window.latestReportCases.length > 0) {
+        markas = JSON.parse(JSON.stringify(window.latestReportCases));
+        save(true);
+      }
+    }
     const mf = localStorage.getItem('collectiq_master_followpers_v4');
     if (mf) {
       try { masterFollowpers = { ...DEFAULT_MASTER_FOLLOWPERS, ...JSON.parse(mf) }; } catch(e) { masterFollowpers = { ...DEFAULT_MASTER_FOLLOWPERS }; }
@@ -1375,7 +1385,10 @@ function schedule() {
     const balDisplay = out < 0 ? `<b style="color:#087454;">-${money(Math.abs(out))} (Adv)</b>` : money(out);
     return `
       <tr>
-        <td><span class="case-name">${escapeHtml(m.marka)}</span></td>
+        <td>
+          <span class="case-name">${escapeHtml(m.marka)}</span>
+          <span onclick="openBillDetails('${m.id}')" style="display:inline-block;margin-left:6px;cursor:pointer;background:#e8f4f0;color:#087454;padding:2px 7px;border-radius:10px;font-size:11px;font-weight:700;border:1px solid #bfe7d4;" title="Click to view all ${(m.bills||[]).length} bills">📄 ${(m.bills||[]).length} Bills ▾</span>
+        </td>
         <td>${escapeHtml(m.master)}</td>
         <td>${fmt(oldestDueDate(m))}</td>
         <td class="money" style="${due > 0 ? 'font-weight:700;color:#c44d48;' : ''}">${money(due)}</td>
@@ -2366,7 +2379,10 @@ function markaView() {
       const balDisplay = out < 0 ? `<b style="color:#087454;">-${money(Math.abs(out))} (Adv)</b>` : money(out);
       return `
         <tr>
-          <td><span class="case-name">${escapeHtml(m.marka)}</span></td>
+          <td>
+          <span class="case-name">${escapeHtml(m.marka)}</span>
+          <span onclick="openBillDetails('${m.id}')" style="display:inline-block;margin-left:6px;cursor:pointer;background:#e8f4f0;color:#087454;padding:2px 7px;border-radius:10px;font-size:11px;font-weight:700;border:1px solid #bfe7d4;" title="Click to view all ${(m.bills||[]).length} bills">📄 ${(m.bills||[]).length} Bills ▾</span>
+        </td>
           <td>${escapeHtml(m.master)}</td>
           <td>Due: ${fmt(oldestDueDate(m))}<br><small style="color:#788882;">Next follow-up: ${fmt(m.nextDate)}</small></td>
           <td class="money" style="${due > 0 ? 'font-weight:700;color:#c44d48;' : ''}">${money(due)}</td>
@@ -3480,7 +3496,10 @@ function visitsView() {
 
       return `
         <tr>
-          <td><span class="case-name">${escapeHtml(m.marka)}</span></td>
+          <td>
+          <span class="case-name">${escapeHtml(m.marka)}</span>
+          <span onclick="openBillDetails('${m.id}')" style="display:inline-block;margin-left:6px;cursor:pointer;background:#e8f4f0;color:#087454;padding:2px 7px;border-radius:10px;font-size:11px;font-weight:700;border:1px solid #bfe7d4;" title="Click to view all ${(m.bills||[]).length} bills">📄 ${(m.bills||[]).length} Bills ▾</span>
+        </td>
           <td>${escapeHtml(m.master)}</td>
           <td><b style="color:#087454;">${escapeHtml(ownerOf(m))}</b></td>
           <td style="text-align:center; font-weight:700; ${visits.length > 0 ? 'color:#087454;' : 'color:#9ab0a6;'}">${visits.length}</td>
@@ -3661,6 +3680,51 @@ function openFollowup(markaId) {
   if (document.getElementById('visitPersonMet')) document.getElementById('visitPersonMet').value = '';
   if (document.getElementById('visitNotes')) document.getElementById('visitNotes').value = '';
   
+  // Populate All Invoices & Policy Due Dates table inside Follow-up Modal
+  const fBillsWrap = document.getElementById('followupBillsTableWrap');
+  const fBadge = document.getElementById('followupBillsCountBadge');
+  if (fBillsWrap) {
+    const bList = (m.bills || []).slice();
+    if (fBadge) fBadge.textContent = `${bList.length} Invoices · Total: ${money(totalOutstanding(m))}`;
+    if (!bList.length) {
+      fBillsWrap.innerHTML = '<p style="color:#788882;margin:4px 0;">No invoices found for this Marka.</p>';
+    } else {
+      fBillsWrap.innerHTML = `
+        <table style="width:100%;border-collapse:collapse;font-size:11.5px;">
+          <thead>
+            <tr style="border-bottom:1px solid #cbe7da;color:#355347;text-align:left;">
+              <th style="padding:4px 6px;">BILL NO</th>
+              <th style="padding:4px 6px;">BILL DATE</th>
+              <th style="padding:4px 6px;">POLICY DUE</th>
+              <th style="padding:4px 6px;">POLICY</th>
+              <th style="padding:4px 6px;text-align:right;">BALANCE</th>
+              <th style="padding:4px 6px;text-align:center;">STATUS</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${bList.map(b => {
+              const d = days(b.policyDate || b.firstDate);
+              const statusStr = b.balance <= 0 ? '<span style="color:#087454;font-weight:700;">CLEARED</span>' :
+                d > 0 ? `<span style="color:#c44d48;font-weight:700;">OVERDUE (${d}d)</span>` :
+                d === 0 ? `<span style="color:#d97706;font-weight:700;">DUE TODAY</span>` :
+                `<span style="color:#186149;font-weight:700;">UPCOMING (${Math.abs(d)}d)</span>`;
+              return `
+                <tr style="border-bottom:1px solid #eef5f1;">
+                  <td style="padding:4px 6px;font-weight:700;">${(b.billNos || []).join(', ') || '—'}</td>
+                  <td style="padding:4px 6px;">${fmt(b.firstDate)}</td>
+                  <td style="padding:4px 6px;"><b>${fmt(b.policyDate || b.firstDate)}</b></td>
+                  <td style="padding:4px 6px;">${escapeHtml(b.policyName || 'NET')}</td>
+                  <td style="padding:4px 6px;text-align:right;font-weight:700;">${money(b.balance)}</td>
+                  <td style="padding:4px 6px;text-align:center;">${statusStr}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+  }
+
   // Payment fields reset
   const payRefInput = document.getElementById('followPayRef');
   if (payRefInput) payRefInput.value = '';
@@ -7263,7 +7327,18 @@ function initFirebase() {
       firestoreDb.enablePersistence({ synchronizeTabs: true }).catch(() => {});
     } catch(e) {}
     
-    // Check initial seed state
+    // Check initial seed state & version sync
+    firestoreDb.collection('collectiq_config').doc('settings').get().then(doc => {
+      const d = doc.exists ? doc.data() : null;
+      if (!d || d.version !== APP_STORAGE_VERSION) {
+        if (window.latestReportCases && Array.isArray(window.latestReportCases) && window.latestReportCases.length > 0) {
+          console.log('⚡ Cloud version out of date. Syncing fresh Excel report data to Firestore (' + window.latestReportCases.length + ' Markas)...');
+          saveAllMarkasCloud(window.latestReportCases);
+          saveConfigCloud();
+        }
+      }
+    }).catch(e => console.warn('Config version check error:', e));
+
     firestoreDb.collection('collectiq_markas').limit(5).get().then(snapshot => {
       if (snapshot.empty) {
         // Check legacy single-doc main

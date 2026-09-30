@@ -6,7 +6,7 @@
   <title>CollectIQ - Payment Collection System</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="styles.css?v=6.8.3">
+  <link rel="stylesheet" href="styles.css?v=6.8.4">
   <script>
     function toggleMobileMenu(e) {
       if (e) {
@@ -746,6 +746,14 @@
           <span id="followFmsSummaryBadge" style="font:600 10px 'DM Mono', monospace; background:#d5efe3; color:#087454; padding:2px 6px; border-radius:4px;"></span>
         </div>
         <div id="followFmsList" style="display:flex; flex-direction:column; gap:6px;"></div>
+      </div>
+            <!-- All Active Invoices & Policy Due Dates Overview -->
+      <div id="followupBillsOverview" style="margin-bottom:12px; background:#f8faf9; border:1px solid #dce8e2; border-radius:8px; padding:10px 12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <p class="eyebrow" style="margin:0; color:#087454; font-weight:800;">📄 ALL INVOICES &amp; POLICY DUE DATES IN FOLLOW-UP</p>
+          <span id="followupBillsCountBadge" style="font:700 11px 'DM Mono', monospace; color:#184233;"></span>
+        </div>
+        <div id="followupBillsTableWrap" style="max-height:160px; overflow-y:auto; font-size:12px;"></div>
       </div>
       <label>Conversation / remark<textarea id="remark" required></textarea></label>
       <div class="modal-footer">
@@ -1492,7 +1500,7 @@ service cloud.firestore {
   <!-- Firebase Compatibility Libraries for Real-time Cloud DB -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-  <script src="latest-report-data.js?v=6.8.3"></script>
-  <script src="app.js?v=6.8.3"></script>
+  <script src="latest-report-data.js?v=6.8.4"></script>
+  <script src="app.js?v=6.8.4"></script>
 </body>
 </html>
