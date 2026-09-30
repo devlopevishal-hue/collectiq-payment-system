@@ -222,7 +222,7 @@ function isOnlineMode() {
 }
 
 function ensureSeedDataLoaded() {
-  if (window._explicitAdminReset || localStorage.getItem('collectiq_admin_cleared')) return;
+  if (window._explicitAdminReset || localStorage.getItem('collectiq_admin_cleared') || localStorage.getItem('collectiq_live_mode')) return;
   if ((!markas || markas.length === 0) && window.latestReportCases && Array.isArray(window.latestReportCases) && window.latestReportCases.length > 0) {
     markas = JSON.parse(JSON.stringify(window.latestReportCases));
     markas.forEach(m => {
@@ -5682,6 +5682,7 @@ function processImportedRows(rawInput, fileName = 'Imported File') {
   }
   window._explicitAdminReset = false;
   localStorage.removeItem('collectiq_admin_cleared');
+  localStorage.setItem('collectiq_live_mode', 'true');
 
   let rowsToProcess = [];
 
