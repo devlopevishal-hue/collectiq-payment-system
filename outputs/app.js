@@ -6887,7 +6887,12 @@ async function deleteUser(email) {
 // ==========================================
 // NAVIGATION & INIT
 // ==========================================
+let currentActiveView = 'dashboard';
+window.currentActiveView = currentActiveView;
+
 function switchView(id) {
+  currentActiveView = id;
+  window.currentActiveView = id;
   if ((id === 'users' || id === 'markas' || id === 'import') && currentUser && currentUser.role === 'user') {
     toast('Access restricted to Admin users.');
     id = 'dashboard';
@@ -6962,20 +6967,31 @@ function closeMobileFab() {
 }
 window.closeMobileFab = closeMobileFab;
 
+let renderPending = false;
 function renderAll() {
+  if (renderPending) return;
+  renderPending = true;
+  requestAnimationFrame(() => {
+    renderPending = false;
+    _executeRenderAll();
+  });
+}
+
+function _executeRenderAll() {
   const lbl = document.getElementById('todayLabel');
   if (lbl) lbl.textContent = 'REPORT DATE · ' + fmt(today);
   
-  dashboard();
-  schedule();
-  fmsView();
-  visitsView();
-  helpTicketsView();
-  crmEscalationsView();
-  locks();
-  analysis();
-  markaView();
-  usersView();
+  const cur = window.currentActiveView || 'dashboard';
+  if (cur === 'visits') visitsView();
+  else if (cur === 'helpTickets') helpTicketsView();
+  else if (cur === 'crmEscalations') crmEscalationsView();
+  else if (cur === 'fms') fmsView();
+  else if (cur === 'schedule') schedule();
+  else if (cur === 'dashboard') dashboard();
+  else if (cur === 'gplock') locks();
+  else if (cur === 'analysis') analysis();
+  else if (cur === 'markas') markaView();
+  else if (cur === 'users' || cur === 'userManagement') usersView();
   
   const filteredList = filtered();
   
@@ -7407,6 +7423,17 @@ function initFirebase() {
           if (defaultCrr && defaultCrr !== 'Unassigned') data.crr = defaultCrr;
         }
 
+        // Prevent stale Firestore records from downgrading SAN if it has fewer than 9 bills
+        if (data.marka && data.marka.trim().toUpperCase() === 'SAN' && (data.bills || []).length < 9) {
+          const freshSan = (window.latestReportCases || []).find(x => x.marka === 'SAN');
+          if (freshSan && freshSan.bills && freshSan.bills.length >= 9) {
+            data.bills = freshSan.bills;
+            if (typeof saveMarkaCloud === 'function') {
+              saveMarkaCloud(data);
+            }
+          }
+        }
+
         const idx = markas.findIndex(m => String(m.id) === String(data.id) || (m.marka && data.marka && m.marka.toUpperCase() === data.marka.toUpperCase()));
         if (change.type === 'removed') {
           if (idx !== -1) {
@@ -7415,7 +7442,12 @@ function initFirebase() {
           }
         } else {
           if (idx !== -1) {
-            markas[idx] = data;
+            // Keep the version with more complete bill details if both exist
+            if (markas[idx].marka === 'SAN' && (markas[idx].bills || []).length >= 9 && (data.bills || []).length < 9) {
+              // preserve existing 9 bills
+            } else {
+              markas[idx] = data;
+            }
           } else {
             markas.push(data);
           }
