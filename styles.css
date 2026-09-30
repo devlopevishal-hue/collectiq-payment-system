@@ -27,7 +27,29 @@ body {
   line-height: 1.45;
   -webkit-text-size-adjust: 100%;
 }
-.sidebar { position: fixed; width: 250px; height: 100vh; background: #12322b; color: #e8f1ed; padding: 27px 16px; display: flex; flex-direction: column; }
+.sidebar {
+  position: fixed;
+  width: 255px;
+  height: 100vh;
+  background: #0d2620;
+  color: #e8f1ed;
+  padding: 24px 14px 40px;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+  z-index: 100;
+  border-right: 1px solid #163d33;
+}
+.sidebar::-webkit-scrollbar {
+  width: 5px;
+}
+.sidebar::-webkit-scrollbar-thumb {
+  background: #1e4e42;
+  border-radius: 4px;
+}
 .brand { font-weight: 800; font-size: clamp(20px, 4vw, 23px); display: flex; align-items: center; gap: 10px; padding: 0 10px 31px; letter-spacing: -1px; }
 .brand span span { color: #c9f36a; }
 .mark { background: var(--lime); color: #102a25; border-radius: 9px; width: 29px; height: 29px; display: grid; place-items: center; font-size: 18px; }
@@ -1596,5 +1618,98 @@ th.sort-active .sort-icon { opacity: 1; color: #087454; font-weight: bold; }
     overflow-x: auto !important;
     -webkit-overflow-scrolling: touch !important;
     width: 100% !important;
+  }
+}
+
+/* ==========================================
+   PREMIUM MODERN UI & RESPONSIVE POLISH
+   ========================================== */
+body.modal-open {
+  overflow: hidden !important;
+}
+body.modal-open #mobileQuickFab {
+  display: none !important;
+}
+
+.header-primary-btns {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.header-secondary-btns {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.btn-danger {
+  background: #faeceb !important;
+  color: #c44d48 !important;
+  border-color: #f2c0be !important;
+}
+.btn-danger:hover {
+  background: #f7dcdb !important;
+}
+
+/* Modal z-index above everything */
+.modal-backdrop {
+  z-index: 2000 !important;
+}
+
+@media (max-width: 768px) {
+  .header-actions {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+
+  .header-primary-btns {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+
+  .header-primary-btns .btn {
+    width: 100% !important;
+    min-height: 44px !important;
+    font-size: 12.5px !important;
+    font-weight: 800 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 8px 6px !important;
+    border-radius: 8px !important;
+  }
+
+  .header-secondary-btns {
+    display: none !important; /* Hide clutter on mobile header - clean modern UX */
+  }
+
+  #todayLabel {
+    font-size: 11px !important;
+    margin-bottom: 2px !important;
+  }
+
+  #pageTitle {
+    font-size: 18px !important;
+    font-weight: 800 !important;
+    line-height: 1.25 !important;
+  }
+
+  /* Card and Panel polish */
+  .panel {
+    border-radius: 12px !important;
+    padding: 14px !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04) !important;
+  }
+
+  /* Modals polish */
+  .modal {
+    max-height: 85vh !important;
+    border-radius: 20px 20px 0 0 !important;
+    padding: 20px 16px 28px 16px !important;
   }
 }

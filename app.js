@@ -6865,12 +6865,25 @@ function populateFollowperDropdowns() {
 
 function openModal(id) {
   const m = document.getElementById(id);
-  if (m) m.classList.add('open');
+  if (m) {
+    m.classList.add('open');
+    document.body.classList.add('modal-open');
+    const fab = document.getElementById('mobileQuickFab');
+    if (fab) fab.style.display = 'none';
+  }
 }
 
 function closeModal(id) {
   const m = document.getElementById(id);
-  if (m) m.classList.remove('open');
+  if (m) {
+    m.classList.remove('open');
+    const hasOtherOpen = document.querySelectorAll('.modal-backdrop.open').length > 0;
+    if (!hasOtherOpen) {
+      document.body.classList.remove('modal-open');
+      const fab = document.getElementById('mobileQuickFab');
+      if (fab) fab.style.display = '';
+    }
+  }
 }
 
 function toast(msg) {
