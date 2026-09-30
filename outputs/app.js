@@ -5661,45 +5661,71 @@ function processImportedRows(rawRows, fileName = 'Imported File') {
     if (!markaName) return;
     totalRows++;
 
-    if (!markaMap.has(markaName)) {
-      markaMap.set(markaName, { master, own, bills: [] });
+    const cleanMarkaKey = markaName.trim().toUpperCase();
+    if (!markaMap.has(cleanMarkaKey)) {
+      markaMap.set(cleanMarkaKey, { marka: markaName.trim(), master, own, bills: [] });
     }
-    const mg = markaMap.get(markaName);
+    const mg = markaMap.get(cleanMarkaKey);
 
-    mg.bills.push({
-      firstDate: billDate,
-      balance: balance,
-      sourceAmount: balance,
-      billCount: 1,
-      billNos: billNo ? [billNo] : [],
-      policyDate: policyDate,
-      policyName: policyName
-    });
+    // Smart in-file bill deduplication
+    const existingInMg = mg.bills.find(b => 
+      (billNo && (b.billNos || []).includes(billNo)) ||
+      (!billNo && b.firstDate === billDate && Math.abs(b.balance - balance) < 0.01)
+    );
+    if (existingInMg) {
+      existingInMg.balance = balance;
+      existingInMg.sourceAmount = balance;
+      existingInMg.policyDate = policyDate;
+      existingInMg.policyName = policyName;
+      if (billNo && !existingInMg.billNos.includes(billNo)) {
+        existingInMg.billNos.push(billNo);
+      }
+    } else {
+      mg.bills.push({
+        firstDate: billDate,
+        balance: balance,
+        sourceAmount: balance,
+        billCount: 1,
+        billNos: billNo ? [billNo] : [],
+        policyDate: policyDate,
+        policyName: policyName
+      });
+    }
   });
 
   let updated = 0;
   let addedBills = 0;
+  let updatedBills = 0;
 
-  markaMap.forEach((data, markaName) => {
-    let m = markas.find(x => x.marka === markaName);
+  markaMap.forEach((data, cleanMarkaKey) => {
+    const targetMarkaName = data.marka;
+    let m = markas.find(x => x.marka && x.marka.trim().toUpperCase() === cleanMarkaKey);
     if (m) {
       data.bills.forEach((newBill) => {
         const existingBill = (m.bills || []).find(b => 
           (newBill.billNos.length > 0 && (b.billNos || []).some(no => newBill.billNos.includes(no))) ||
-          (b.firstDate === newBill.firstDate)
+          (b.firstDate === newBill.firstDate && Math.abs((b.sourceAmount || b.balance) - newBill.sourceAmount) < 0.01)
         );
         if (existingBill) {
           existingBill.balance = newBill.balance;
           existingBill.sourceAmount = newBill.sourceAmount || existingBill.sourceAmount;
           if (newBill.policyDate) existingBill.policyDate = newBill.policyDate;
+          if (newBill.policyName) existingBill.policyName = newBill.policyName;
+          if (newBill.billNos && newBill.billNos.length > 0) {
+            if (!existingBill.billNos) existingBill.billNos = [];
+            newBill.billNos.forEach(no => {
+              if (!existingBill.billNos.includes(no)) existingBill.billNos.push(no);
+            });
+          }
+          updatedBills++;
         } else {
           m.bills.push({
             id: Date.now() + updated + addedBills++,
             firstDate: newBill.firstDate,
             balance: newBill.balance,
             sourceAmount: newBill.sourceAmount,
-            billCount: newBill.billCount,
-            billNos: newBill.billNos,
+            billCount: newBill.billCount || 1,
+            billNos: newBill.billNos || [],
             policyDate: newBill.policyDate,
             policyName: newBill.policyName
           });
