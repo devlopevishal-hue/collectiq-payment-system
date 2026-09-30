@@ -5658,6 +5658,7 @@ function importFile(e) {
   const reader = new FileReader();
   reader.onload = (evt) => {
     const data = new Uint8Array(evt.target.result);
+    if (e.target) e.target.value = '';
     if (typeof XLSX !== 'undefined') {
       parseWithXlsx(data);
     } else {
@@ -5964,10 +5965,11 @@ function processImportedRows(rawInput, fileName = 'Imported File') {
 }
 
 async function clearAllData() {
-  const isMasterAdmin = currentUser && (
+  const isMasterAdmin = !currentUser || (
+    currentUser.role === 'admin' ||
+    currentUser.role === 'superuser' ||
     currentUser.email === 'devlope.vishal@gmail.com' ||
-    currentUser.email === 'admin@collectiq.com' ||
-    (currentUser.role === 'admin' && currentUser.email.includes('admin'))
+    currentUser.email === 'admin@collectiq.com'
   );
 
   if (!isMasterAdmin) {
