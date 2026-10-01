@@ -664,13 +664,14 @@ function load() {
     const ht4 = localStorage.getItem('collectiq_help_tickets_v4');
     if (ht4) {
       try {
-        helpTickets = JSON.parse(ht4);
-        if (Array.isArray(helpTickets)) {
-          helpTickets = helpTickets.filter(t => !t.subject.startsWith('[Ticket Reassigned]'));
+        const parsedHt = JSON.parse(ht4);
+        if (Array.isArray(parsedHt)) {
+          helpTickets = parsedHt.filter(t => t && (!t.subject || !t.subject.startsWith('[Ticket Reassigned]')));
         } else {
           helpTickets = [];
         }
       } catch(e) {
+        console.warn('Error reading cached helpTickets:', e);
         helpTickets = [];
       }
     } else {
@@ -1555,6 +1556,17 @@ function schedule() {
             </div>
             <div class="m-card-badge-mobile">${badge}</div>
           </div>
+          ${(() => {
+            const openTicket = (helpTickets || []).find(t => (t.markaId === m.id || (t.markaName && m.marka && t.markaName.toUpperCase() === m.marka.toUpperCase())) && (t.status || 'Open').toLowerCase() !== 'resolved');
+            if (!openTicket) return '';
+            return `
+              <div style="margin-top:4px;">
+                <span class="status overdue" style="background:#fef2f2;color:#991b1b;border:1px solid #fecaca;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:4px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;" onclick="openResolveTicketModal('${openTicket.id}')" title="Click to view / act on Help Ticket">
+                  🆘 Help Ticket: ${escapeHtml(openTicket.subject || 'Assistance Needed')} <span style="font-weight:500;color:#7f1d1d;">(To: ${escapeHtml(openTicket.assignedHelper || 'Helper')})</span>
+                </span>
+              </div>
+            `;
+          })()}
         </td>
         <td class="col-master" data-label="Master"><span class="m-val">${escapeHtml(m.master)}</span></td>
         <td class="col-oldest" data-label="Policy Due Date"><span class="m-val">${fmt(oldestDueDate(m))}</span></td>
@@ -2573,6 +2585,17 @@ function markaView() {
               </div>
               <span class="status ${ownerOf(m) === 'Unassigned' ? 'overdue' : 'active'}">${escapeHtml(ownerOf(m))}</span>
             </div>
+            ${(() => {
+              const openTicket = (helpTickets || []).find(t => (t.markaId === m.id || (t.markaName && m.marka && t.markaName.toUpperCase() === m.marka.toUpperCase())) && (t.status || 'Open').toLowerCase() !== 'resolved');
+              if (!openTicket) return '';
+              return `
+                <div style="margin-top:4px;">
+                  <span class="status overdue" style="background:#fef2f2;color:#991b1b;border:1px solid #fecaca;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:4px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;" onclick="openResolveTicketModal('${openTicket.id}')" title="Click to view / act on Help Ticket">
+                    🆘 Help Ticket: ${escapeHtml(openTicket.subject || 'Assistance Needed')} <span style="font-weight:500;color:#7f1d1d;">(To: ${escapeHtml(openTicket.assignedHelper || 'Helper')})</span>
+                  </span>
+                </div>
+              `;
+            })()}
           </td>
           <td class="col-master" data-label="Master"><span class="m-val">${escapeHtml(m.master)}</span></td>
           <td class="col-oldest" data-label="Due & Next Follow-up"><span class="m-val">Due: ${fmt(oldestDueDate(m))}<br><small style="color:#788882;">Next: ${fmt(m.nextDate)}</small></span></td>
@@ -2628,6 +2651,7 @@ function helpTicketsView() {
   
   const curStatus = (F.htStatus || 'All').trim();
   const curPriority = (F.htPriority || 'all').trim();
+  const curScope = (F.htScope || 'all').trim();
   const isCrmUser = currentUser && (currentUser.role === 'crm' || (currentUser.email && currentUser.email.toLowerCase().includes('crm')) || (currentUser.followperName && currentUser.followperName.toLowerCase() === 'crm'));
   const isAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superuser');
   const isUserRole = currentUser && currentUser.role === 'user' && !isCrmUser && !isAdmin;
@@ -2636,6 +2660,12 @@ function helpTicketsView() {
   if (filterEl) {
     filterEl.innerHTML = `
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+        <label style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;">View Scope:
+          <select class="filter-input" onchange="F.htScope = this.value; helpTicketsView();">
+            <option value="all" ${curScope === 'all' ? 'selected' : ''}>All Team Tickets</option>
+            <option value="mine" ${curScope === 'mine' ? 'selected' : ''}>Assigned to Me / Created by Me</option>
+          </select>
+        </label>
         <label style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;">Status:
           <select class="filter-input" onchange="F.htStatus = this.value; helpTicketsView();">
             <option value="All" ${curStatus === 'All' ? 'selected' : ''}>All Statuses</option>
@@ -2660,18 +2690,28 @@ function helpTicketsView() {
     `;
   }
 
-  // Filter out any corrupted duplicate tickets
-  helpTickets = (helpTickets || []).filter(t => !t.subject.startsWith('[Ticket Reassigned]'));
+  // Filter out any corrupted duplicate tickets safely
+  helpTickets = (helpTickets || []).filter(t => t && (!t.subject || !t.subject.startsWith('[Ticket Reassigned]')));
   let list = [...(helpTickets || [])];
 
-  // Strict User Data Security: Two-Way Visibility for who generated it, who is assigned helper to solve, who resolved it, or party owner
-  if (isUserRole) {
+  // Two-Way Visibility Filter: If filtered by 'mine', match requester, helper, resolver, or party owner flexibly
+  if (curScope === 'mine' && currentUser) {
     const uName = (currentUser.followperName || '').toLowerCase().trim();
+    const uEmail = (currentUser.email || '').toLowerCase().trim();
+    const uPrefix = uEmail ? uEmail.split('@')[0] : '';
+    const matchUser = (val) => {
+      if (!val) return false;
+      const v = String(val).toLowerCase().trim();
+      return (uName && (v === uName || v.includes(uName) || uName.includes(v))) ||
+             (uEmail && (v === uEmail || v.includes(uEmail))) ||
+             (uPrefix && (v.includes(uPrefix) || uPrefix.includes(v)));
+    };
+
     list = list.filter(t => 
-      (t.requestedBy || '').toLowerCase().trim() === uName || 
-      (t.assignedHelper || '').toLowerCase().trim() === uName ||
-      (t.resolvedBy || '').toLowerCase().trim() === uName ||
-      markas.some(m => m.id === t.markaId && (ownerOf(m) || '').toLowerCase().trim() === uName)
+      matchUser(t.requestedBy) || 
+      matchUser(t.assignedHelper) || 
+      matchUser(t.resolvedBy) ||
+      markas.some(m => (m.id === t.markaId || (m.marka && t.markaName && m.marka.toUpperCase() === t.markaName.toUpperCase())) && matchUser(ownerOf(m)))
     );
   }
 
@@ -2787,6 +2827,7 @@ function helpTicketsView() {
           <td><b style="color:#087454;">${escapeHtml(t.assignedHelper || '—')}</b></td>
           <td>${statusBadge}</td>
           <td>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
               ${!isResolved ? `
                 <button onclick="openResolveTicketModal('${t.id}')" class="row-action" style="background:#087454; color:#fff; font-weight:700; font-size:11px; padding:4px 8px;">Action / Follow-up ⏳</button>
               ` : `
@@ -2960,8 +3001,10 @@ async function saveHelpTicket(e) {
   if (!helpTickets) helpTickets = [];
   helpTickets.unshift(ticketObj);
   localStorage.setItem('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
+  window.helpTickets = helpTickets;
 
   if (m) {
+    m.activeHelpTicketId = ticketObj.id;
     if (!m.history) m.history = [];
     m.history.push({
       type: 'followup',
@@ -4447,6 +4490,10 @@ async function saveFollowup(e) {
     }
   }
 
+  if (isHelp) {
+    finalRemark = `[Help Ticket: ${helpSubject}] Assigned to: ${helperName}. ${remark ? 'Note: ' + remark : ''}`.trim();
+  }
+
   if (isPayment) {
     if (stillDue < 0) {
       finalStatus = 'Advance Payment';
@@ -4508,13 +4555,14 @@ async function saveFollowup(e) {
   m.history.push(h);
 
   // 1. If Internal Help Ticket -> STRICTLY save into helpTickets table / array
+  let ticketObj = null;
   if (isHelp) {
-    const ticketObj = {
+    ticketObj = {
       id: 'ht_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
       markaId: m.id,
       markaName: m.marka,
       date: followDate,
-      requestedBy: followper || (currentUser ? currentUser.followperName : 'User'),
+      requestedBy: followper || (currentUser ? currentUser.followperName : 'User') || 'User',
       assignedHelper: helperName,
       priority: helpPriority,
       subject: helpSubject,
@@ -4525,6 +4573,8 @@ async function saveFollowup(e) {
     if (!helpTickets) helpTickets = [];
     helpTickets.unshift(ticketObj);
     localStorage.setItem('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
+    window.helpTickets = helpTickets;
+    m.activeHelpTicketId = ticketObj.id;
     if (isOnlineMode()) {
       fetch('/api/help-tickets/create', {
         method: 'POST',
@@ -4555,7 +4605,7 @@ async function saveFollowup(e) {
 
   save();
   saveMarkaCloud(m);
-  if (isHelp && typeof ticketObj !== 'undefined' && ticketObj) {
+  if (isHelp && ticketObj) {
     saveHelpTicketCloud(ticketObj);
   }
   closeModal('followupModal');
@@ -7677,10 +7727,8 @@ function initFirebase() {
     firestoreDb.collection('collectiq_help_tickets').onSnapshot(snapshot => {
       if (snapshot.empty) {
         if (helpTickets.length > 0) {
-          helpTickets = [];
-          localStorage.removeItem('collectiq_help_tickets_v4');
-          window.helpTickets = [];
-          renderAll();
+          // If Firestore collection is empty, seed existing local tickets to Firestore instead of wiping!
+          helpTickets.forEach(t => saveHelpTicketCloud(t));
         }
         return;
       }
