@@ -102,14 +102,14 @@
   const MAX_STORED_MESSAGES = 40;
 
   const ERRORS = {
-    busy: 'AI abhi busy hai, thodi der baad try karein.',
-    not_configured: 'AI ki keys server pe nahi daali gayi hain. Admin: Render mein API keys daalni hain.',
-    rate_limited: 'Bahut zyada sawaal ek saath aa gaye. 10 minute baad try karein.',
-    offline: 'AI server se connect nahi ho pa raha. Internet check karein ya thodi der baad try karein.',
-    no_server: 'AI server abhi set nahi hua hai. Admin se baat karein.'
+    busy: 'The AI is busy right now. Please try again in a moment.',
+    not_configured: 'The AI keys are not set on the server yet. Admin: add the API keys in Render.',
+    rate_limited: 'Too many questions at once. Please try again in 10 minutes.',
+    offline: 'Cannot reach the AI server. Check your internet or try again shortly.',
+    no_server: 'The AI server is not set up yet. Please contact the admin.'
   };
 
-  const CHIPS = ['Aaj kisko call karun?', 'Toote PTP dikhao', 'Mera score kya hai?', 'Party ka haal: '];
+  const CHIPS = ['Who should I call today?', 'Show broken PTPs', "What's my score?", 'Party status: '];
 
   const state = { chats: [], currentId: null, status: 'idle', busy: false, mounted: false, showList: false };
 
@@ -145,7 +145,7 @@
   }
 
   function newChat() {
-    const chat = { id: 'c' + Date.now().toString(36), title: 'Nayi chat', updatedAt: Date.now(), messages: [], display: [] };
+    const chat = { id: 'c' + Date.now().toString(36), title: 'New chat', updatedAt: Date.now(), messages: [], display: [] };
     state.chats.unshift(chat);
     state.currentId = chat.id;
     return chat;
@@ -202,9 +202,9 @@
   }
 
   const STATUS_TEXT = {
-    idle: ['', ''], waking: ['waking', 'AI jaag raha hai…'], ready: ['ready', 'Ready'],
-    busy: ['busy', 'Soch raha hai…'], offline: ['down', 'Connect nahi ho raha'],
-    not_configured: ['down', 'Setup baaki'], no_server: ['down', 'Server set nahi']
+    idle: ['', ''], waking: ['waking', 'Waking up AI…'], ready: ['ready', 'Ready'],
+    busy: ['busy', 'Thinking…'], offline: ['down', 'Offline'],
+    not_configured: ['down', 'Setup pending'], no_server: ['down', 'No server']
   };
 
   function setStatus(s) {
@@ -222,25 +222,25 @@
     return `
       <div class="ai-shell ${state.showList ? 'show-list' : ''}">
         <aside class="ai-sidebar">
-          <button type="button" class="ai-new-btn" data-new>＋ Nayi chat</button>
+          <button type="button" class="ai-new-btn" data-new>＋ New chat</button>
           <div class="ai-chat-list" id="aiChatList"></div>
         </aside>
         <div class="ai-main">
           <div class="ai-header">
             <div class="ai-title">
-              <button type="button" class="ai-list-toggle" data-toggle-list title="Purani chats">☰</button>
+              <button type="button" class="ai-list-toggle" data-toggle-list title="Past chats">☰</button>
               <span class="ai-logo">🤖</span>
-              <div><b>CollectIQ AI Assistant</b><small>Aapke collection data se jawab</small></div>
+              <div><b>CollectIQ AI Assistant</b><small>Answers from your collection data</small></div>
             </div>
             <div class="ai-header-actions">
               <span id="aiStatus" class="ai-status"></span>
-              <button type="button" class="ai-summary-btn" data-summary>☀️ Subah ki summary</button>
+              <button type="button" class="ai-summary-btn" data-summary>☀️ Morning summary</button>
             </div>
           </div>
           <div class="ai-messages" id="aiMessages"></div>
           <form class="ai-input" id="aiForm">
-            <textarea id="aiInput" rows="1" placeholder="Sawaal likhiye… (jaise: JGG ka haal batao)"></textarea>
-            <button type="submit" class="ai-send" id="aiSend" title="Bhejo">➤</button>
+            <textarea id="aiInput" rows="1" placeholder="Ask a question… (e.g. How is JGG doing?)"></textarea>
+            <button type="submit" class="ai-send" id="aiSend" title="Send">➤</button>
           </form>
         </div>
       </div>`;
@@ -252,7 +252,7 @@
     el.innerHTML = state.chats.length ? state.chats.map(c => `
       <button type="button" class="ai-chat-item ${c.id === state.currentId ? 'active' : ''}" data-open="${escapeHtml(c.id)}">
         ${escapeHtml(c.title)}<small>${new Date(c.updatedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</small>
-      </button>`).join('') : '<p class="ai-empty-list">Abhi koi chat nahi.</p>';
+      </button>`).join('') : '<p class="ai-empty-list">No chats yet.</p>';
   }
 
   function renderMessages() {
@@ -264,8 +264,8 @@
       el.innerHTML = `
         <div class="ai-welcome">
           <div class="ai-welcome-icon">🤖</div>
-          <h3>Namaste${name ? ' ' + escapeHtml(name) : ''}!</h3>
-          <p>Main aapke parties, bills, follow-ups aur payments ke baare mein bata sakta hoon, WhatsApp message likh sakta hoon aur follow-up form bhar sakta hoon.</p>
+          <h3>Hello${name ? ' ' + escapeHtml(name) : ''}!</h3>
+          <p>Ask me about your parties, bills, follow-ups and payments. I can also draft WhatsApp reminders and fill in the follow-up form for you.</p>
           <div class="ai-chips">${CHIPS.map(c => `<button type="button" class="ai-chip" data-chip="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')}</div>
         </div>`;
       return;
@@ -273,7 +273,7 @@
     el.innerHTML = chat.display.map((d, i) => {
       if (d.role === 'user') return `<div class="ai-msg user"><div class="ai-bubble">${escapeHtml(d.text).replace(/\n/g, '<br>')}</div></div>`;
       const actions = (d.actions || []).map((a, j) =>
-        `<button type="button" class="ai-action-btn" data-action="${i}:${j}">📝 Form kholo: ${escapeHtml(a.marka)}</button>`).join('');
+        `<button type="button" class="ai-action-btn" data-action="${i}:${j}">📝 Open form: ${escapeHtml(a.marka)}</button>`).join('');
       return `
         <div class="ai-msg bot ${d.error ? 'error' : ''}">
           <div class="ai-bubble">${renderMessageHtml(d.text, escapeHtml)}${actions ? `<div class="ai-actions">${actions}</div>` : ''}</div>
@@ -293,7 +293,7 @@
   // ---------- Actions ----------
 
   function copyText(text) {
-    const done = () => toast('✓ Copy ho gaya');
+    const done = () => toast('✓ Copied');
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
     } else {
@@ -306,13 +306,13 @@
     ta.value = text;
     document.body.appendChild(ta);
     ta.select();
-    try { document.execCommand('copy'); done(); } catch (e) { toast('Copy nahi ho paya'); }
+    try { document.execCommand('copy'); done(); } catch (e) { toast('Could not copy'); }
     ta.remove();
   }
 
   function openFormAction(action) {
     const m = (markas || []).find(x => String(x.id) === String(action.markaId));
-    if (!m) return toast('Party nahi mili: ' + action.marka);
+    if (!m) return toast('Party not found: ' + action.marka);
     openFollowup(m.id);
     const f = action.fields || {};
     const set = (id, v) => { const el = document.getElementById(id); if (el && v !== undefined && v !== null && v !== '') el.value = v; };
@@ -323,22 +323,22 @@
     set('promiseDate', f.promiseDate);
     set('nextDate', f.nextDate);
     set('remark', f.remark);
-    toast('Form bhar diya hai. Check karke Save dabaiye.');
+    toast('Form filled in. Please check it and press Save.');
   }
 
   function plainSummary(s) {
     const lines = [
-      `**${fmt(s.date)} ki summary**`,
-      `- Aaj ke follow-up (overdue samet): ${s.followupsToday}`,
-      `- Toote PTP: ${s.brokenPtps}`,
-      `- Kal ka collection: ${money(s.collectedYesterday)}`,
-      `- Aaj ab tak collection: ${money(s.collectedToday)}`,
-      `- Mere khule help tickets: ${s.openTicketsForMe}`
+      `**Summary for ${fmt(s.date)}**`,
+      `- Follow-ups due today (incl. overdue): ${s.followupsToday}`,
+      `- Broken PTPs: ${s.brokenPtps}`,
+      `- Collected yesterday: ${money(s.collectedYesterday)}`,
+      `- Collected today so far: ${money(s.collectedToday)}`,
+      `- My open help tickets: ${s.openTicketsForMe}`
     ];
     if (s.pendingFms !== null) lines.push(`- Pending FMS milestones: ${s.pendingFms}`);
     if (s.top5.length) {
-      lines.push('', '**Sabse pehle inhe call karein:**');
-      s.top5.forEach(r => lines.push(`- ${r.marka} (${r.master}) — due ${money(r.alreadyDue)}, kul ${money(r.outstanding)}`));
+      lines.push('', '**Call these first:**');
+      s.top5.forEach(r => lines.push(`- ${r.marka} (${r.master}) — due ${money(r.alreadyDue)}, total ${money(r.outstanding)}`));
     }
     return lines.join('\n');
   }
@@ -368,7 +368,7 @@
         });
       }
       chat.messages = result.messages;
-      chat.display.push({ role: 'bot', text: result.finalText || 'Jawab khaali aaya, dobara poochiye.', actions: result.actions, provider: result.provider });
+      chat.display.push({ role: 'bot', text: result.finalText || 'Got an empty reply. Please ask again.', actions: result.actions, provider: result.provider });
       setStatus('ready');
     } catch (e) {
       chat.messages = history.slice(0, -1);
@@ -385,8 +385,8 @@
 
   function askSummary() {
     const s = CollectIQAITools.computeMorningSummary(buildCtx());
-    const apiText = 'Meri aaj ki subah ki summary professional aur chhoti likho. Sirf yahi numbers use karo (system ne nikaale hain):\n' + JSON.stringify(CollectIQAITools.formatMoney(s));
-    ask('☀️ Subah ki summary', apiText, { noTools: true, fallbackText: plainSummary(s) });
+    const apiText = 'Write my morning summary for today, short and professional, in English. Use only these numbers (computed by the system):\n' + JSON.stringify(CollectIQAITools.formatMoney(s));
+    ask('☀️ Morning summary', apiText, { noTools: true, fallbackText: plainSummary(s) });
   }
 
   function bind(container) {

@@ -53,14 +53,14 @@
 
   function findParty(ctx, name) {
     const q = norm(name);
-    if (!q) return { error: 'Party ka naam nahi diya.' };
+    if (!q) return { error: 'No party name given.' };
     const all = ctx.markas || [];
     const exact = all.find(m => norm(m.marka) === q);
     if (exact) return { marka: exact };
     const partial = all.filter(m => norm(m.marka).includes(q));
     if (partial.length === 1) return { marka: partial[0] };
     if (partial.length > 1) return { candidates: partial.slice(0, 10).map(m => m.marka) };
-    return { error: `"${name}" naam ki koi party nahi mili.` };
+    return { error: `No party named "${name}" was found.` };
   }
 
   function summaryRow(ctx, m) {
@@ -294,17 +294,17 @@
       const found = findParty(ctx, args.party);
       if (!found.marka) return found;
       if (!FORM_STATUSES.includes(args.status)) {
-        return { error: `Status in mein se hona chahiye: ${FORM_STATUSES.join(', ')}` };
+        return { error: `Status must be one of: ${FORM_STATUSES.join(', ')}` };
       }
       const mode = args.contact_mode || 'Phone call';
-      if (!FORM_MODES.includes(mode)) return { error: `Contact mode in mein se hona chahiye: ${FORM_MODES.join(', ')}` };
+      if (!FORM_MODES.includes(mode)) return { error: `Contact mode must be one of: ${FORM_MODES.join(', ')}` };
       const promiseDate = args.promise_date || '';
-      if (promiseDate && !ISO_DATE.test(promiseDate)) return { error: 'promise_date YYYY-MM-DD format mein chahiye.' };
-      if (args.status === 'Promise to Pay' && !promiseDate) return { error: 'Promise to Pay ke liye promise date zaroori hai.' };
+      if (promiseDate && !ISO_DATE.test(promiseDate)) return { error: 'promise_date must be in YYYY-MM-DD format.' };
+      if (args.status === 'Promise to Pay' && !promiseDate) return { error: 'A promise date is required for Promise to Pay.' };
       const nextDate = args.next_date || (args.status === 'Promise to Pay' ? promiseDate : '');
-      if (nextDate && !ISO_DATE.test(nextDate)) return { error: 'next_date YYYY-MM-DD format mein chahiye.' };
+      if (nextDate && !ISO_DATE.test(nextDate)) return { error: 'next_date must be in YYYY-MM-DD format.' };
       const expected = Number(args.expected || 0);
-      if (!Number.isFinite(expected) || expected < 0) return { error: 'expected amount sahi number hona chahiye.' };
+      if (!Number.isFinite(expected) || expected < 0) return { error: 'expected must be a valid amount.' };
       return {
         ok: true,
         action: {
@@ -373,12 +373,12 @@
       if (!Object.prototype.hasOwnProperty.call(tools, name)) return { error: `Unknown tool: ${name}` };
       let args = {};
       if (argsJson && String(argsJson).trim()) {
-        try { args = JSON.parse(argsJson); } catch (e) { return { error: 'Tool arguments sahi JSON nahi hain.' }; }
+        try { args = JSON.parse(argsJson); } catch (e) { return { error: 'Tool arguments are not valid JSON.' }; }
       }
-      if (!args || typeof args !== 'object' || Array.isArray(args)) return { error: 'Tool arguments object hone chahiye.' };
+      if (!args || typeof args !== 'object' || Array.isArray(args)) return { error: 'Tool arguments must be an object.' };
       return trimResult(formatMoney(tools[name](ctx, args)));
     } catch (e) {
-      return { error: 'Tool chalate waqt galti: ' + (e && e.message ? e.message : String(e)) };
+      return { error: 'Tool failed: ' + (e && e.message ? e.message : String(e)) };
     }
   }
 
