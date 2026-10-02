@@ -1056,10 +1056,13 @@ function filtered(list = activeMarkas()) {
   if (currentUser) {
     if (currentUser.role === 'user') {
       const uName = (currentUser.followperName || '').toLowerCase().trim();
-      list = list.filter(m => {
-        const o = (ownerOf(m) || '').toLowerCase().trim();
-        return o === uName || (uName && o && (o.includes(uName) || uName.includes(o)));
-      });
+      const hasSearch = (F.marka || '').trim().length > 0;
+      if (!hasSearch && F.followper !== 'all') {
+        list = list.filter(m => {
+          const o = (ownerOf(m) || '').toLowerCase().trim();
+          return o === uName || (uName && o && (o.includes(uName) || uName.includes(o)));
+        });
+      }
     } else if (currentUser.role === 'crr') {
       const uName = (currentUser.followperName || '').toLowerCase().trim();
       const uEmail = (currentUser.email || '').toLowerCase().trim();
@@ -1142,7 +1145,7 @@ function filters(containerId) {
   const followpers = allFollowpers();
   
   const followperOptions = isUserRole
-    ? `<option value="${escapeHtml(currentUser.followperName)}" selected>${escapeHtml(currentUser.followperName)}</option>`
+    ? `<option value="${escapeHtml(currentUser.followperName)}" ${F.followper === currentUser.followperName ? 'selected' : ''}>My Markas (${escapeHtml(currentUser.followperName)})</option><option value="all" ${F.followper === 'all' ? 'selected' : ''}>All Team Markas</option>`
     : `<option value="all">All Followpers</option>` + followpers.map(f => `<option value="${escapeHtml(f)}" ${F.followper === f ? 'selected' : ''}>${escapeHtml(f)}</option>`).join('');
 
   const hasAdv = Boolean(F.min || F.max || F.minCount || F.maxCount || F.from || F.to);
@@ -4063,7 +4066,7 @@ function onFollowPayModeChange() {
 function onFollowPayTypeChange() {
   const pType = document.getElementById('followPayType') ? document.getElementById('followPayType').value : 'Full Payment';
   const mId = document.getElementById('markaId').value;
-  const m = markas.find(x => x.id === mId);
+  const m = markas.find(x => x.id === mId || String(x.id) === String(mId));
   if (!m) return;
   const tot = totalOutstanding(m);
   const amtInput = document.getElementById('followPayAmount');
@@ -4112,7 +4115,7 @@ function populateFollowPayBills(m) {
 
 function updateFollowPayAllocations(source = 'amount') {
   const mId = document.getElementById('markaId').value;
-  const m = markas.find(x => x.id === mId);
+  const m = markas.find(x => x.id === mId || String(x.id) === String(mId));
   if (!m) return;
   const bills = activeBills(m).sort((a,b) => a.firstDate.localeCompare(b.firstDate));
   const amtInput = document.getElementById('followPayAmount');
@@ -4195,18 +4198,45 @@ function previewReceiptImage(input, previewContainerId) {
     const file = input.files[0];
     const reader = new FileReader();
     reader.onload = function(e) {
-      container.innerHTML = `
-        <div style="display:inline-flex; align-items:center; gap:8px; background:#edf7f2; border:1px solid #c0e7d5; padding:6px 10px; border-radius:6px; margin-top:4px;">
-          <img src="${e.target.result}" style="width:36px; height:36px; object-fit:cover; border-radius:4px; border:1px solid #087454;" alt="Receipt Preview">
-          <div style="font-size:11px; text-align:left;">
-            <b style="color:#087454;">✓ ${escapeHtml(file.name)}</b>
-            <small style="display:block; color:#5b7067;">${Math.round(file.size/1024)} KB · Uploaded</small>
-          </div>
-          <button type="button" onclick="openReceiptViewer('${escapeHtml(file.name)}', '${e.target.result}')" class="btn-sm row-action" style="margin-left:auto;">👁️ View</button>
-        </div>
-      `;
-      container.style.display = 'block';
-      container.dataset.base64 = e.target.result;
+      const rawDataUrl = e.target.result;
+      const img = new Image();
+      img.onload = function() {
+        try {
+          const maxDim = 800;
+          let w = img.width, h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
+            else { w = Math.round((w * maxDim) / h); h = maxDim; }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.65);
+          
+          container.innerHTML = `
+            <div style="display:inline-flex; align-items:center; gap:8px; background:#edf7f2; border:1px solid #c0e7d5; padding:6px 10px; border-radius:6px; margin-top:4px;">
+              <img src="${compressedDataUrl}" style="width:36px; height:36px; object-fit:cover; border-radius:4px; border:1px solid #087454;" alt="Receipt Preview">
+              <div style="font-size:11px; text-align:left;">
+                <b style="color:#087454;">✓ ${escapeHtml(file.name)}</b>
+                <small style="display:block; color:#5b7067;">Optimized for fast sync</small>
+              </div>
+              <button type="button" onclick="openReceiptViewer('${escapeHtml(file.name)}', '${compressedDataUrl}')" class="btn-sm row-action" style="margin-left:auto;">👁️ View</button>
+            </div>
+          `;
+          container.style.display = 'block';
+          container.dataset.base64 = compressedDataUrl;
+        } catch(err) {
+          container.dataset.base64 = rawDataUrl;
+          container.style.display = 'block';
+        }
+      };
+      img.onerror = function() {
+        container.dataset.base64 = rawDataUrl;
+        container.style.display = 'block';
+      };
+      img.src = rawDataUrl;
     };
     reader.readAsDataURL(file);
   } else {
@@ -4229,7 +4259,29 @@ function openReceiptViewer(title, imgSrc) {
 window.openReceiptViewer = openReceiptViewer;
 
 function renderHistoryTimeline(m) {
-  const entries = (m.history || []).slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  if (!m) return '<p class="modal-copy">No party selected.</p>';
+  const hist = (m.history || []).slice();
+  
+  // Ensure all payments from payments array belonging to this Marka are displayed in timeline
+  (payments || []).forEach(p => {
+    if (p && (p.marka === m.marka || (m.bills || []).some(b => (p.allocations || []).some(a => String(a.billId) === String(b.id))))) {
+      const alreadyLogged = hist.some(h => (h.type === 'payment' || (h.amount && h.amount > 0)) && h.date === p.date && (+h.amount === +p.amount || (p.ref && p.ref !== 'N/A' && h.ref === p.ref)));
+      if (!alreadyLogged) {
+        hist.push({
+          type: 'payment',
+          date: p.date,
+          status: 'Payment Received',
+          remark: `Payment of ${money(p.amount)} recorded (${p.mode || 'Payment'} ref: ${p.ref || 'N/A'})`,
+          amount: p.amount,
+          ref: p.ref,
+          receiptImage: p.receiptImage,
+          followper: p.followper || ownerOf(m)
+        });
+      }
+    }
+  });
+
+  const entries = hist.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   if (!entries.length) return '<p class="modal-copy">No conversations logged for this Marka.</p>';
   return entries.map(h => {
     const isResolved = h.status === 'Claim Resolved' || h.status === 'Resolved';
@@ -4458,6 +4510,7 @@ async function saveFollowup(e) {
 
   const receiptImage = document.getElementById('followPayReceiptPreview')?.dataset?.base64 || '';
   // Apply updates locally and save to localStorage immediately
+  let newPaymentRecord = null;
   if (isPayment) {
     allocations.forEach(a => {
       const b = m.bills.find(x => String(x.id) === String(a.billId));
@@ -4466,7 +4519,7 @@ async function saveFollowup(e) {
       }
     });
 
-    payments.push({
+    newPaymentRecord = {
       id: uid(),
       date: followDate,
       ref: payRef,
@@ -4474,8 +4527,15 @@ async function saveFollowup(e) {
       amount: payAmount,
       marka: m.marka,
       receiptImage: receiptImage,
-      allocations
-    });
+      followper: followper || (currentUser ? currentUser.followperName : '') || ownerOf(m),
+      allocations: allocations.map(a => ({
+        billId: a.billId,
+        amount: a.amount,
+        settled: !!a.settled,
+        isAdvance: !!a.isAdvance
+      }))
+    };
+    payments.push(newPaymentRecord);
   }
 
   const stillDue = totalOutstanding(m);
@@ -4549,7 +4609,7 @@ async function saveFollowup(e) {
   if (isComplaint && escalateTo) {
     m.owner = escalateTo;
   } else if (!isHelp) {
-    m.owner = h.followper;
+    m.owner = h.followper || ownerOf(m) || 'Unassigned';
   }
   if (!m.history) m.history = [];
   m.history.push(h);
@@ -4605,6 +4665,9 @@ async function saveFollowup(e) {
 
   save();
   saveMarkaCloud(m);
+  if (isPayment && newPaymentRecord) {
+    savePaymentCloud(newPaymentRecord);
+  }
   if (isHelp && ticketObj) {
     saveHelpTicketCloud(ticketObj);
   }
@@ -5224,7 +5287,7 @@ function saveMasterAssignment(e) {
 }
 
 function openPaymentHistory(markaId) {
-  const m = markas.find(x => x.id === markaId);
+  const m = markas.find(x => x.id === markaId || String(x.id) === String(markaId));
   if (!m) return toast('Marka not found.');
   
   const modal = document.getElementById('paymentHistoryModal');
@@ -5232,7 +5295,26 @@ function openPaymentHistory(markaId) {
   
   document.getElementById('payHistTitle').textContent = `Payment Ledger · ${escapeHtml(m.marka)} · ${escapeHtml(m.master)}`;
   
-  const markaPayments = payments.filter(p => p.marka === m.marka || (m.bills || []).some(b => (p.allocations || []).some(a => a.billId === b.id)));
+  // Combine payments from payments array and payment entries from m.history
+  const markaPayments = [...(payments || []).filter(p => p.marka === m.marka || (m.bills || []).some(b => (p.allocations || []).some(a => String(a.billId) === String(b.id))))];
+  
+  (m.history || []).filter(h => h.type === 'payment' || (h.amount && h.amount > 0)).forEach(h => {
+    const exists = markaPayments.some(p => p.date === h.date && (+p.amount === +h.amount || (h.ref && h.ref !== 'N/A' && p.ref === h.ref)));
+    if (!exists) {
+      markaPayments.push({
+        id: 'h_pay_' + (h.date || '') + '_' + (h.amount || 0),
+        date: h.date,
+        ref: h.ref || 'N/A',
+        mode: h.mode || 'Payment',
+        amount: h.amount,
+        marka: m.marka,
+        receiptImage: h.receiptImage,
+        allocations: h.allocations || []
+      });
+    }
+  });
+
+  markaPayments.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   
   const totalPaid = markaPayments.reduce((s, p) => s + (p.amount || 0), 0);
   const outStanding = totalOutstanding(m);
@@ -7233,7 +7315,19 @@ function _executeRenderAll() {
   else if (cur === 'gplock') locks();
   else if (cur === 'analysis') analysis();
   else if (cur === 'markas') markaView();
+  else if (cur === 'rokad') rokad();
   else if (cur === 'users' || cur === 'userManagement') usersView();
+
+  // If payment history modal is currently open, live-refresh it
+  const payModal = document.getElementById('paymentHistoryModal');
+  if (payModal && payModal.classList.contains('open') && payModal.dataset.markaId) {
+    openPaymentHistory(payModal.dataset.markaId);
+  }
+  // If conversation history modal is currently open, live-refresh it
+  const histModal = document.getElementById('historyModal');
+  if (histModal && histModal.classList.contains('open') && histModal.dataset.markaId) {
+    openHistory(histModal.dataset.markaId);
+  }
   
   const filteredList = filtered();
   const todayIso = iso(today);
@@ -7559,6 +7653,12 @@ async function saveCloud(options = {}) {
   if (options && options.payment) return savePaymentCloud(options.payment);
   if (options && options.configOnly) return saveConfigCloud();
 
+  // For routine local saves, avoid overwhelming the client / mobile network with a 449-case batch upload.
+  // Granular helpers (saveMarkaCloud, savePaymentCloud, saveHelpTicketCloud) handle instant sync.
+  if (!options || !options.fullSync) {
+    return;
+  }
+
   if (markas.length === 0 && !window._explicitAdminReset) {
     console.warn('saveCloud skipped: preventing empty wipe of Firestore DB.');
     return;
@@ -7599,12 +7699,8 @@ function initFirebase() {
     // Check initial seed state & version sync
     firestoreDb.collection('collectiq_config').doc('settings').get().then(doc => {
       const d = doc.exists ? doc.data() : null;
-      if (!d || d.version !== APP_STORAGE_VERSION) {
-        if (window.latestReportCases && Array.isArray(window.latestReportCases) && window.latestReportCases.length > 0) {
-          console.log('⚡ Cloud version out of date. Syncing fresh Excel report data to Firestore (' + window.latestReportCases.length + ' Markas)...');
-          saveAllMarkasCloud(window.latestReportCases);
-          saveConfigCloud();
-        }
+      if (!d) {
+        saveConfigCloud();
       }
     }).catch(e => console.warn('Config version check error:', e));
 
@@ -7764,9 +7860,8 @@ function initFirebase() {
     firestoreDb.collection('collectiq_payments').onSnapshot(snapshot => {
       if (snapshot.empty) {
         if (payments.length > 0) {
-          payments = [];
-          localStorage.removeItem('collectiq_rokad_v4');
-          renderAll();
+          // If cloud collection is empty, seed existing local payments up to cloud instead of deleting!
+          payments.forEach(p => savePaymentCloud(p));
         }
         return;
       }
