@@ -7244,7 +7244,8 @@ function switchView(id) {
   else if (id === 'analysis') analysis();
   else if (id === 'markas') markaView();
   else if (id === 'users' || id === 'userManagement') usersView();
-  
+  else if (id === 'aiAssistant' && typeof aiAssistantView === 'function') aiAssistantView();
+
   const titles = {
     dashboard: 'Collection command center',
     schedule: 'Scheduled follow-ups',
@@ -7256,7 +7257,8 @@ function switchView(id) {
     analysis: 'Analysis & reports',
     markas: 'Marka & Followper assignment',
     import: 'Outstanding report sync',
-    users: 'Doer & Access Control Management'
+    users: 'Doer & Access Control Management',
+    aiAssistant: 'CollectIQ AI Assistant'
   };
   const titleEl = document.getElementById('pageTitle');
   if (titleEl) titleEl.textContent = titles[id] || 'CollectIQ';

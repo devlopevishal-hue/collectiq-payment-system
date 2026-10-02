@@ -14,7 +14,7 @@
   <title>CollectIQ - Payment Collection System</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="styles.css?v=6.9.4">
+  <link rel="stylesheet" href="styles.css?v=6.10.0">
   <script>
     function toggleMobileMenu(e) {
       if (e) {
@@ -99,6 +99,7 @@
       <button class="nav" data-view="fms"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></i> FMS Pre-planned <b id="fmsBadge" style="background:#087454;">0</b></button>
       <button class="nav" data-view="visits"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg></i> Field Visits & Logs <b id="visitsBadge" style="background:#205e4b;">0</b></button>
       <button class="nav" data-view="helpTickets"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></i> Help Tickets <b id="helpBadge" style="background:#317260;">0</b></button>
+      <button class="nav nav-ai" data-view="aiAssistant"><i>🤖</i> AI Assistant <b class="ai-new-badge">NEW</b></button>
       <button class="nav" data-view="crmEscalations"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg></i> CRM Escalations <b id="escalationBadge">0</b></button>
       <button class="nav" data-view="gplock"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></i> GP lock list <b id="lockBadge">0</b></button>
       <button class="nav" data-view="analysis"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg></i> Analysis & reports</button>
@@ -624,6 +625,8 @@
         </div>
       </div>
     </section>
+
+    <section id="aiAssistant" class="view"></section>
 
   </main>
 
@@ -1492,6 +1495,10 @@ service cloud.firestore {
       <span>Help</span>
       <b id="mobHelpBadge" class="mob-badge">0</b>
     </button>
+    <button class="b-nav b-nav-ai" data-view="aiAssistant" onclick="switchView('aiAssistant')">
+      <i>🤖</i>
+      <span>AI</span>
+    </button>
     <button class="b-nav" data-view="crmEscalations" onclick="switchView('crmEscalations')">
       <i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg></i>
       <span>CRM</span>
@@ -1514,13 +1521,15 @@ service cloud.firestore {
   <!-- Firebase Compatibility Libraries for Real-time Cloud DB -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-  <script src="latest-report-data.js?v=6.9.4"></script>
-  <script src="app.js?v=6.9.4"></script>
+  <script src="latest-report-data.js?v=6.10.0"></script>
+  <script src="app.js?v=6.10.0"></script>
+  <script src="ai-tools.js?v=6.10.0"></script>
+  <script src="ai-chat.js?v=6.10.0"></script>
   <!-- Progressive Web App Service Worker Registration -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
-        navigator.serviceWorker.register('sw.js?v=6.9.4').then(function(reg) {
+        navigator.serviceWorker.register('sw.js?v=6.10.0').then(function(reg) {
           console.log('[PWA] Service Worker registered with scope:', reg.scope);
         }).catch(function(err) {
           console.warn('[PWA] Service Worker registration failed:', err);
