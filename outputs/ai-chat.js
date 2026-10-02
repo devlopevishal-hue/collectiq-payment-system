@@ -13,8 +13,25 @@
     let html = '';
     let inList = false;
     let pendingBreak = false;
+    let table = null;
+    const cells = l => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+    const flushTable = () => {
+      if (!table) return;
+      const [head, ...body] = table;
+      html += '<table class="ai-table"><thead><tr>' + head.map(c => `<th>${c}</th>`).join('') + '</tr></thead><tbody>' +
+        body.map(r => '<tr>' + r.map(c => `<td>${c}</td>`).join('') + '</tr>').join('') + '</tbody></table>';
+      table = null;
+      pendingBreak = false;
+    };
     lines.forEach(raw => {
       const line = raw.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+      if (/^\s*\|.*\|\s*$/.test(line)) {
+        if (inList) { html += '</ul>'; inList = false; }
+        if (/^\s*\|[\s:|-]+\|\s*$/.test(line)) return; // separator row
+        (table || (table = [])).push(cells(line));
+        return;
+      }
+      flushTable();
       const item = line.match(/^\s*[-*•]\s+(.*)$/);
       if (item) {
         if (!inList) { html += '<ul>'; inList = true; }
@@ -27,6 +44,7 @@
       html += line;
       pendingBreak = true;
     });
+    flushTable();
     if (inList) html += '</ul>';
     return html;
   }
@@ -73,9 +91,12 @@
 
   // ---------- Browser ----------
 
-  // Filled in when the Render service exists (plan Task 7).
-  const AI_SERVER_URL_PROD = '';
-  const AI_SERVER_URL = ['localhost', '127.0.0.1'].includes(location.hostname) ? 'http://localhost:8080' : AI_SERVER_URL_PROD;
+  // Render service that holds the API keys. A developer can point a browser at a
+  // local ai-server by setting localStorage 'collectiq_ai_server_url'.
+  const AI_SERVER_URL_PROD = 'https://collectiq-ai.onrender.com';
+  const AI_SERVER_URL = (function () {
+    try { return localStorage.getItem('collectiq_ai_server_url') || AI_SERVER_URL_PROD; } catch (e) { return AI_SERVER_URL_PROD; }
+  })();
   const REQUEST_TIMEOUT_MS = 70000;
   const MAX_CHATS = 30;
   const MAX_STORED_MESSAGES = 40;
@@ -364,7 +385,7 @@
 
   function askSummary() {
     const s = CollectIQAITools.computeMorningSummary(buildCtx());
-    const apiText = 'Meri aaj ki subah ki summary professional aur chhoti likho. Sirf yahi numbers use karo (system ne nikaale hain):\n' + JSON.stringify(s);
+    const apiText = 'Meri aaj ki subah ki summary professional aur chhoti likho. Sirf yahi numbers use karo (system ne nikaale hain):\n' + JSON.stringify(CollectIQAITools.formatMoney(s));
     ask('☀️ Subah ki summary', apiText, { noTools: true, fallbackText: plainSummary(s) });
   }
 

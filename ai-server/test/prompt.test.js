@@ -30,3 +30,15 @@ test('system prompt carries user, role, date and the core rules', () => {
 test('system prompt tolerates missing user info', () => {
   assert.match(buildSystemPrompt({}), /CollectIQ/);
 });
+
+test('system prompt asks for Roman Hinglish and keeping tool order', () => {
+  const p = buildSystemPrompt({ name: 'Surendra', role: 'user', today: '2026-10-02' });
+  assert.match(p, /Roman/);
+  assert.match(p, /rank/);
+});
+
+test('system prompt: copy amounts as given and do not guess form fields', () => {
+  const p = buildSystemPrompt({ name: 'A', role: 'admin', today: '2026-10-02' });
+  assert.match(p, /exactly as/i);
+  assert.match(p, /contact_mode/);
+});

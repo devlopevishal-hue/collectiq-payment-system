@@ -2176,3 +2176,7 @@ html, body, button, input, select, textarea {
 }
 /* The floating + button would cover the AI send button. */
 body:has(#aiAssistant.active) .mobile-fab-container { display: none !important; }
+.ai-table { border-collapse: collapse; margin: 8px 0; font-size: 12px; width: auto; max-width: 100%; }
+.ai-table th, .ai-table td { border: 1px solid #e6e3f7; padding: 5px 8px; text-align: left; position: static; box-shadow: none; background: #fff; }
+.ai-table th { background: #f3f1fd; color: #3a2f8a; font: 700 11px Manrope, sans-serif; }
+@media (max-width: 768px) { .ai-bubble .ai-table { display: block; overflow-x: auto; min-width: 0 !important; } }

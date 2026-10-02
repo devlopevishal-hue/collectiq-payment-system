@@ -81,8 +81,9 @@
     };
   }
 
+  // rank tells the model the order to keep (models sometimes skip rows otherwise).
   function limited(rows) {
-    return { total: rows.length, rows: rows.slice(0, MAX_ROWS) };
+    return { total: rows.length, rows: rows.slice(0, MAX_ROWS).map((r, i) => ({ rank: i + 1, ...r })) };
   }
 
   const tools = {
@@ -350,6 +351,23 @@
     return out;
   }
 
+  // Models mis-group long Indian amounts, so money goes out pre-formatted.
+  const MONEY_KEYS = new Set(['outstanding', 'alreadyDue', 'balance', 'collected', 'amount', 'totalReceived', 'expected', 'ptpAmount', 'collectedYesterday', 'collectedToday']);
+  const INR = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
+
+  function formatMoney(node) {
+    if (Array.isArray(node)) return node.map(formatMoney);
+    if (!node || typeof node !== 'object') return node;
+    const out = {};
+    Object.keys(node).forEach(k => {
+      const v = node[k];
+      out[k] = MONEY_KEYS.has(k) && typeof v === 'number'
+        ? (v < 0 ? '-₹' : '₹') + INR.format(Math.abs(Math.round(v)))
+        : formatMoney(v);
+    });
+    return out;
+  }
+
   function runTool(ctx, name, argsJson) {
     try {
       if (!Object.prototype.hasOwnProperty.call(tools, name)) return { error: `Unknown tool: ${name}` };
@@ -358,7 +376,7 @@
         try { args = JSON.parse(argsJson); } catch (e) { return { error: 'Tool arguments sahi JSON nahi hain.' }; }
       }
       if (!args || typeof args !== 'object' || Array.isArray(args)) return { error: 'Tool arguments object hone chahiye.' };
-      return trimResult(tools[name](ctx, args));
+      return trimResult(formatMoney(tools[name](ctx, args)));
     } catch (e) {
       return { error: 'Tool chalate waqt galti: ' + (e && e.message ? e.message : String(e)) };
     }
@@ -380,7 +398,7 @@
     };
   }
 
-  const api = { scopeMarkas, findParty, tools, doerScores, runTool, trimResult, computeMorningSummary, nameMatches, dayDiff, FORM_STATUSES, FORM_MODES, MAX_ROWS };
+  const api = { scopeMarkas, findParty, tools, doerScores, runTool, trimResult, formatMoney, computeMorningSummary, nameMatches, dayDiff, FORM_STATUSES, FORM_MODES, MAX_ROWS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.CollectIQAITools = api;
 })(typeof window !== 'undefined' ? window : globalThis);

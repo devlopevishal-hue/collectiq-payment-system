@@ -288,3 +288,20 @@ test('computeMorningSummary: numbers for a doer, FMS only for PC', () => {
   assert.equal(s.pendingFms, null);
   assert.equal(typeof T.computeMorningSummary(ctx(PC)).pendingFms, 'number');
 });
+
+test('list tools number their rows so the model keeps the order', () => {
+  const r = T.tools.get_today_followups(ctx(ADMIN), {});
+  assert.deepEqual(r.rows.map(x => x.rank), [1, 2, 3]);
+  assert.equal(r.rows[0].marka, 'MAU');
+  assert.equal(T.tools.search_parties(ctx(ADMIN), {}).rows[0].rank, 1);
+});
+
+test('runTool sends amounts as ready-made rupee text so the model copies them', () => {
+  const r = T.runTool(ctx(ADMIN), 'get_party_details', '{"name":"JGG"}');
+  assert.equal(r.outstanding, '₹70,000');
+  assert.equal(r.alreadyDue, '₹50,000');
+  assert.equal(r.bills[0].balance, '₹50,000');
+  const big = T.runTool(ctx(ADMIN, { markas: [{ id: 'z', marka: 'BIG', master: 'M', owner: 'Girdharilal', nextDate: '2026-09-01', bills: [bill(9, '2026-09-01', 104380733)], history: [], escalations: [] }] }), 'get_doer_performance', '{}');
+  assert.equal(big.rows[0].balance, '₹10,43,80,733');
+  assert.equal(big.rows[0].overdue, 1);
+});

@@ -78,3 +78,13 @@ test('runAgentTurn stops after 5 tool rounds and asks for a final answer without
   assert.deepEqual(opts.map(o => o.allowTools), [true, true, true, true, true, false]);
   assert.equal(out.finalText, 'final');
 });
+
+test('renderMessageHtml renders a markdown table safely', () => {
+  const html = renderMessageHtml('Top:\n| # | Party | Due |\n|---|---|---|\n| 1 | JGG | ₹71,16,538 |\n| 2 | <i>ASY</i> | ₹11,04,458 |\nBas.', escapeHtml);
+  assert.match(html, /<table class="ai-table">/);
+  assert.match(html, /<th>Party<\/th>/);
+  assert.match(html, /<td>JGG<\/td>/);
+  assert.match(html, /<td>&lt;i&gt;ASY&lt;\/i&gt;<\/td>/);
+  assert.doesNotMatch(html, /\|---/);
+  assert.match(html, /Bas\./);
+});
