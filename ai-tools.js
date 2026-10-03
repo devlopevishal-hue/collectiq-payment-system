@@ -348,15 +348,27 @@
     if (nextDate < ctx.today) return { error: 'next_date cannot be in the past.' };
     const expected = Number(args.expected || 0);
     if (!Number.isFinite(expected) || expected < 0) return { error: 'expected must be a valid amount.' };
-    let followper = ctx.h.ownerOf(m);
-    if (!followper || followper === 'Unassigned') {
-      const me = ctx.user && ctx.user.followperName;
-      if (!me || norm(me) === 'all') return { error: 'This party has no followper. Open the form to choose one.' };
+    const owner = ctx.h.ownerOf(m);
+    const current = owner && owner !== 'Unassigned' ? owner : '';
+    const me = ctx.user && ctx.user.followperName;
+    let followper = current;
+    if (args.followper) {
+      if (role(ctx) === 'user') {
+        if (!nameMatches(args.followper, me)) return { error: 'You can only log follow-ups under your own name.' };
+        followper = me;
+      } else {
+        const picked = matchName(ctx.followpers || [], args.followper, 'followper');
+        if (picked.error) return picked;
+        followper = picked.name;
+      }
+    } else if (!followper) {
+      if (!me || norm(me) === 'all') return { error: 'This party has no followper. Ask the user whose name to put it under, then call prepare_followup_form again with followper.' };
       followper = me;
     }
+    const followperLabel = current && norm(current) !== norm(followper) ? `${followper} (was ${current})` : followper;
     const contactPerson = String(args.contact_person || '').trim();
     const remark = String(args.remark || '').trim();
-    const rows = [['Marka', markaLabel(m)], ['Followper', followper], ['Mode', mode], ['Status', 'Promise to Pay']];
+    const rows = [['Marka', markaLabel(m)], ['Followper', followperLabel], ['Mode', mode], ['Status', 'Promise to Pay']];
     if (contactPerson) rows.push(['Contact', contactPerson]);
     if (expected > 0) rows.push(['Expected', '₹' + INR.format(Math.round(expected))]);
     rows.push(['Promise date', promiseDate], ['Next date', nextDate]);
@@ -413,15 +425,32 @@
   }
 
   // Exact (case-insensitive) assignee, else one close name as a suggestion.
-  function matchHelper(ctx, input) {
+  function editDistance(a, b) {
+    let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= a.length; i++) {
+      const cur = [i];
+      for (let j = 1; j <= b.length; j++) {
+        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      }
+      prev = cur;
+    }
+    return prev[b.length];
+  }
+
+  // Exact (case-insensitive) name from a list, else one close name (same start,
+  // contains it, or a 1-2 letter typo) as a suggestion.
+  function matchName(list, input, listName) {
     const q = norm(input);
-    if (!q) return { error: 'Tell me who the ticket should be assigned to.' };
-    const list = ctx.assignees || [];
     const exact = list.find(n => norm(n) === q);
     if (exact) return { name: exact };
-    const close = list.filter(n => norm(n).startsWith(q.slice(0, 4)) || norm(n).includes(q));
-    const error = `"${input}" is not in the assignee list.`;
+    const close = list.filter(n => norm(n).startsWith(q.slice(0, 4)) || norm(n).includes(q) || editDistance(norm(n), q) <= 2);
+    const error = `"${input}" is not in the ${listName} list.`;
     return close.length === 1 ? { error: `${error} Did you mean "${close[0]}"?`, suggestion: close[0] } : { error };
+  }
+
+  function matchHelper(ctx, input) {
+    if (!norm(input)) return { error: 'Tell me who the ticket should be assigned to.' };
+    return matchName(ctx.assignees || [], input, 'assignee');
   }
 
   function pickOpenTicket(ctx, args) {

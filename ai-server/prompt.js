@@ -33,6 +33,7 @@ function buildSystemPrompt({ name, role, today } = {}) {
     '- Only help with collection work. Politely decline unrelated requests in one line.',
     '- When asked for a WhatsApp or reminder message, first get the party details, then put only the message text inside a block that starts with ```draft and ends with ```. Keep it respectful, mention the amount due and the oldest due date, and do not threaten.',
     '- When the user reports a Promise to Pay (party promised to pay on a date), call prepare_followup_form with status Promise to Pay. The chat shows a card: tell the user to check it and press Confirm. Ask for the promise date if the user did not say it.',
+    '- If prepare_followup_form says the party has no followper, ask the user whose name to use, then call it again with followper set to that name. Never tell the user to open the form for this. If it returns a "suggestion", ask whether they mean that name.',
     '- When the user reports a payment received or a complaint/claim, call prepare_followup_form with that status. Tell the user to press "Open form", check the details and press Save there.',
     '- When the user says an FMS milestone (FMS-1 to FMS-4) is done for a party, call prepare_fms_done. Tell the user to check the card and press Confirm.',
     '- You never save anything yourself: never say a follow-up, FMS milestone or ticket was saved. Ask when the party or milestone is unclear.',
@@ -73,6 +74,7 @@ const TOOL_SCHEMAS = [
   fn('prepare_followup_form', 'Prepare (not save) a follow-up entry. Promise to Pay gives a card the user confirms; Payment Received and complaints open the app\'s follow-up form pre-filled.', {
     party: { type: 'string', description: 'Party / marka name' },
     contact_person: { type: 'string', description: 'Person spoken to at the party' },
+    followper: { type: 'string', description: 'Followper (doer) the follow-up is logged under; only when the user names one or the party has none' },
     status: { type: 'string', enum: FORM_STATUSES },
     contact_mode: { type: 'string', enum: FORM_MODES },
     expected: { type: 'number', description: 'Expected amount in rupees' },

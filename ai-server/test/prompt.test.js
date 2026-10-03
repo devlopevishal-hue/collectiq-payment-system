@@ -74,3 +74,9 @@ test('follow-up and FMS tools: schemas and prompt rules', () => {
   assert.match(p, /Promise to Pay[^\n]*Confirm/);
   assert.doesNotMatch(p, /\(promise, payment, complaint\)[^\n]*Open form/);
 });
+
+test('prepare_followup_form takes a followper and the prompt says to ask for one', () => {
+  const fu = TOOL_SCHEMAS.find(t => t.function.name === 'prepare_followup_form').function.parameters;
+  assert.ok(fu.properties.followper);
+  assert.match(buildSystemPrompt({ name: 'A', role: 'admin', today: '2026-10-03' }), /no followper[^\n]*followper/i);
+});

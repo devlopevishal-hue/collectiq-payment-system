@@ -185,6 +185,7 @@
     return {
       markas, payments, helpTickets,
       assignees: getAllAssigneesList(),
+      followpers: allFollowpers(),
       user: user(),
       today: iso(today),
       h: { ownerOf, crrOf, totalOutstanding, alreadyDueAmount, oldestDueDate, isLocked, getFmsTasks }

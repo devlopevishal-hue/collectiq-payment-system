@@ -452,3 +452,37 @@ test('prepare_ticket_action: resolved or unknown tickets and bad op are errors',
   assert.ok(prep(c, { op: 'delete' }).error);
   assert.ok(prep(c, { op: 'progress', marka: 'MAU', note: 'n', next_date: '2026-10-09' }).error);
 });
+
+const FOLLOWPERS = ['Surendra', 'Sajjan', 'Mahavir', 'Girdharilal'];
+const ptpArgs = extra => ({ status: 'Promise to Pay', promise_date: '2026-10-10', ...extra });
+
+test('prepare_followup_form: admin names the followper for an unassigned party', () => {
+  const c = ctx(ADMIN, { followpers: FOLLOWPERS });
+  const asked = T.tools.prepare_followup_form(c, ptpArgs({ party: 'XYZ' }));
+  assert.match(asked.error, /followper/);
+  const r = T.tools.prepare_followup_form(c, ptpArgs({ party: 'XYZ', followper: 'sajjan' }));
+  assert.equal(r.action.payload.followper, 'Sajjan');
+  assert.deepEqual(r.action.preview.rows.find(x => x[0] === 'Followper'), ['Followper', 'Sajjan']);
+});
+
+test('prepare_followup_form: followper must be on the list; close names are suggested', () => {
+  const c = ctx(ADMIN, { followpers: FOLLOWPERS });
+  const near = T.tools.prepare_followup_form(c, ptpArgs({ party: 'XYZ', followper: 'Sajan' }));
+  assert.equal(near.suggestion, 'Sajjan');
+  assert.ok(near.error);
+  const none = T.tools.prepare_followup_form(c, ptpArgs({ party: 'XYZ', followper: 'Nobody' }));
+  assert.ok(none.error);
+  assert.equal(none.suggestion, undefined);
+});
+
+test('prepare_followup_form: changing an assigned followper shows the old one', () => {
+  const r = T.tools.prepare_followup_form(ctx(ADMIN, { followpers: FOLLOWPERS }), ptpArgs({ party: 'JGG', followper: 'Sajjan' }));
+  assert.equal(r.action.payload.followper, 'Sajjan');
+  assert.deepEqual(r.action.preview.rows.find(x => x[0] === 'Followper'), ['Followper', 'Sajjan (was Surendra)']);
+});
+
+test('prepare_followup_form: a doer can only use their own name', () => {
+  const c = ctx(SURENDRA, { followpers: FOLLOWPERS });
+  assert.equal(T.tools.prepare_followup_form(c, ptpArgs({ party: 'JGG', followper: 'surendra' })).action.payload.followper, 'Surendra');
+  assert.match(T.tools.prepare_followup_form(c, ptpArgs({ party: 'JGG', followper: 'Sajjan' })).error, /own name/);
+});
