@@ -94,6 +94,17 @@ test('findParty: ambiguous partial name returns candidates', () => {
   assert.deepEqual(T.findParty(ctx(ADMIN), 'SA').candidates.sort(), ['SAN', 'SANK']);
 });
 
+test('findParty: a single partial match is only suggested, never picked (AKT is not SAKT)', () => {
+  const r = T.findParty(ctx(ADMIN), 'ANK');
+  assert.equal(r.marka, undefined);
+  assert.deepEqual(r.candidates, ['SANK']);
+  assert.match(r.error, /No party named "ANK"/);
+  assert.match(r.error, /SANK \(KALPESH MASTER\)/);
+  const card = T.tools.prepare_followup_form(ctx(ADMIN), { party: 'ANK', status: 'Promise to Pay', promise_date: '2026-10-10' });
+  assert.equal(card.action, undefined);
+  assert.deepEqual(card.candidates, ['SANK']);
+});
+
 test('findParty: unknown name returns an error', () => {
   assert.ok(T.findParty(ctx(ADMIN), 'nothing-like-this').error);
 });
@@ -485,4 +496,9 @@ test('prepare_followup_form: a doer can only use their own name', () => {
   const c = ctx(SURENDRA, { followpers: FOLLOWPERS });
   assert.equal(T.tools.prepare_followup_form(c, ptpArgs({ party: 'JGG', followper: 'surendra' })).action.payload.followper, 'Surendra');
   assert.match(T.tools.prepare_followup_form(c, ptpArgs({ party: 'JGG', followper: 'Sajjan' })).error, /own name/);
+});
+
+test('prepare_followup_form: the card always shows the expected amount line', () => {
+  const r = T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'Promise to Pay', promise_date: '2026-10-10' });
+  assert.deepEqual(r.action.preview.rows.find(x => x[0] === 'Expected'), ['Expected', '— not given']);
 });

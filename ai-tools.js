@@ -58,9 +58,13 @@
     const all = ctx.markas || [];
     const exact = all.find(m => norm(m.marka) === q);
     if (exact) return { marka: exact };
-    const partial = all.filter(m => norm(m.marka).includes(q));
-    if (partial.length === 1) return { marka: partial[0] };
-    if (partial.length > 1) return { candidates: partial.slice(0, 10).map(m => m.marka) };
+    // Only an exact name is used. Similar names are offered back so the user
+    // chooses (AKT must never silently become SAKT).
+    const partial = all.filter(m => norm(m.marka).includes(q)).slice(0, 10);
+    if (partial.length) {
+      const list = partial.map(m => m.master ? `${m.marka} (${m.master})` : m.marka).join(', ');
+      return { error: `No party named "${name}". Ask the user if they mean: ${list}`, candidates: partial.map(m => m.marka) };
+    }
     return { error: `No party named "${name}" was found.` };
   }
 
@@ -370,7 +374,7 @@
     const remark = String(args.remark || '').trim();
     const rows = [['Marka', markaLabel(m)], ['Followper', followperLabel], ['Mode', mode], ['Status', 'Promise to Pay']];
     if (contactPerson) rows.push(['Contact', contactPerson]);
-    if (expected > 0) rows.push(['Expected', '₹' + INR.format(Math.round(expected))]);
+    rows.push(['Expected', expected > 0 ? '₹' + INR.format(Math.round(expected)) : '— not given']);
     rows.push(['Promise date', promiseDate], ['Next date', nextDate]);
     if (remark) rows.push(['Remark', remark]);
     // expectedRupees, not expected: formatMoney would turn "expected" into text.

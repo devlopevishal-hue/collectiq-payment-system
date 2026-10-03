@@ -80,3 +80,12 @@ test('prepare_followup_form takes a followper and the prompt says to ask for one
   assert.ok(fu.properties.followper);
   assert.match(buildSystemPrompt({ name: 'A', role: 'admin', today: '2026-10-03' }), /no followper[^\n]*followper/i);
 });
+
+test('prompt: relative dates, keeping earlier details, no Devanagari, never guess a party', () => {
+  const p = buildSystemPrompt({ name: 'A', role: 'admin', today: '2026-10-03' });
+  assert.match(p, /Saturday/);
+  assert.match(p, /10 tareekh/);
+  assert.match(p, /again[^\n]*(amount|expected)/i);
+  assert.match(p, /Devanagari/);
+  assert.match(p, /never pick a party yourself/i);
+});
