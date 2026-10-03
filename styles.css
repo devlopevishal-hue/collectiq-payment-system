@@ -2145,6 +2145,23 @@ html, body, button, input, select, textarea {
 .ai-draft-text { white-space: pre-wrap; font: 13px Manrope, sans-serif; margin: 0 0 8px; color: #18332b; }
 .ai-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .ai-action-btn { border: 0; background: #087454; color: #fff; font: 700 12px Manrope, sans-serif; padding: 8px 12px; border-radius: 8px; cursor: pointer; }
+.ai-ticket-card { margin: 10px 0 2px; border: 1px solid #d9d4f5; border-left: 4px solid #5b4bc4; background: #faf9ff; border-radius: 10px; padding: 10px 12px; max-width: 420px; }
+.ai-ticket-card.saved { border-left-color: #087454; background: #f1fbf6; }
+.ai-ticket-card.error { border-left-color: #c2410c; background: #fff7ed; }
+.ai-ticket-card.cancelled, .ai-ticket-card.edited { opacity: .75; }
+.ai-ticket-title { font: 800 13px Manrope, sans-serif; color: #1f1b4d; margin-bottom: 6px; }
+.ai-ticket-rows { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+.ai-ticket-rows th, .ai-ticket-rows td { padding: 3px 0; text-align: left; vertical-align: top; border: 0; background: none; position: static; box-shadow: none; }
+.ai-ticket-rows th { width: 82px; color: #6b6890; font: 700 11px Manrope, sans-serif; padding-right: 8px; }
+.ai-ticket-rows td { color: #18332b; word-break: break-word; }
+.ai-ticket-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.ai-ticket-buttons button { border: 1px solid transparent; font: 700 12px Manrope, sans-serif; padding: 7px 12px; border-radius: 8px; cursor: pointer; }
+.ai-ticket-confirm { background: #087454; color: #fff; }
+.ai-ticket-edit { background: #fff; color: #3a2f8a; border-color: #d9d4f5 !important; }
+.ai-ticket-cancel { background: #fff; color: #8a4b4b; border-color: #ecd3d3 !important; }
+.ai-ticket-status { margin-top: 8px; font: 700 12px Manrope, sans-serif; color: #4d4a6b; }
+.ai-ticket-card.saved .ai-ticket-status { color: #087454; }
+.ai-ticket-card.error .ai-ticket-status { color: #c2410c; }
 .ai-welcome { margin: auto; text-align: center; max-width: 460px; color: #4d4a6b; }
 .ai-welcome-icon { font-size: 44px; }
 .ai-welcome h3 { margin: 6px 0; color: #1f1b4d; }

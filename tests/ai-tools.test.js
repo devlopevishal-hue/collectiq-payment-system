@@ -305,3 +305,94 @@ test('runTool sends amounts as ready-made rupee text so the model copies them', 
   assert.equal(big.rows[0].balance, '₹10,43,80,733');
   assert.equal(big.rows[0].overdue, 1);
 });
+
+// ---- Help ticket tools ----
+
+function ticketCtx(user, extra = {}) {
+  const helpTickets = [
+    { id: 't1', markaId: 'a', markaName: 'JGG', date: '2026-09-28', requestedBy: 'Surendra', assignedHelper: 'Saurav Bhai', priority: 'High', subject: 'Visit', status: 'Open', history: [] },
+    { id: 't2', markaId: 'a', markaName: 'JGG', date: '2026-10-01', requestedBy: 'Mahavir', assignedHelper: 'Saurav Bhai', priority: 'Normal', subject: 'Statement', status: 'In Progress', nextDate: '2026-10-04', history: [] },
+    { id: 't3', markaId: 'b', markaName: 'MAU', date: '2026-09-20', requestedBy: 'Mahavir', assignedHelper: 'Saurav Bhai', priority: 'Normal', subject: 'Old', status: 'Resolved', resolvedBy: 'Saurav Bhai', history: [] },
+    { id: 't4', markaId: 'c', markaName: 'SAN', date: '2026-09-30', requestedBy: 'Mahavir', assignedHelper: 'Account Team', priority: 'Normal', subject: 'Cheque', status: 'Open', history: [] }
+  ];
+  return ctx(user, { helpTickets, assignees: ['Saurav Bhai', 'Mahavir', 'Account Team'], ...extra });
+}
+const prep = (c, args) => T.tools.prepare_ticket_action(c, args);
+
+test('find_tickets: open tickets by default, newest first, with rank', () => {
+  const r = T.tools.find_tickets(ticketCtx(ADMIN), {});
+  assert.deepEqual(r.rows.map(x => x.id), ['t2', 't4', 't1']);
+  assert.deepEqual(r.rows[0], { rank: 1, id: 't2', marka: 'JGG', subject: 'Statement', assignedHelper: 'Saurav Bhai', requestedBy: 'Mahavir', priority: 'Normal', status: 'In Progress', nextDate: '2026-10-04', date: '2026-10-01' });
+});
+
+test('find_tickets: status all includes resolved, marka filters, mine matches the user', () => {
+  assert.equal(T.tools.find_tickets(ticketCtx(ADMIN), { status: 'all' }).total, 4);
+  assert.deepEqual(T.tools.find_tickets(ticketCtx(ADMIN), { marka: 'jgg' }).rows.map(x => x.id), ['t2', 't1']);
+  assert.deepEqual(T.tools.find_tickets(ticketCtx(SURENDRA), { mine: true }).rows.map(x => x.id), ['t1']);
+});
+
+test('prepare_ticket_action create: card with Marka and Master', () => {
+  const r = prep(ticketCtx(SURENDRA), { op: 'create', marka: 'JGG', helper: 'saurav bhai', priority: 'High', subject: 'Urgent visit', note: 'call first' });
+  assert.equal(r.ok, true);
+  assert.equal(r.action.type, 'ticket');
+  assert.equal(r.action.op, 'create');
+  assert.deepEqual(r.action.payload, { markaId: 'a', markaName: 'JGG', assignedHelper: 'Saurav Bhai', priority: 'High', subject: 'Urgent visit', remark: 'call first' });
+  assert.equal(r.action.preview.title, '🎫 New ticket');
+  assert.deepEqual(r.action.preview.rows.find(x => x[0] === 'Marka'), ['Marka', 'JGG (BABLU SHERA MASTER)']);
+  assert.deepEqual(r.action.preview.rows.find(x => x[0] === 'Assign to'), ['Assign to', 'Saurav Bhai']);
+});
+
+test('prepare_ticket_action create: helper suggestion, unknown helper, ambiguous Marka, general ticket', () => {
+  const c = ticketCtx(SURENDRA);
+  const near = prep(c, { op: 'create', marka: 'JGG', helper: 'Saurabh', subject: 'X' });
+  assert.ok(near.error);
+  assert.equal(near.suggestion, 'Saurav Bhai');
+  const none = prep(c, { op: 'create', marka: 'JGG', helper: 'Nobody', subject: 'X' });
+  assert.ok(none.error);
+  assert.equal(none.suggestion, undefined);
+  assert.deepEqual(prep(c, { op: 'create', marka: 'SA', helper: 'Mahavir', subject: 'X' }).candidates.sort(), ['SAN', 'SANK']);
+  const general = prep(c, { op: 'create', helper: 'Mahavir', subject: 'Office work' });
+  assert.equal(general.action.payload.markaId, '');
+  assert.equal(general.action.payload.markaName, 'General');
+  assert.equal(general.action.payload.priority, 'Normal');
+  assert.ok(prep(c, { op: 'create', helper: 'Mahavir', subject: '' }).error);
+  assert.ok(prep(c, { op: 'create', helper: 'Mahavir', subject: 'X', priority: 'Urgent' }).error);
+});
+
+test('prepare_ticket_action progress: candidates, single ticket, past date', () => {
+  const c = ticketCtx(SURENDRA);
+  const many = prep(c, { op: 'progress', marka: 'JGG', note: 'n', next_date: '2026-10-09' });
+  assert.deepEqual(many.candidates, [{ id: 't2', subject: 'Statement' }, { id: 't1', subject: 'Visit' }]);
+  const one = prep(c, { op: 'progress', marka: 'SAN', note: 'master se baat hui', next_date: '2026-10-09' });
+  assert.equal(one.action.preview.title, '⏳ In progress');
+  assert.deepEqual(one.action.payload, { ticketId: 't4', note: 'master se baat hui', nextDate: '2026-10-09' });
+  assert.ok(prep(c, { op: 'progress', ticket_id: 't4', note: 'n', next_date: '2026-10-01' }).error);
+  assert.ok(prep(c, { op: 'progress', ticket_id: 't4', note: '', next_date: '2026-10-09' }).error);
+});
+
+test('prepare_ticket_action done: default and invalid resolution type', () => {
+  const c = ticketCtx(SURENDRA);
+  const r = prep(c, { op: 'done', ticket_id: 't1', note: 'visit ho gaya' });
+  assert.equal(r.action.preview.title, '✅ Done');
+  assert.deepEqual(r.action.payload, { ticketId: 't1', resolutionType: 'Other Representative Action', note: 'visit ho gaya' });
+  assert.ok(prep(c, { op: 'done', ticket_id: 't1', note: 'x', resolution_type: 'Magic' }).error);
+});
+
+test('prepare_ticket_action reassign: doer refused, admin gets a card', () => {
+  const refused = prep(ticketCtx(SURENDRA), { op: 'reassign', ticket_id: 't1', helper: 'Mahavir' });
+  assert.match(refused.error, /admin/i);
+  const r = prep(ticketCtx(ADMIN), { op: 'reassign', ticket_id: 't1', helper: 'Mahavir', note: 'area' });
+  assert.equal(r.action.preview.title, '🔁 Reassign');
+  assert.deepEqual(r.action.payload, { ticketId: 't1', newHelper: 'Mahavir', note: 'area' });
+  assert.ok(prep(ticketCtx(ADMIN), { op: 'reassign', ticket_id: 't1', helper: 'Saurav Bhai' }).error);
+});
+
+test('prepare_ticket_action: resolved or unknown tickets and bad op are errors', () => {
+  const c = ticketCtx(ADMIN);
+  for (const op of ['progress', 'done', 'reassign']) {
+    assert.ok(prep(c, { op, ticket_id: 't3', note: 'n', next_date: '2026-10-09', helper: 'Mahavir' }).error, op);
+    assert.ok(prep(c, { op, ticket_id: 'nope', note: 'n', next_date: '2026-10-09', helper: 'Mahavir' }).error, op);
+  }
+  assert.ok(prep(c, { op: 'delete' }).error);
+  assert.ok(prep(c, { op: 'progress', marka: 'MAU', note: 'n', next_date: '2026-10-09' }).error);
+});

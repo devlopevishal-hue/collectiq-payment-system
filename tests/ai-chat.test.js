@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { renderMessageHtml, runAgentTurn } = require('../ai-chat.js');
+const { renderMessageHtml, runAgentTurn, renderTicketCard, runCardAction } = require('../ai-chat.js');
 
 // Same implementation as escapeHtml in app.js.
 function escapeHtml(str) {
@@ -87,4 +87,46 @@ test('renderMessageHtml renders a markdown table safely', () => {
   assert.match(html, /<td>&lt;i&gt;ASY&lt;\/i&gt;<\/td>/);
   assert.doesNotMatch(html, /\|---/);
   assert.match(html, /Bas\./);
+});
+
+const ticketAction = {
+  type: 'ticket', op: 'create',
+  payload: { markaId: 'a', markaName: 'JGG', assignedHelper: 'Saurav Bhai', priority: 'High', subject: '<b>Visit</b>', remark: '' },
+  preview: { title: '🎫 New ticket', rows: [['Marka', 'JGG (BABLU SHERA MASTER)'], ['Subject', '<b>Visit</b>']] }
+};
+
+test('renderTicketCard: escapes text and shows three buttons while pending', () => {
+  const html = renderTicketCard(ticketAction, 'pending', '3:0', escapeHtml);
+  assert.ok(!html.includes('<b>Visit</b>'));
+  assert.ok(html.includes('&lt;b&gt;Visit&lt;/b&gt;'));
+  assert.ok(html.includes('🎫 New ticket'));
+  assert.ok(html.includes('JGG (BABLU SHERA MASTER)'));
+  for (const attr of ['data-ticket-confirm', 'data-ticket-edit', 'data-ticket-cancel']) assert.ok(html.includes(attr), attr);
+  assert.ok(html.includes('data-card="3:0"'));
+});
+
+test('renderTicketCard: saved, cancelled, edited and error cards have no buttons', () => {
+  const saved = renderTicketCard(ticketAction, 'saved', '1:0', escapeHtml);
+  assert.ok(saved.includes('✓ Saved'));
+  assert.ok(!saved.includes('data-ticket-confirm'));
+  assert.ok(renderTicketCard(ticketAction, 'cancelled', '1:0', escapeHtml).includes('Cancelled'));
+  assert.ok(!renderTicketCard(ticketAction, 'edited', '1:0', escapeHtml).includes('data-ticket-confirm'));
+  const err = renderTicketCard(ticketAction, 'error', '1:0', escapeHtml, 'Ticket <already> resolved.');
+  assert.ok(err.includes('Ticket &lt;already&gt; resolved.'));
+  assert.ok(!err.includes('data-ticket-edit'));
+});
+
+test('runCardAction: only a pending card runs, and only once', () => {
+  let calls = 0;
+  const saved = { action: ticketAction, status: 'saved' };
+  assert.equal(runCardAction(saved, () => { calls++; return {}; }), saved);
+  assert.equal(calls, 0);
+  assert.deepEqual(runCardAction({ action: ticketAction, status: 'pending' }, () => { calls++; return {}; }), { status: 'saved' });
+  assert.equal(calls, 1);
+});
+
+test('runCardAction: executor errors and exceptions become an error status', () => {
+  const card = () => ({ action: ticketAction, status: 'pending' });
+  assert.deepEqual(runCardAction(card(), () => ({ error: 'Ticket already resolved.' })), { status: 'error', error: 'Ticket already resolved.' });
+  assert.deepEqual(runCardAction(card(), () => { throw new Error('boom'); }), { status: 'error', error: 'boom' });
 });

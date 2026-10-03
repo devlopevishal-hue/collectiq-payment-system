@@ -4,7 +4,8 @@
 //
 // ctx = { markas, payments, helpTickets, user: {email, role, followperName},
 //         today: 'YYYY-MM-DD', h: { ownerOf, crrOf, totalOutstanding,
-//         alreadyDueAmount, oldestDueDate, isLocked, getFmsTasks } }
+//         alreadyDueAmount, oldestDueDate, isLocked, getFmsTasks },
+//         assignees: [names a help ticket can be assigned to] }
 (function (root) {
   const MAX_ROWS = 20;
 
@@ -312,6 +313,126 @@
           fields: { contactMode: mode, actionStatus: args.status, expected, promiseDate, nextDate, remark: String(args.remark || '') }
         }
       };
+    }
+  });
+
+  // ---- Help tickets ----
+  const TA = (typeof module !== 'undefined' && module.exports) ? require('./ticket-actions.js') : root.TicketActions;
+  const TICKET_TITLES = { create: '🎫 New ticket', progress: '⏳ In progress', done: '✅ Done', reassign: '🔁 Reassign' };
+
+  function isResolved(t) {
+    return norm(t.status) === 'resolved';
+  }
+
+  function ticketMarka(ctx, t) {
+    return (ctx.markas || []).find(m => m.id === t.markaId) ||
+      (ctx.markas || []).find(m => norm(m.marka) === norm(t.markaName)) || null;
+  }
+
+  function markaLabel(m) {
+    if (!m) return 'General';
+    return m.master ? `${m.marka} (${m.master})` : m.marka;
+  }
+
+  function newestFirst(a, b) {
+    return (b.date || '').localeCompare(a.date || '') || (b.createdAt || '').localeCompare(a.createdAt || '');
+  }
+
+  // Exact (case-insensitive) assignee, else one close name as a suggestion.
+  function matchHelper(ctx, input) {
+    const q = norm(input);
+    if (!q) return { error: 'Tell me who the ticket should be assigned to.' };
+    const list = ctx.assignees || [];
+    const exact = list.find(n => norm(n) === q);
+    if (exact) return { name: exact };
+    const close = list.filter(n => norm(n).startsWith(q.slice(0, 4)) || norm(n).includes(q));
+    const error = `"${input}" is not in the assignee list.`;
+    return close.length === 1 ? { error: `${error} Did you mean "${close[0]}"?`, suggestion: close[0] } : { error };
+  }
+
+  function pickOpenTicket(ctx, args) {
+    const all = ctx.helpTickets || [];
+    if (args.ticket_id) {
+      const t = all.find(x => String(x.id) === String(args.ticket_id));
+      if (!t) return { error: 'Ticket not found.' };
+      if (isResolved(t)) return { error: 'This ticket is already resolved.' };
+      return { ticket: t };
+    }
+    if (!args.marka) return { error: 'Tell me which ticket: give the party (marka) or the ticket id from find_tickets.' };
+    const found = findParty(ctx, args.marka);
+    if (!found.marka) return found;
+    const m = found.marka;
+    const open = all.filter(t => (t.markaId === m.id || norm(t.markaName) === norm(m.marka)) && !isResolved(t)).sort(newestFirst);
+    if (!open.length) return { error: `${m.marka} has no open help ticket.` };
+    if (open.length > 1) return { candidates: open.slice(0, 10).map(t => ({ id: t.id, subject: t.subject })) };
+    return { ticket: open[0] };
+  }
+
+  function card(op, payload, rows) {
+    return { ok: true, action: { type: 'ticket', op, payload, preview: { title: TICKET_TITLES[op], rows } } };
+  }
+
+  Object.assign(tools, {
+    find_tickets(ctx, args = {}) {
+      const me = ctx.user && ctx.user.followperName;
+      const rows = (ctx.helpTickets || []).filter(t => {
+        if (args.status !== 'all' && isResolved(t)) return false;
+        if (args.marka && !norm(t.markaName).includes(norm(args.marka))) return false;
+        if (args.mine && ![t.requestedBy, t.assignedHelper, t.resolvedBy].some(n => nameMatches(n, me))) return false;
+        return true;
+      }).sort(newestFirst).map(t => ({
+        id: t.id, marka: t.markaName || 'General', subject: t.subject || '', assignedHelper: t.assignedHelper || '',
+        requestedBy: t.requestedBy || '', priority: t.priority || 'Normal', status: t.status || 'Open',
+        nextDate: t.nextDate || '', date: t.date || ''
+      }));
+      return limited(rows);
+    },
+
+    prepare_ticket_action(ctx, args = {}) {
+      const op = args.op;
+      const note = String(args.note || '').trim();
+      if (op === 'create') {
+        let m = null;
+        if (args.marka) {
+          const found = findParty(ctx, args.marka);
+          if (!found.marka) return found;
+          m = found.marka;
+        }
+        const helper = matchHelper(ctx, args.helper);
+        if (helper.error) return helper;
+        const subject = String(args.subject || '').trim();
+        if (!subject) return { error: 'A ticket subject is required.' };
+        const priority = args.priority || 'Normal';
+        if (!TA.PRIORITIES.includes(priority)) return { error: `Priority must be one of: ${TA.PRIORITIES.join(', ')}` };
+        const rows = [['Marka', markaLabel(m)], ['Assign to', helper.name], ['Priority', priority], ['Subject', subject]];
+        if (note) rows.push(['Note', note]);
+        return card('create', { markaId: m ? m.id : '', markaName: m ? m.marka : 'General', assignedHelper: helper.name, priority, subject, remark: note }, rows);
+      }
+      if (!TICKET_TITLES[op]) return { error: 'op must be one of: create, progress, done, reassign' };
+      if (op === 'reassign' && !TA.canReassign(ctx.user)) return { error: 'Only an admin or superuser can reassign tickets.' };
+      const picked = pickOpenTicket(ctx, args);
+      if (!picked.ticket) return picked;
+      const t = picked.ticket;
+      const head = [['Ticket', t.subject || t.id], ['Marka', markaLabel(ticketMarka(ctx, t))]];
+      if (op === 'progress') {
+        if (!note) return { error: 'A note about what happened is required.' };
+        const nextDate = args.next_date || '';
+        if (!ISO_DATE.test(nextDate)) return { error: 'next_date is required in YYYY-MM-DD format.' };
+        if (nextDate < ctx.today) return { error: 'next_date cannot be in the past.' };
+        return card('progress', { ticketId: t.id, note, nextDate }, head.concat([['Note', note], ['Next date', nextDate]]));
+      }
+      if (op === 'done') {
+        const resolutionType = args.resolution_type || 'Other Representative Action';
+        if (!TA.RESOLUTION_TYPES.includes(resolutionType)) return { error: `resolution_type must be one of: ${TA.RESOLUTION_TYPES.join(', ')}` };
+        if (!note) return { error: 'A note about what was done is required.' };
+        return card('done', { ticketId: t.id, resolutionType, note }, head.concat([['Action', resolutionType], ['Note', note]]));
+      }
+      const helper = matchHelper(ctx, args.helper);
+      if (helper.error) return helper;
+      if (helper.name === t.assignedHelper) return { error: `This ticket is already assigned to ${helper.name}.` };
+      const rows = head.concat([['From', t.assignedHelper || '—'], ['To', helper.name]]);
+      if (note) rows.push(['Note', note]);
+      return card('reassign', { ticketId: t.id, newHelper: helper.name, note }, rows);
     }
   });
 

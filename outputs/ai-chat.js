@@ -84,8 +84,38 @@
     return { messages: msgs, finalText: last.message.content || '', actions, provider: last.provider || provider };
   }
 
+  const CARD_STATUS_TEXT = { saved: '✓ Saved', cancelled: 'Cancelled', edited: '✏️ Opened in the form' };
+
+  // A help-ticket change proposed by the AI. Nothing is saved until Confirm.
+  function renderTicketCard(action, status, index, esc, error) {
+    const preview = action.preview || {};
+    const rows = (preview.rows || []).map(([label, value]) =>
+      `<tr><th>${esc(String(label))}</th><td>${esc(String(value))}</td></tr>`).join('');
+    const footer = status === 'pending'
+      ? `<div class="ai-ticket-buttons">
+          <button type="button" class="ai-ticket-confirm" data-ticket-confirm data-card="${esc(String(index))}">✓ Confirm</button>
+          <button type="button" class="ai-ticket-edit" data-ticket-edit data-card="${esc(String(index))}">✏️ Edit in form</button>
+          <button type="button" class="ai-ticket-cancel" data-ticket-cancel data-card="${esc(String(index))}">✗ Cancel</button>
+        </div>`
+      : `<div class="ai-ticket-status">${status === 'error' ? '⚠️ ' + esc(String(error || 'Could not save.')) : (CARD_STATUS_TEXT[status] || '')}</div>`;
+    return `<div class="ai-ticket-card ${esc(String(status))}"><div class="ai-ticket-title">${esc(String(preview.title || 'Help ticket'))}</div>` +
+      `<table class="ai-ticket-rows">${rows}</table>${footer}</div>`;
+  }
+
+  // Runs a pending card once; any other card is returned unchanged.
+  function runCardAction(card, execute) {
+    if (!card || card.status !== 'pending') return card;
+    let result;
+    try {
+      result = execute(card.action) || {};
+    } catch (e) {
+      result = { error: e && e.message ? e.message : String(e) };
+    }
+    return result.error ? { status: 'error', error: result.error } : { status: 'saved' };
+  }
+
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { renderMessageHtml, runAgentTurn };
+    module.exports = { renderMessageHtml, runAgentTurn, renderTicketCard, runCardAction };
     return;
   }
 
@@ -154,6 +184,7 @@
   function buildCtx() {
     return {
       markas, payments, helpTickets,
+      assignees: getAllAssigneesList(),
       user: user(),
       today: iso(today),
       h: { ownerOf, crrOf, totalOutstanding, alreadyDueAmount, oldestDueDate, isLocked, getFmsTasks }
@@ -265,7 +296,7 @@
         <div class="ai-welcome">
           <div class="ai-welcome-icon">🤖</div>
           <h3>Hello${name ? ' ' + escapeHtml(name) : ''}!</h3>
-          <p>Ask me about your parties, bills, follow-ups and payments. I can also draft WhatsApp reminders and fill in the follow-up form for you.</p>
+          <p>Ask me about your parties, bills, follow-ups and payments. I can also draft WhatsApp reminders, fill in the follow-up form, and prepare help tickets for you to confirm.</p>
           <div class="ai-chips">${CHIPS.map(c => `<button type="button" class="ai-chip" data-chip="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')}</div>
         </div>`;
       return;
@@ -274,9 +305,10 @@
       if (d.role === 'user') return `<div class="ai-msg user"><div class="ai-bubble">${escapeHtml(d.text).replace(/\n/g, '<br>')}</div></div>`;
       const actions = (d.actions || []).map((a, j) =>
         `<button type="button" class="ai-action-btn" data-action="${i}:${j}">📝 Open form: ${escapeHtml(a.marka)}</button>`).join('');
+      const cards = (d.cards || []).map((c, j) => renderTicketCard(c.action, c.status, `${i}:${j}`, escapeHtml, c.error)).join('');
       return `
         <div class="ai-msg bot ${d.error ? 'error' : ''}">
-          <div class="ai-bubble">${renderMessageHtml(d.text, escapeHtml)}${actions ? `<div class="ai-actions">${actions}</div>` : ''}</div>
+          <div class="ai-bubble">${renderMessageHtml(d.text, escapeHtml)}${actions ? `<div class="ai-actions">${actions}</div>` : ''}${cards}</div>
           ${d.error ? '' : `<div class="ai-meta"><button type="button" class="ai-copy-msg" data-copy-msg="${i}">📋 Copy</button>${d.provider ? `<span>${d.provider === 'glm' ? 'GLM' : 'Groq'}</span>` : ''}</div>`}
         </div>`;
     }).join('') + (state.busy ? '<div class="ai-msg bot"><div class="ai-bubble ai-typing"><span></span><span></span><span></span></div></div>' : '');
@@ -326,6 +358,90 @@
     toast('Form filled in. Please check it and press Save.');
   }
 
+  function actorName() {
+    const u = user();
+    return u.followperName && u.followperName !== 'all' ? u.followperName : u.email;
+  }
+
+  // Confirm: re-checks against current data, then saves like the ticket forms do.
+  function executeTicket(action) {
+    const p = action.payload || {};
+    const by = actorName();
+    const date = iso(today);
+    if (!helpTickets) helpTickets = [];
+    const store = { helpTickets, markas };
+    let r;
+    if (action.op === 'create') {
+      r = TicketActions.createTicket(store, { ...p, date, requestedBy: by, now: Date.now() });
+    } else if (action.op === 'progress') {
+      r = TicketActions.progressTicket(store, p.ticketId, { date, by, note: p.note, nextDate: p.nextDate });
+    } else if (action.op === 'done') {
+      r = TicketActions.completeTicket(store, p.ticketId, { date, by, resolutionType: p.resolutionType, note: p.note, now: Date.now() });
+    } else if (action.op === 'reassign') {
+      if (!TicketActions.canReassign(user())) return { error: 'Only an admin or superuser can reassign tickets.' };
+      r = TicketActions.reassignTicket(store, p.ticketId, { newHelper: p.newHelper, note: p.note, by, date });
+    } else {
+      return { error: 'Unknown ticket action.' };
+    }
+    if (r.error) return r;
+    persistTicketChange({ ticket: r.ticket, marka: r.marka, op: action.op }).catch(e => console.warn('Ticket sync error:', e));
+    return {};
+  }
+
+  function editTicket(action) {
+    const p = action.payload || {};
+    const set = (id, v) => { const el = document.getElementById(id); if (el && v) el.value = v; };
+    if (action.op === 'create') {
+      openHelpTicketModal(p.markaId || '');
+      set('htAssignedHelper', p.assignedHelper);
+      set('htPriority', p.priority);
+      set('htSubject', p.subject);
+      set('htRemark', p.remark);
+    } else if (action.op === 'progress' || action.op === 'done') {
+      openResolveTicketModal(p.ticketId);
+      if (!document.getElementById('resolveTicketModal').classList.contains('open')) return false;
+      switchTicketActionMode(action.op);
+      set('resolveTicketNote', p.note);
+      set('resolveTicketNextDate', p.nextDate);
+      set('resolveTicketActionType', p.resolutionType);
+    } else if (action.op === 'reassign') {
+      openReassignTicketModal(p.ticketId);
+      if (!document.getElementById('reassignTicketModal').classList.contains('open')) return false;
+      set('reassignNewHelper', p.newHelper);
+      set('reassignNote', p.note);
+    }
+    toast('Form filled in. Please check it and press Save.');
+    return true;
+  }
+
+  function cardAt(ref) {
+    const [i, j] = String(ref).split(':').map(Number);
+    const chat = currentChat();
+    const d = chat && chat.display[i];
+    return d && d.cards ? d.cards[j] : null;
+  }
+
+  function onCardButton(t) {
+    const chat = currentChat();
+    const card = cardAt(t.dataset.card);
+    if (!chat || !card || card.status !== 'pending') return;
+    if (t.hasAttribute('data-ticket-confirm')) {
+      Object.assign(card, runCardAction(card, executeTicket));
+      if (card.status === 'saved') {
+        chat.display.push({ role: 'bot', text: '✓ Ticket saved.' });
+        chat.messages.push({ role: 'assistant', content: '✓ Ticket saved.' });
+        try { renderAll(); } catch (e) { /* page views refresh on next visit */ }
+      }
+    } else if (t.hasAttribute('data-ticket-edit')) {
+      if (editTicket(card.action)) card.status = 'edited';
+    } else if (t.hasAttribute('data-ticket-cancel')) {
+      card.status = 'cancelled';
+    }
+    chat.updatedAt = Date.now();
+    saveChats();
+    renderAllAI();
+  }
+
   function plainSummary(s) {
     const lines = [
       `**Summary for ${fmt(s.date)}**`,
@@ -368,7 +484,13 @@
         });
       }
       chat.messages = result.messages;
-      chat.display.push({ role: 'bot', text: result.finalText || 'Got an empty reply. Please ask again.', actions: result.actions, provider: result.provider });
+      chat.display.push({
+        role: 'bot',
+        text: result.finalText || 'Got an empty reply. Please ask again.',
+        actions: result.actions.filter(a => a.type !== 'ticket'),
+        cards: result.actions.filter(a => a.type === 'ticket').map(a => ({ action: a, status: 'pending' })),
+        provider: result.provider
+      });
       setStatus('ready');
     } catch (e) {
       chat.messages = history.slice(0, -1);
@@ -409,6 +531,7 @@
         copyText(d.text.replace(/```draft[^\n]*\n?|```/g, '').replace(/\*\*/g, ''));
         return;
       }
+      if (t.dataset.card !== undefined) { onCardButton(t); return; }
       if (t.dataset.action) {
         const [i, j] = t.dataset.action.split(':').map(Number);
         openFormAction(currentChat().display[i].actions[j]);

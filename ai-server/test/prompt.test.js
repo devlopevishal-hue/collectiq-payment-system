@@ -42,3 +42,22 @@ test('system prompt: copy amounts as given and do not guess form fields', () => 
   assert.match(p, /exactly as/i);
   assert.match(p, /contact_mode/);
 });
+
+test('ticket tools: schemas use the app enums', () => {
+  const TA = require('../../ticket-actions.js');
+  assert.equal(TOOL_SCHEMAS.length, 10);
+  const s = TOOL_SCHEMAS.find(t => t.function.name === 'prepare_ticket_action').function.parameters;
+  assert.deepEqual(s.properties.op.enum, ['create', 'progress', 'done', 'reassign']);
+  assert.deepEqual(s.properties.priority.enum, TA.PRIORITIES);
+  assert.deepEqual(s.properties.resolution_type.enum, TA.RESOLUTION_TYPES);
+  assert.deepEqual(s.required, ['op']);
+  assert.ok(TOOL_SCHEMAS.find(t => t.function.name === 'find_tickets'));
+});
+
+test('system prompt: ticket changes go through a card and Confirm', () => {
+  const p = buildSystemPrompt({ name: 'A', role: 'admin', today: '2026-10-03' });
+  assert.match(p, /find_tickets/);
+  assert.match(p, /prepare_ticket_action/);
+  assert.match(p, /Confirm/);
+  assert.match(p, /suggestion/);
+});

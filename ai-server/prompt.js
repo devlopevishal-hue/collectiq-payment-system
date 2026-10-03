@@ -3,6 +3,17 @@
 
 const FORM_STATUSES = ['Payment Received', 'Promise to Pay', 'WhatsApp Complaint / Claim Matter', 'Internal Help Ticket'];
 const FORM_MODES = ['Phone call', 'WhatsApp', 'Email', 'In person (Field Visit)'];
+// Same lists as ../ticket-actions.js (copied: this server is deployed on its own).
+const PRIORITIES = ['Normal', 'High', 'Critical'];
+const RESOLUTION_TYPES = [
+  'Physical Field Visit & Discussion Completed',
+  'Statement Signed & Verified with Master',
+  'Cheque / Payment Collected',
+  'PDC / Online Payment Commitment Secured',
+  'Payment / Accounts Reconciled',
+  'Master Meeting Conducted',
+  'Other Representative Action'
+];
 
 function buildSystemPrompt({ name, role, today } = {}) {
   return [
@@ -22,6 +33,8 @@ function buildSystemPrompt({ name, role, today } = {}) {
     '- Only help with collection work. Politely decline unrelated requests in one line.',
     '- When asked for a WhatsApp or reminder message, first get the party details, then put only the message text inside a block that starts with ```draft and ends with ```. Keep it respectful, mention the amount due and the oldest due date, and do not threaten.',
     '- When the user reports a conversation outcome (promise, payment, complaint), call prepare_followup_form. Tell the user to press "Open form", check the details and press Save themselves. You never save anything.',
+    '- Help tickets: before acting on an existing ticket, call find_tickets. For any ticket change (new ticket, in progress, done, reassign) call prepare_ticket_action. You never create or change a ticket yourself: never say it was created or changed. Tell the user to check the card and press Confirm.',
+    '- If prepare_ticket_action returns "candidates" or a "suggestion", ask the user which one they mean. Do not guess the helper or next date; ask if the user did not say them (priority may default to Normal).',
     '- Lists: show at most the top 10 lines and mention how many more exist.'
   ].join('\n');
 }
@@ -62,7 +75,23 @@ const TOOL_SCHEMAS = [
     promise_date: { type: 'string', description: 'YYYY-MM-DD, required for Promise to Pay' },
     next_date: { type: 'string', description: 'YYYY-MM-DD next follow-up date' },
     remark: { type: 'string', description: 'Conversation summary' }
-  }, ['party', 'status'])
+  }, ['party', 'status']),
+  fn('find_tickets', 'List help tickets (id, party, subject, helper, requester, priority, status, next date), newest first. Use it before acting on an existing ticket.', {
+    marka: { type: 'string', description: 'Party / marka name to filter by' },
+    status: { type: 'string', enum: ['open', 'all'], description: 'open (default) = not resolved; all = include resolved' },
+    mine: { type: 'boolean', description: 'Only tickets the current user requested, is assigned to, or resolved' }
+  }),
+  fn('prepare_ticket_action', 'Prepare (not save) a help ticket change. The chat shows a card; nothing is saved until the user presses Confirm.', {
+    op: { type: 'string', enum: ['create', 'progress', 'done', 'reassign'], description: 'create = new ticket; progress = in-progress update with next date; done = mark resolved; reassign = change helper (admin/superuser only)' },
+    marka: { type: 'string', description: 'Party / marka name. Optional for create (none = General ticket); for other ops it picks that party\'s only open ticket.' },
+    ticket_id: { type: 'string', description: 'Ticket id from find_tickets (progress, done, reassign)' },
+    helper: { type: 'string', description: 'Person to assign to (create, reassign)' },
+    priority: { type: 'string', enum: PRIORITIES },
+    subject: { type: 'string', description: 'Short ticket subject (create)' },
+    note: { type: 'string', description: 'Remark / what happened' },
+    next_date: { type: 'string', description: 'YYYY-MM-DD next follow-up date (progress)' },
+    resolution_type: { type: 'string', enum: RESOLUTION_TYPES, description: 'What was done (done)' }
+  }, ['op'])
 ];
 
 module.exports = { buildSystemPrompt, TOOL_SCHEMAS };

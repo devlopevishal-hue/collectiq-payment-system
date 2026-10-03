@@ -2924,47 +2924,61 @@ function openReassignTicketModal(ticketId) {
 }
 window.openReassignTicketModal = openReassignTicketModal;
 
+// Saves a help-ticket change made by a form or by the AI Assistant.
+async function persistTicketChange({ ticket, marka, op }) {
+  window.helpTickets = helpTickets;
+  save();
+  saveHelpTicketCloud(ticket);
+  if (marka) saveMarkaCloud(marka);
+  if (!isLocalServer()) return;
+  try {
+    if (op === 'create') {
+      await fetch('/api/help-tickets/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ticket)
+      });
+    } else if (op === 'progress' || op === 'done') {
+      const last = (ticket.history || [])[ticket.history.length - 1] || {};
+      await fetch('/api/help-tickets/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: ticket.id,
+          resolvedBy: last.followper || '',
+          resolutionType: op === 'progress' ? 'Interim Follow-up' : ticket.resolutionType,
+          resolutionNote: last.note || '',
+          date: last.date || '',
+          nextDate: op === 'progress' ? ticket.nextDate : '',
+          markaId: ticket.markaId || '',
+          logToHistory: !!marka,
+          actionType: op
+        })
+      });
+      await syncWithDatabase();
+    }
+  } catch (err) {
+    console.warn('API error:', err);
+  }
+}
+window.persistTicketChange = persistTicketChange;
+
 async function saveReassignTicket(e) {
   e.preventDefault();
+  if (!TicketActions.canReassign(currentUser)) return toast('Only admin or superuser can reassign tickets.');
   const ticketId = document.getElementById('reassignTicketId').value;
   const newHelper = document.getElementById('reassignNewHelper').value;
   const note = document.getElementById('reassignNote').value.trim();
 
-  if (!newHelper) return toast('Please select the new assignee.');
-
-  const t = (helpTickets || []).find(x => x.id === ticketId);
-  if (!t) return toast('Ticket not found.');
-
-  const oldHelper = t.assignedHelper || 'Previous Helper';
-  t.assignedHelper = newHelper;
-  if (!t.history) t.history = [];
-  t.history.push({
-    date: iso(today),
-    type: 'Reassigned',
-    note: `Reassigned from ${oldHelper} to ${newHelper}. ${note ? 'Note: ' + note : ''}`,
-    by: (currentUser ? currentUser.followperName : 'Admin') || 'Admin'
+  const r = TicketActions.reassignTicket({ helpTickets: helpTickets || [], markas }, ticketId, {
+    newHelper,
+    note,
+    by: (currentUser ? currentUser.followperName : 'Admin') || 'Admin',
+    date: iso(today)
   });
+  if (r.error) return toast(r.error);
 
-  if (t.markaId) {
-    const m = markas.find(x => x.id === t.markaId);
-    if (m) {
-      if (!m.history) m.history = [];
-      m.history.push({
-        type: 'followup',
-        date: iso(today),
-        followper: (currentUser ? currentUser.followperName : 'Admin') || 'Admin',
-        status: 'Ticket Reassigned',
-        remark: `[Ticket Reassigned] ${t.subject} transferred from ${oldHelper} to ${newHelper}. ${note ? 'Note: ' + note : ''}`
-      });
-    }
-  }
-
-  save();
-  if (t) saveHelpTicketCloud(t);
-  if (t && t.markaId) {
-    const m = markas.find(x => x.id === t.markaId);
-    if (m) saveMarkaCloud(m);
-  }
+  await persistTicketChange({ ticket: r.ticket, marka: r.marka, op: 'reassign' });
   closeModal('reassignTicketModal');
   renderAll();
   toast(`✓ Help ticket successfully reassigned to ${newHelper}.`);
@@ -2973,67 +2987,21 @@ window.saveReassignTicket = saveReassignTicket;
 
 async function saveHelpTicket(e) {
   e.preventDefault();
-  const date = document.getElementById('htDate').value || iso(today);
-  const priority = document.getElementById('htPriority').value || 'Normal';
-  const markaId = document.getElementById('htMarka').value || '';
-  const m = markas.find(x => x.id === markaId);
-  const markaName = m ? m.marka : 'General';
-  const requestedBy = document.getElementById('htRequestedBy').value || (currentUser ? (currentUser.followperName || currentUser.email) : 'User') || 'User';
-  const assignedHelper = document.getElementById('htAssignedHelper').value;
-  const subject = document.getElementById('htSubject').value.trim();
-  const remark = document.getElementById('htRemark').value.trim();
-
-  if (!assignedHelper) return toast('Please select the assigned helper.');
-  if (!subject) return toast('Please enter ticket subject.');
-
-  const ticketObj = {
-    id: 'ht_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
-    markaId: markaId || '',
-    markaName,
-    date,
-    requestedBy,
-    assignedHelper,
-    priority,
-    subject,
-    remark,
-    status: 'Open',
-    history: [],
-    createdAt: new Date().toISOString()
-  };
-
   if (!helpTickets) helpTickets = [];
-  helpTickets.unshift(ticketObj);
-  localStorage.setItem('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
-  window.helpTickets = helpTickets;
+  const assignedHelper = document.getElementById('htAssignedHelper').value;
+  const r = TicketActions.createTicket({ helpTickets, markas }, {
+    markaId: document.getElementById('htMarka').value || '',
+    date: document.getElementById('htDate').value || iso(today),
+    requestedBy: document.getElementById('htRequestedBy').value || (currentUser ? (currentUser.followperName || currentUser.email) : 'User') || 'User',
+    assignedHelper,
+    priority: document.getElementById('htPriority').value || 'Normal',
+    subject: document.getElementById('htSubject').value,
+    remark: document.getElementById('htRemark').value,
+    now: Date.now()
+  });
+  if (r.error) return toast(r.error);
 
-  if (m) {
-    m.activeHelpTicketId = ticketObj.id;
-    if (!m.history) m.history = [];
-    m.history.push({
-      type: 'followup',
-      date,
-      followper: requestedBy,
-      status: 'Help Ticket',
-      remark: `[Help Ticket: ${subject}] Assigned to: ${assignedHelper}. Note: ${remark}`
-    });
-  }
-
-  save();
-  saveHelpTicketCloud(ticketObj);
-  if (m) saveMarkaCloud(m);
-
-  if (isLocalServer()) {
-    try {
-      await fetch('/api/help-tickets/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(ticketObj)
-      });
-    } catch (err) {
-      console.warn('API error:', err);
-    }
-  }
-
+  await persistTicketChange({ ticket: r.ticket, marka: r.marka, op: 'create' });
   closeModal('helpTicketModal');
   renderAll();
   toast(`✓ Help ticket created and assigned to ${assignedHelper}.`);
@@ -3096,55 +3064,10 @@ function switchTicketActionMode(mode) {
 window.switchTicketActionMode = switchTicketActionMode;
 
 function openResolveTicketModal(ticketId) {
-  let t = (helpTickets || []).find(x => String(x.id) === String(ticketId));
+  const t = (helpTickets || []).find(x => String(x.id) === String(ticketId));
   if (!t) {
-    // Search in DEFAULT_HELP_TICKETS
-    t = (typeof DEFAULT_HELP_TICKETS !== 'undefined' ? DEFAULT_HELP_TICKETS : []).find(x => String(x.id) === String(ticketId));
-    if (t) {
-      if (!helpTickets) helpTickets = [];
-      helpTickets.push({ ...t });
-    }
-  }
-  if (!t) {
-    // Search across markas history for help tickets
-    markas.forEach(m => {
-      (m.history || []).forEach((h, hIdx) => {
-        if (h.status === 'Help Ticket' || (h.remark && h.remark.includes('[Help Ticket'))) {
-          const genId = 'ht_hist_' + m.id + '_' + hIdx;
-          if (genId === ticketId || ticketId.includes(m.id)) {
-            t = {
-              id: ticketId,
-              markaId: m.id,
-              markaName: m.marka,
-              date: h.date,
-              requestedBy: h.followper || 'Admin',
-              assignedHelper: 'Saurav Bhai',
-              priority: 'Normal',
-              subject: h.remark.slice(0, 40),
-              remark: h.remark,
-              status: 'Open'
-            };
-          }
-        }
-      });
-    });
-  }
-  if (!t) {
-    // Graceful fallback ticket creation so action modal always opens
-    t = {
-      id: ticketId,
-      markaId: '',
-      markaName: 'General Party',
-      date: iso(today),
-      requestedBy: currentUser ? currentUser.followperName : 'Admin',
-      assignedHelper: 'Saurav Bhai',
-      priority: 'Normal',
-      subject: 'Assistance Follow-up',
-      remark: 'Follow-up on pending party matters.',
-      status: 'In Progress'
-    };
-    if (!helpTickets) helpTickets = [];
-    helpTickets.push(t);
+    toast('Ticket not found.');
+    return;
   }
 
   document.getElementById('resolveTicketId').value = t.id;
@@ -3183,105 +3106,24 @@ async function saveResolveTicket(e) {
   e.preventDefault();
   const id = document.getElementById('resolveTicketId').value;
   const actionType = document.getElementById('resolveTicketActionMode')?.value || 'done';
-  const date = document.getElementById('resolveTicketDate').value;
+  const date = document.getElementById('resolveTicketDate').value || iso(today);
   const resolvedBy = document.getElementById('resolveTicketBy').value;
-  const resolutionType = document.getElementById('resolveTicketActionType')?.value || 'Representative Action Completed';
+  const resolutionType = document.getElementById('resolveTicketActionType')?.value || 'Other Representative Action';
   const resolutionNote = document.getElementById('resolveTicketNote').value.trim();
   const nextDate = actionType === 'done' ? '' : (document.getElementById('resolveTicketNextDate')?.value || '');
   const logToHistory = document.getElementById('resolveTicketLogToHistory')?.checked !== false;
 
-  if (!resolutionNote) return toast('Please enter the details / remarks.');
-  if (actionType === 'progress' && !nextDate) return toast('Please set the next follow-up date for this in-progress ticket.');
+  const store = { helpTickets: helpTickets || [], markas };
+  const r = actionType === 'progress'
+    ? TicketActions.progressTicket(store, id, { date, by: resolvedBy, note: resolutionNote, nextDate, logToHistory, allowResolved: true })
+    : TicketActions.completeTicket(store, id, { date, by: resolvedBy, resolutionType, note: resolutionNote, logToHistory, now: Date.now(), allowResolved: true });
+  if (r.error) return toast(r.error);
 
-  const t = (helpTickets || []).find(x => x.id === id);
-  if (t) {
-    if (!t.history) t.history = [];
-    
-    if (actionType === 'progress') {
-      t.status = 'In Progress';
-      t.nextDate = nextDate;
-      t.remark = resolutionNote;
-      t.resolvedAt = ''; // Not done - ticket will keep re-planning until finally marked Done
-      t.history.push({
-        date: date || iso(today),
-        followper: resolvedBy,
-        actionType: 'Interim Follow-up (Re-planned Next Date)',
-        note: resolutionNote,
-        nextDate: nextDate,
-        status: 'In Progress'
-      });
-    } else {
-      t.status = 'Resolved';
-      t.resolvedBy = resolvedBy;
-      t.resolutionType = resolutionType;
-      t.resolutionNote = resolutionNote;
-      t.nextDate = '';
-      t.resolvedAt = new Date().toISOString();
-      t.history.push({
-        date: date || iso(today),
-        followper: resolvedBy,
-        actionType: resolutionType,
-        note: resolutionNote,
-        status: 'Resolved'
-      });
-    }
-  }
-  localStorage.setItem('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
-
-  if (logToHistory && t) {
-    const m = markas.find(x => x.id === t.markaId || x.marka === t.markaName);
-    if (m) {
-      if (!m.history) m.history = [];
-      const historyRemark = (actionType === 'progress') ?
-        `[HELP TICKET IN-PROGRESS (Re-planned Next: ${fmt(nextDate)})] ${resolutionNote} (Followed by ${resolvedBy})` :
-        `[REPRESENTATIVE ACTION DONE: ${resolutionType}] ${resolutionNote} (Assisted by ${resolvedBy})`;
-      
-      m.history.push({
-        type: 'followup',
-        date: date || iso(today),
-        followper: resolvedBy,
-        status: actionType === 'progress' ? 'Help Ticket Progress' : 'Help Ticket Resolved',
-        next: actionType === 'progress' ? nextDate : undefined,
-        remark: historyRemark
-      });
-      save();
-    }
-  }
-
-  if (isOnlineMode()) {
-    try {
-      await fetch('/api/help-tickets/resolve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          id, 
-          resolvedBy, 
-          resolutionType: actionType === 'progress' ? 'Interim Follow-up' : resolutionType, 
-          resolutionNote, 
-          date, 
-          nextDate,
-          markaId: t ? t.markaId : '', 
-          logToHistory,
-          actionType 
-        })
-      });
-      await syncWithDatabase();
-    } catch (err) {
-      console.warn('API error:', err);
-    }
-  }
-
-  save();
-  if (t) saveHelpTicketCloud(t);
-  if (t && t.markaId) {
-    const m = markas.find(x => x.id === t.markaId || x.marka === t.markaName);
-    if (m) saveMarkaCloud(m);
-  }
-
+  await persistTicketChange({ ticket: r.ticket, marka: logToHistory ? r.marka : null, op: actionType === 'progress' ? 'progress' : 'done' });
   closeModal('resolveTicketModal');
   renderAll();
-  toast(actionType === 'progress' ? 
-    `✓ In-Progress follow-up saved. Next follow-up re-planned for ${fmt(nextDate)}.` : 
+  toast(actionType === 'progress' ?
+    `✓ In-Progress follow-up saved. Next follow-up re-planned for ${fmt(nextDate)}.` :
     `✓ Help Ticket marked Done with representative action (${resolutionType})!`
   );
 }
