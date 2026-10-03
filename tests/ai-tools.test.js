@@ -246,15 +246,71 @@ test('prepare_followup_form: Promise to Pay needs a promise date', () => {
   assert.ok(T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'Promise to Pay', expected: 50000 }).error);
 });
 
-test('prepare_followup_form: valid input returns an open_followup action', () => {
+test('prepare_followup_form: Promise to Pay returns a follow-up card', () => {
   const r = T.tools.prepare_followup_form(ctx(SURENDRA), {
-    party: 'jgg', status: 'Promise to Pay', expected: 50000, promise_date: '2026-10-10', remark: 'Party ne 10 ko bola'
+    party: 'jgg', status: 'Promise to Pay', expected: 50000, promise_date: '2026-10-10', contact_person: 'Ramesh ji'
   });
   assert.equal(r.ok, true);
-  assert.deepEqual(r.action, {
-    type: 'open_followup', markaId: 'a', marka: 'JGG',
-    fields: { contactMode: 'Phone call', actionStatus: 'Promise to Pay', expected: 50000, promiseDate: '2026-10-10', nextDate: '2026-10-10', remark: 'Party ne 10 ko bola' }
+  assert.equal(r.action.type, 'followup');
+  assert.equal(r.action.op, 'ptp');
+  assert.deepEqual(r.action.payload, {
+    markaId: 'a', marka: 'JGG', followper: 'Surendra', contactPerson: 'Ramesh ji', contactMode: 'Phone call',
+    expectedRupees: 50000, promiseDate: '2026-10-10', nextDate: '2026-10-10', remark: ''
   });
+  assert.equal(r.action.preview.title, '📞 Follow-up update');
+  const rows = r.action.preview.rows;
+  for (const row of [['Marka', 'JGG (BABLU SHERA MASTER)'], ['Followper', 'Surendra'], ['Status', 'Promise to Pay'], ['Expected', '₹50,000'], ['Promise date', '2026-10-10']]) {
+    assert.deepEqual(rows.find(x => x[0] === row[0]), row);
+  }
+  // runTool must not turn the payload amount into text
+  assert.equal(T.runTool(ctx(SURENDRA), 'prepare_followup_form', JSON.stringify({ party: 'JGG', status: 'Promise to Pay', expected: 50000, promise_date: '2026-10-10' })).action.payload.expectedRupees, 50000);
+});
+
+test('prepare_followup_form: payment and complaint still open the form; help ticket goes to the ticket tool', () => {
+  const pay = T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'Payment Received', remark: 'cheque mila' });
+  assert.equal(pay.action.type, 'open_followup');
+  assert.equal(T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'WhatsApp Complaint / Claim Matter' }).action.type, 'open_followup');
+  assert.match(T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'Internal Help Ticket' }).error, /prepare_ticket_action/);
+});
+
+test('prepare_followup_form: Promise to Pay refusals', () => {
+  const ptp = (user, args) => T.tools.prepare_followup_form(ctx(user), { status: 'Promise to Pay', party: 'JGG', promise_date: '2026-10-10', ...args });
+  assert.ok(ptp(SURENDRA, { promise_date: '2026-10-01' }).error);
+  assert.ok(ptp(SURENDRA, { next_date: '2026-10-01' }).error);
+  assert.ok(ptp(SURENDRA, { contact_mode: 'Fax' }).error);
+  assert.match(ptp(SURENDRA, { party: 'SAN' }).error, /own parties/);
+  assert.match(ptp(ADMIN, { party: 'XYZ' }).error, /form/);
+  assert.equal(ptp(ADMIN, { party: 'SAN' }).action.payload.followper, 'Mahavir');
+});
+
+function fmsCtx(user) {
+  const getFmsTasks = m => m.id === 'a' ? [
+    { code: 'FMS-1', name: 'Update Payment in System / Rokad', plannedDate: '2026-09-03', isDone: false },
+    { code: 'FMS-2', name: 'Intimate to Master about Pending Payment', plannedDate: '2026-09-06', isDone: true, actualDate: '2026-09-20' },
+    { code: 'FMS-3', name: 'Get Sign of Master on Outstanding Statement', plannedDate: '2026-10-05', isDone: false }
+  ] : [];
+  return ctx(user, { h: { ...helpers, getFmsTasks } });
+}
+
+test('prepare_fms_done: card with planned date and score, duplicates removed', () => {
+  const r = T.tools.prepare_fms_done(fmsCtx(SURENDRA), { party: 'JGG', codes: ['FMS-1', 'FMS-1', 'FMS-3'], note: 'ho gaya' });
+  assert.equal(r.action.type, 'fms');
+  assert.equal(r.action.preview.title, '✅ FMS done');
+  assert.deepEqual(r.action.payload, { markaId: 'a', marka: 'JGG', codes: ['FMS-1', 'FMS-3'], actualDate: '2026-10-02', note: 'ho gaya' });
+  const rows = r.action.preview.rows;
+  assert.deepEqual(rows.find(x => x[0] === 'FMS-1'), ['FMS-1', 'Update Payment in System / Rokad — planned 2026-09-03 → 0.5 pt (late)']);
+  assert.deepEqual(rows.find(x => x[0] === 'FMS-3'), ['FMS-3', 'Get Sign of Master on Outstanding Statement — planned 2026-10-05 → 1.0 pt (on time)']);
+  assert.deepEqual(rows.find(x => x[0] === 'Done by'), ['Done by', 'Surendra']);
+});
+
+test('prepare_fms_done: errors', () => {
+  const c = fmsCtx(SURENDRA);
+  assert.match(T.tools.prepare_fms_done(c, { party: 'JGG', codes: ['FMS-2'] }).error, /already done/);
+  assert.ok(T.tools.prepare_fms_done(c, { party: 'JGG', codes: ['FMS-9'] }).error);
+  assert.ok(T.tools.prepare_fms_done(c, { party: 'JGG', codes: [] }).error);
+  assert.ok(T.tools.prepare_fms_done(c, { party: 'JGG', codes: ['FMS-1'], actual_date: '2026-10-05' }).error);
+  assert.ok(T.tools.prepare_fms_done(c, { party: 'MAU', codes: ['FMS-1'] }).error);
+  assert.match(T.tools.prepare_fms_done(c, { party: 'SAN', codes: ['FMS-1'] }).error, /own parties/);
 });
 
 test('runTool: unknown tool and bad JSON return errors instead of throwing', () => {

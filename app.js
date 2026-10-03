@@ -896,36 +896,7 @@ function sortTable(view, col) {
 // ==========================================
 // FMS (FLOW MANAGEMENT SYSTEM) DEFINITIONS & HELPERS
 // ==========================================
-const FMS_DEFINITIONS = [
-  {
-    code: 'FMS-1',
-    offset: 2,
-    role: 'Account Team',
-    name: 'Update Payment in System / Rokad',
-    desc: 'If still payment not received, account person will verify bank/cash & update payment'
-  },
-  {
-    code: 'FMS-2',
-    offset: 5,
-    role: 'Process Coordinator (PC)',
-    name: 'Intimate to Master about Pending Payment',
-    desc: 'If still payment not received, Process Coordinator (PC) must intimate master'
-  },
-  {
-    code: 'FMS-3',
-    offset: 14,
-    role: 'Master',
-    name: 'Get Sign of Master on Outstanding Statement',
-    desc: 'Get physical or digital sign of master on current outstanding statement'
-  },
-  {
-    code: 'FMS-4',
-    offset: 15,
-    role: 'Process Coordinator (PC)',
-    name: 'Update to Sales HOD about Critical Outstanding',
-    desc: 'If still payment not received, Process Coordinator (PC) must update and escalate to Sales HOD'
-  }
-];
+const FMS_DEFINITIONS = FollowupActions.FMS_DEFINITIONS;
 
 function addDaysToIso(isoDateStr, numDays) {
   if (!isoDateStr) return '';
@@ -2062,54 +2033,12 @@ async function saveBulkFmsDone(e) {
 
   let count = 0;
   checked.forEach(cb => {
-    const markaId = cb.dataset.marka;
-    const taskCode = cb.dataset.code;
-    const m = markas.find(x => x.id === markaId);
+    const m = markas.find(x => x.id === cb.dataset.marka);
     if (!m) return;
-    const def = FMS_DEFINITIONS.find(d => d.code === taskCode);
-    const baseDueDate = oldestDueDate(m);
-    const plannedDate = addDaysToIso(baseDueDate, def ? def.offset : 0);
-    const isDelayed = actualDate > plannedDate;
-    const score = isDelayed ? 0.5 : 1.0;
-    const status = isDelayed ? 'Done (Delayed)' : 'Done (On-Time)';
-    const respName = def ? (def.role === 'Master' ? m.master : (def.role.includes('PC') || def.role.includes('Process Coordinator')) ? 'Process Coordinator (PC)' : 'Account Team') : 'Account Team';
-
-    if (!m.fmsTasks) m.fmsTasks = [];
-    let existingIdx = m.fmsTasks.findIndex(t => (t.code === taskCode || t.taskCode === taskCode));
-    const taskObj = {
-      id: 'fms_' + m.id + '_' + taskCode,
-      code: taskCode,
-      taskCode: taskCode,
-      taskName: def ? def.name : taskCode,
-      responsibleRole: def ? def.role : '',
-      responsibleName: respName,
-      offsetDays: def ? def.offset : 0,
-      dueDate: baseDueDate,
-      plannedDate: plannedDate,
-      actualDate: actualDate,
-      status: status,
-      score: score,
-      remark: remark,
-      completedBy: completedBy,
-      done: true,
-      completedAt: new Date().toISOString()
-    };
-
-    if (existingIdx >= 0) {
-      m.fmsTasks[existingIdx] = taskObj;
-    } else {
-      m.fmsTasks.push(taskObj);
-    }
-
-    if (!m.history) m.history = [];
-    m.history.push({
-      type: 'followup',
-      date: actualDate,
-      followper: completedBy,
-      status: 'FMS Task Completed',
-      remark: `[${taskCode} COMPLETED] ${def ? def.name : taskCode}. Planned: ${plannedDate}, Actual: ${actualDate} (${isDelayed ? 'Delayed: 0.5 pt' : 'On-Time: 1.0 pt'}). Responsible: ${def ? def.role : ''} (${completedBy}). Note: ${remark}`
+    const r = FollowupActions.completeFmsTask(m, cb.dataset.code, {
+      baseDueDate: oldestDueDate(m), actualDate, completedBy, remark, now: Date.now(), allowRedo: true
     });
-    count++;
+    if (!r.error) count++;
   });
 
   save();
@@ -2183,56 +2112,17 @@ async function saveFmsTask(e) {
   const markaId = document.getElementById('fmsMarkaId').value;
   const taskCode = document.getElementById('fmsTaskCode').value;
   const dueDate = document.getElementById('fmsDueDate').value;
-  const offsetDays = +document.getElementById('fmsOffsetDays').value || 0;
-  const plannedDate = document.getElementById('fmsPlannedDate').value;
   const actualDate = document.getElementById('fmsActualDate').value;
   const completedBy = document.getElementById('fmsCompletedBy').value.trim() || 'Admin';
   const remark = document.getElementById('fmsRemark').value.trim();
 
   const m = markas.find(x => x.id === markaId);
   if (!m) return toast('Marka not found.');
-  const def = FMS_DEFINITIONS.find(d => d.code === taskCode);
-  if (!def) return toast('Invalid task code.');
-
-  const isDelayed = actualDate > plannedDate;
-  const score = isDelayed ? 0.5 : 1.0;
-  const status = isDelayed ? 'Done (Delayed)' : 'Done (On-Time)';
-  const respName = def.role === 'Master' ? m.master : (def.role.includes('PC') || def.role.includes('Process Coordinator')) ? 'Process Coordinator (PC)' : 'Account Team';
-
-  const taskObj = {
-    id: 'fms_' + m.id + '_' + taskCode,
-    code: taskCode,
-    taskCode: taskCode,
-    taskName: def.name,
-    responsibleRole: def.role,
-    responsibleName: respName,
-    offsetDays: def.offset,
-    dueDate,
-    plannedDate,
-    actualDate,
-    status,
-    score,
-    remark,
-    completedBy,
-    done: true,
-    completedAt: new Date().toISOString()
-  };
-
-  if (!m.fmsTasks) m.fmsTasks = [];
-  const idx = m.fmsTasks.findIndex(t => (t.taskCode === taskCode || t.code === taskCode));
-  if (idx >= 0) m.fmsTasks[idx] = taskObj;
-  else m.fmsTasks.push(taskObj);
-
-  // Append to history
-  const histRemark = `[${taskCode} COMPLETED] ${def.name}. Planned: ${plannedDate}, Actual: ${actualDate} (${isDelayed ? 'Delayed: 0.5 pt' : 'On-Time: 1.0 pt'}). Responsible: ${def.role} (${completedBy}). Note: ${remark || 'Milestone achieved.'}`;
-  if (!m.history) m.history = [];
-  m.history.push({
-    type: 'followup',
-    date: actualDate,
-    followper: completedBy,
-    status: 'FMS Task Completed',
-    remark: histRemark
+  const r = FollowupActions.completeFmsTask(m, taskCode, {
+    baseDueDate: dueDate, actualDate, completedBy, remark, now: Date.now(), allowRedo: true
   });
+  if (r.error) return toast(r.error);
+  const score = r.task.score;
 
   save();
   saveMarkaCloud(m);
@@ -4245,6 +4135,34 @@ function enforcePtpDate() {
   }
 }
 
+// Saves a follow-up or FMS change made by a form or by the AI Assistant.
+// Resolves to the message the forms show.
+async function persistFollowupChange({ marka, payload }) {
+  save();
+  saveMarkaCloud(marka);
+  if (!payload) return '✓ Saved.';
+  if (isLocalServer()) {
+    try {
+      const res = await fetch('/api/followup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        await syncWithDatabase();
+        return '✓ Follow-up conversation saved to SQLite database.';
+      }
+      const err = await res.json().catch(() => ({}));
+      return 'Notice: ' + (err.error || 'Saved');
+    } catch (err) {
+      console.warn('SQLite sync notice:', err);
+      return '✓ Follow-up conversation saved.';
+    }
+  }
+  return firestoreDb ? '✓ Follow-up conversation saved & synced to Cloud DB.' : '✓ Follow-up conversation saved.';
+}
+window.persistFollowupChange = persistFollowupChange;
+
 async function saveFollowup(e) {
   e.preventDefault();
   const mId = document.getElementById('markaId')?.value;
@@ -4284,6 +4202,24 @@ async function saveFollowup(e) {
 
   if (isPtp && !promiseDate) {
     return toast('Promise date is required for PTP.');
+  }
+
+  if (isPtp) {
+    const r = FollowupActions.applyPtpFollowup(m, {
+      date: followDate, followper, contactPerson, contactMode, expected, promiseDate, nextDate, remark,
+      ownerFallback: ownerOf(m),
+      visit: {
+        purpose: document.getElementById('visitPurpose')?.value || '',
+        personMet: document.getElementById('visitPersonMet')?.value || '',
+        notes: document.getElementById('visitNotes')?.value || ''
+      }
+    });
+    if (r.error) return toast(r.error);
+    const saving = persistFollowupChange({ marka: m, payload: r.payload });
+    closeModal('followupModal');
+    renderAll();
+    toast(await saving);
+    return;
   }
 
   // Gather selected bill IDs for Complaint / Claim

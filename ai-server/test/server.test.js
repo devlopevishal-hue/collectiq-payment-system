@@ -67,7 +67,7 @@ test('chat forwards system prompt + last 12 messages and returns the reply', asy
   assert.equal(sent[0].role, 'system');
   assert.match(sent[0].content, /Surendra/);
   assert.deepEqual(sent.slice(1).map(m => m.content), messages.slice(2).map(m => m.content));
-  assert.equal(seen[0].tools.length, 10);
+  assert.equal(seen[0].tools.length, 11);
   await s.close();
 });
 

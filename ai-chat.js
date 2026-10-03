@@ -296,7 +296,7 @@
         <div class="ai-welcome">
           <div class="ai-welcome-icon">🤖</div>
           <h3>Hello${name ? ' ' + escapeHtml(name) : ''}!</h3>
-          <p>Ask me about your parties, bills, follow-ups and payments. I can also draft WhatsApp reminders, fill in the follow-up form, and prepare help tickets for you to confirm.</p>
+          <p>Ask me about your parties, bills, follow-ups and payments. I can also draft WhatsApp reminders and prepare follow-ups, FMS milestones and help tickets for you to confirm.</p>
           <div class="ai-chips">${CHIPS.map(c => `<button type="button" class="ai-chip" data-chip="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')}</div>
         </div>`;
       return;
@@ -414,6 +414,74 @@
     return true;
   }
 
+  // Confirm on a Promise-to-Pay card: same write as the Update Follow-up form.
+  function executeFollowup(action) {
+    const p = action.payload || {};
+    const m = (markas || []).find(x => String(x.id) === String(p.markaId));
+    if (!m) return { error: 'Party not found.' };
+    const todayIso = iso(today);
+    if (p.promiseDate < todayIso || p.nextDate < todayIso) return { error: 'The promise date has passed. Please ask again.' };
+    const r = FollowupActions.applyPtpFollowup(m, {
+      date: todayIso, followper: p.followper, contactPerson: p.contactPerson, contactMode: p.contactMode,
+      expected: p.expectedRupees, promiseDate: p.promiseDate, nextDate: p.nextDate, remark: p.remark,
+      ownerFallback: ownerOf(m)
+    });
+    if (r.error) return r;
+    persistFollowupChange({ marka: m, payload: r.payload }).catch(e => console.warn('Follow-up sync error:', e));
+    return {};
+  }
+
+  // Confirm on an FMS card: every milestone is re-checked before any is written.
+  function executeFms(action) {
+    const p = action.payload || {};
+    const m = (markas || []).find(x => String(x.id) === String(p.markaId));
+    if (!m) return { error: 'Party not found.' };
+    const tasks = getFmsTasks(m);
+    for (const code of p.codes || []) {
+      const t = tasks.find(x => x.code === code);
+      if (!t) return { error: `${code} is not available for ${m.marka} any more.` };
+      if (t.isDone) return { error: `${code} was already marked done by ${t.completedBy || 'someone'}.` };
+    }
+    const baseDueDate = oldestDueDate(m);
+    for (const code of p.codes || []) {
+      const r = FollowupActions.completeFmsTask(m, code, { baseDueDate, actualDate: p.actualDate, completedBy: actorName(), remark: p.note, now: Date.now() });
+      if (r.error) return r;
+    }
+    persistFollowupChange({ marka: m, payload: null }).catch(e => console.warn('FMS sync error:', e));
+    return {};
+  }
+
+  function editAction(action) {
+    const p = action.payload || {};
+    const set = (id, v) => { const el = document.getElementById(id); if (el && v) el.value = v; };
+    if (action.type === 'ticket') return editTicket(action);
+    if (action.type === 'followup') {
+      openFollowup(p.markaId);
+      if (!document.getElementById('followupModal').classList.contains('open')) return false;
+      set('followper', p.followper);
+      set('contactPerson', p.contactPerson);
+      set('contactMode', p.contactMode);
+      set('actionStatus', 'Promise to Pay');
+      toggleConditionalFields();
+      set('expected', p.expectedRupees);
+      set('promiseDate', p.promiseDate);
+      set('nextDate', p.nextDate);
+      set('remark', p.remark);
+    } else if (action.type === 'fms') {
+      openFmsModal(p.markaId, (p.codes || [])[0]);
+      if (!document.getElementById('fmsModal').classList.contains('open')) return false;
+      set('fmsActualDate', p.actualDate);
+      set('fmsRemark', p.note);
+      updateFmsScorePreview();
+    }
+    toast('Form filled in. Please check it and press Save.');
+    return true;
+  }
+
+  const CARD_TYPES = ['ticket', 'followup', 'fms'];
+  const EXECUTORS = { ticket: executeTicket, followup: executeFollowup, fms: executeFms };
+  const SAVED_TEXT = { ticket: '✓ Ticket saved.', followup: '✓ Follow-up saved.', fms: '✓ FMS saved.' };
+
   function cardAt(ref) {
     const [i, j] = String(ref).split(':').map(Number);
     const chat = currentChat();
@@ -426,14 +494,16 @@
     const card = cardAt(t.dataset.card);
     if (!chat || !card || card.status !== 'pending') return;
     if (t.hasAttribute('data-ticket-confirm')) {
-      Object.assign(card, runCardAction(card, executeTicket));
+      const execute = EXECUTORS[card.action.type] || (() => ({ error: 'Unknown action.' }));
+      Object.assign(card, runCardAction(card, execute));
       if (card.status === 'saved') {
-        chat.display.push({ role: 'bot', text: '✓ Ticket saved.' });
-        chat.messages.push({ role: 'assistant', content: '✓ Ticket saved.' });
+        const note = SAVED_TEXT[card.action.type] || '✓ Saved.';
+        chat.display.push({ role: 'bot', text: note });
+        chat.messages.push({ role: 'assistant', content: note });
         try { renderAll(); } catch (e) { /* page views refresh on next visit */ }
       }
     } else if (t.hasAttribute('data-ticket-edit')) {
-      if (editTicket(card.action)) card.status = 'edited';
+      if (editAction(card.action)) card.status = 'edited';
     } else if (t.hasAttribute('data-ticket-cancel')) {
       card.status = 'cancelled';
     }
@@ -487,8 +557,8 @@
       chat.display.push({
         role: 'bot',
         text: result.finalText || 'Got an empty reply. Please ask again.',
-        actions: result.actions.filter(a => a.type !== 'ticket'),
-        cards: result.actions.filter(a => a.type === 'ticket').map(a => ({ action: a, status: 'pending' })),
+        actions: result.actions.filter(a => !CARD_TYPES.includes(a.type)),
+        cards: result.actions.filter(a => CARD_TYPES.includes(a.type)).map(a => ({ action: a, status: 'pending' })),
         provider: result.provider
       });
       setStatus('ready');

@@ -25,14 +25,17 @@ function buildSystemPrompt({ name, role, today } = {}) {
     '- Tool lists are already sorted and each row has a "rank". Keep exactly that order, start from rank 1 and never skip ranks.',
     '- Tool results give amounts as ready-made text like "₹10,43,80,733". Copy them exactly as given; never re-format, round or recalculate them.',
     '- In doer rows, "overdue" is a count of parties whose follow-up date has passed, and "balance" is the total amount of that doer\'s parties.',
-    '- For prepare_followup_form, fill contact_mode, expected, next_date only if the user said them; otherwise leave them out.',
+    '- For prepare_followup_form, fill contact_person, contact_mode, expected, next_date only if the user said them; otherwise leave them out.',
     '- Never invent numbers, party names or dates. Use only what the tools return. If a tool has no data, say so plainly.',
     '- Use tools whenever the question is about parties, bills, follow-ups, PTPs, payments, tickets or performance.',
     '- If a tool returns "candidates", ask the user which party they mean.',
     '- If a tool says the user cannot see something, politely explain they can only see their own parties.',
     '- Only help with collection work. Politely decline unrelated requests in one line.',
     '- When asked for a WhatsApp or reminder message, first get the party details, then put only the message text inside a block that starts with ```draft and ends with ```. Keep it respectful, mention the amount due and the oldest due date, and do not threaten.',
-    '- When the user reports a conversation outcome (promise, payment, complaint), call prepare_followup_form. Tell the user to press "Open form", check the details and press Save themselves. You never save anything.',
+    '- When the user reports a Promise to Pay (party promised to pay on a date), call prepare_followup_form with status Promise to Pay. The chat shows a card: tell the user to check it and press Confirm. Ask for the promise date if the user did not say it.',
+    '- When the user reports a payment received or a complaint/claim, call prepare_followup_form with that status. Tell the user to press "Open form", check the details and press Save there.',
+    '- When the user says an FMS milestone (FMS-1 to FMS-4) is done for a party, call prepare_fms_done. Tell the user to check the card and press Confirm.',
+    '- You never save anything yourself: never say a follow-up, FMS milestone or ticket was saved. Ask when the party or milestone is unclear.',
     '- Help tickets: before acting on an existing ticket, call find_tickets. For any ticket change (new ticket, in progress, done, reassign) call prepare_ticket_action. You never create or change a ticket yourself: never say it was created or changed. Tell the user to check the card and press Confirm.',
     '- If prepare_ticket_action returns "candidates" or a "suggestion", ask the user which one they mean. Do not guess the helper or next date; ask if the user did not say them (priority may default to Normal).',
     '- Lists: show at most the top 10 lines and mention how many more exist.'
@@ -67,8 +70,9 @@ const TOOL_SCHEMAS = [
     name: { type: 'string', description: 'Doer name; omit for the full ranking' }
   }),
   fn('get_pending_work', 'Open help tickets assigned to the user and, for PC/admin, pending FMS milestones.'),
-  fn('prepare_followup_form', 'Prepare (not save) a follow-up entry. The app opens its own follow-up form pre-filled so the user can check and save.', {
+  fn('prepare_followup_form', 'Prepare (not save) a follow-up entry. Promise to Pay gives a card the user confirms; Payment Received and complaints open the app\'s follow-up form pre-filled.', {
     party: { type: 'string', description: 'Party / marka name' },
+    contact_person: { type: 'string', description: 'Person spoken to at the party' },
     status: { type: 'string', enum: FORM_STATUSES },
     contact_mode: { type: 'string', enum: FORM_MODES },
     expected: { type: 'number', description: 'Expected amount in rupees' },
@@ -91,7 +95,13 @@ const TOOL_SCHEMAS = [
     note: { type: 'string', description: 'Remark / what happened' },
     next_date: { type: 'string', description: 'YYYY-MM-DD next follow-up date (progress)' },
     resolution_type: { type: 'string', enum: RESOLUTION_TYPES, description: 'What was done (done)' }
-  }, ['op'])
+  }, ['op']),
+  fn('prepare_fms_done', 'Prepare (not save) marking FMS milestones done for one party. The chat shows a card with the planned date and score; nothing is saved until the user presses Confirm.', {
+    party: { type: 'string', description: 'Party / marka name' },
+    codes: { type: 'array', items: { type: 'string', enum: ['FMS-1', 'FMS-2', 'FMS-3', 'FMS-4'] }, description: 'Milestones done: FMS-1 payment updated in system/Rokad, FMS-2 master informed, FMS-3 master signed statement, FMS-4 Sales HOD updated' },
+    note: { type: 'string', description: 'What was done' },
+    actual_date: { type: 'string', description: 'YYYY-MM-DD when it was done; default today' }
+  }, ['party', 'codes'])
 ];
 
 module.exports = { buildSystemPrompt, TOOL_SCHEMAS };

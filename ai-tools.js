@@ -294,6 +294,8 @@
     prepare_followup_form(ctx, args = {}) {
       const found = findParty(ctx, args.party);
       if (!found.marka) return found;
+      if (args.status === 'Internal Help Ticket') return { error: 'For help tickets use prepare_ticket_action instead.' };
+      if (args.status === 'Promise to Pay') return followupCard(ctx, found.marka, args);
       if (!FORM_STATUSES.includes(args.status)) {
         return { error: `Status must be one of: ${FORM_STATUSES.join(', ')}` };
       }
@@ -318,6 +320,78 @@
 
   // ---- Help tickets ----
   const TA = (typeof module !== 'undefined' && module.exports) ? require('./ticket-actions.js') : root.TicketActions;
+  const FA = (typeof module !== 'undefined' && module.exports) ? require('./followup-actions.js') : root.FollowupActions;
+
+  // ---- Follow-ups and FMS ----
+
+  function canUpdate(ctx, m) {
+    if (scopeMarkas(ctx).includes(m)) return null;
+    return { error: seesEverything(ctx) ? `${m.marka} has no outstanding balance to follow up.` : 'You can only update your own parties.' };
+  }
+
+  function actor(ctx) {
+    const u = ctx.user || {};
+    return u.followperName && norm(u.followperName) !== 'all' ? u.followperName : (u.email || 'Admin');
+  }
+
+  // Promise to Pay: a card the user confirms; saved by followup-actions.js.
+  function followupCard(ctx, m, args) {
+    const denied = canUpdate(ctx, m);
+    if (denied) return denied;
+    const mode = args.contact_mode || 'Phone call';
+    if (!FA.CONTACT_MODES.includes(mode)) return { error: `Contact mode must be one of: ${FA.CONTACT_MODES.join(', ')}` };
+    const promiseDate = args.promise_date || '';
+    if (!ISO_DATE.test(promiseDate)) return { error: 'A promise date (YYYY-MM-DD) is required for Promise to Pay.' };
+    if (promiseDate < ctx.today) return { error: 'promise_date cannot be in the past.' };
+    const nextDate = args.next_date || promiseDate;
+    if (!ISO_DATE.test(nextDate)) return { error: 'next_date must be in YYYY-MM-DD format.' };
+    if (nextDate < ctx.today) return { error: 'next_date cannot be in the past.' };
+    const expected = Number(args.expected || 0);
+    if (!Number.isFinite(expected) || expected < 0) return { error: 'expected must be a valid amount.' };
+    let followper = ctx.h.ownerOf(m);
+    if (!followper || followper === 'Unassigned') {
+      const me = ctx.user && ctx.user.followperName;
+      if (!me || norm(me) === 'all') return { error: 'This party has no followper. Open the form to choose one.' };
+      followper = me;
+    }
+    const contactPerson = String(args.contact_person || '').trim();
+    const remark = String(args.remark || '').trim();
+    const rows = [['Marka', markaLabel(m)], ['Followper', followper], ['Mode', mode], ['Status', 'Promise to Pay']];
+    if (contactPerson) rows.push(['Contact', contactPerson]);
+    if (expected > 0) rows.push(['Expected', '₹' + INR.format(Math.round(expected))]);
+    rows.push(['Promise date', promiseDate], ['Next date', nextDate]);
+    if (remark) rows.push(['Remark', remark]);
+    // expectedRupees, not expected: formatMoney would turn "expected" into text.
+    const payload = { markaId: m.id, marka: m.marka, followper, contactPerson, contactMode: mode, expectedRupees: expected, promiseDate, nextDate, remark };
+    return { ok: true, action: { type: 'followup', op: 'ptp', payload, preview: { title: '📞 Follow-up update', rows } } };
+  }
+
+  tools.prepare_fms_done = function (ctx, args = {}) {
+    const found = findParty(ctx, args.party);
+    if (!found.marka) return found;
+    const m = found.marka;
+    const denied = canUpdate(ctx, m);
+    if (denied) return denied;
+    const codes = [...new Set((Array.isArray(args.codes) ? args.codes : []).map(c => String(c).trim().toUpperCase()))];
+    if (!codes.length) return { error: 'Tell me which FMS milestone is done (FMS-1 to FMS-4).' };
+    const actualDate = args.actual_date || ctx.today;
+    if (!ISO_DATE.test(actualDate)) return { error: 'actual_date must be in YYYY-MM-DD format.' };
+    if (actualDate > ctx.today) return { error: 'actual_date cannot be in the future.' };
+    const tasks = ctx.h.getFmsTasks(m) || [];
+    if (!tasks.length) return { error: `${m.marka} has no due bills, so it has no FMS milestones.` };
+    const rows = [['Marka', markaLabel(m)]];
+    for (const code of codes) {
+      const t = tasks.find(x => x.code === code);
+      if (!FA.FMS_DEFINITIONS.some(d => d.code === code) || !t) return { error: `Unknown FMS milestone: ${code}. Use FMS-1 to FMS-4.` };
+      if (t.isDone) return { error: `${code} is already done${t.actualDate ? ' (' + t.actualDate + ')' : ''}.` };
+      const late = actualDate > t.plannedDate;
+      rows.push([code, `${t.name} — planned ${t.plannedDate} → ${late ? '0.5 pt (late)' : '1.0 pt (on time)'}`]);
+    }
+    const note = String(args.note || '').trim();
+    rows.push(['Done by', actor(ctx)], ['Date', actualDate]);
+    if (note) rows.push(['Note', note]);
+    return { ok: true, action: { type: 'fms', op: 'done', payload: { markaId: m.id, marka: m.marka, codes, actualDate, note }, preview: { title: '✅ FMS done', rows } } };
+  };
   const TICKET_TITLES = { create: '🎫 New ticket', progress: '⏳ In progress', done: '✅ Done', reassign: '🔁 Reassign' };
 
   function isResolved(t) {

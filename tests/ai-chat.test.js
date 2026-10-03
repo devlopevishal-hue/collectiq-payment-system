@@ -130,3 +130,20 @@ test('runCardAction: executor errors and exceptions become an error status', () 
   assert.deepEqual(runCardAction(card(), () => ({ error: 'Ticket already resolved.' })), { status: 'error', error: 'Ticket already resolved.' });
   assert.deepEqual(runCardAction(card(), () => { throw new Error('boom'); }), { status: 'error', error: 'boom' });
 });
+
+test('renderTicketCard also renders follow-up and FMS cards', () => {
+  const followup = {
+    type: 'followup', op: 'ptp', payload: {},
+    preview: { title: '📞 Follow-up update', rows: [['Marka', 'JGG (BABLU SHERA MASTER)'], ['Remark', '<script>x</script>']] }
+  };
+  const fu = renderTicketCard(followup, 'pending', '2:0', escapeHtml);
+  assert.ok(fu.includes('📞 Follow-up update'));
+  assert.ok(fu.includes('&lt;script&gt;x&lt;/script&gt;'));
+  assert.ok(!fu.includes('<script>'));
+  assert.ok(fu.includes('data-ticket-confirm'));
+  const fms = { type: 'fms', op: 'done', payload: {}, preview: { title: '✅ FMS done', rows: [['FMS-1', 'Update Payment — planned 2026-09-03 → 0.5 pt (late)']] } };
+  const saved = renderTicketCard(fms, 'saved', '2:1', escapeHtml);
+  assert.ok(saved.includes('✅ FMS done'));
+  assert.ok(saved.includes('✓ Saved'));
+  assert.ok(!saved.includes('data-ticket-confirm'));
+});
