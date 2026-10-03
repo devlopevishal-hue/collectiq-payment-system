@@ -4137,9 +4137,10 @@ function enforcePtpDate() {
 
 // Saves a follow-up or FMS change made by a form or by the AI Assistant.
 // Resolves to the message the forms show.
-async function persistFollowupChange({ marka, payload }) {
+async function persistFollowupChange({ marka, payload, payment }) {
   save();
   saveMarkaCloud(marka);
+  if (payment) savePaymentCloud(payment);
   if (!payload) return '✓ Saved.';
   if (isLocalServer()) {
     try {
@@ -4213,6 +4214,56 @@ async function saveFollowup(e) {
         personMet: document.getElementById('visitPersonMet')?.value || '',
         notes: document.getElementById('visitNotes')?.value || ''
       }
+    });
+    if (r.error) return toast(r.error);
+    const saving = persistFollowupChange({ marka: m, payload: r.payload });
+    closeModal('followupModal');
+    renderAll();
+    toast(await saving);
+    return;
+  }
+
+  const visit = {
+    purpose: document.getElementById('visitPurpose')?.value || '',
+    personMet: document.getElementById('visitPersonMet')?.value || '',
+    notes: document.getElementById('visitNotes')?.value || ''
+  };
+
+  if (isPayment) {
+    const allocations = [];
+    document.querySelectorAll('.follow-pay-check:checked').forEach(chk => {
+      const inp = document.querySelector(`.follow-pay-amt[data-bill-id="${chk.dataset.billId}"]`);
+      allocations.push({ billId: chk.dataset.billId, amount: inp ? (+inp.value || 0) : 0 });
+    });
+    const r = FollowupActions.applyPaymentFollowup(m, payments, {
+      date: followDate, followper, contactPerson, contactMode, remark, expected, promiseDate, nextDate,
+      payRef: document.getElementById('followPayRef')?.value || '',
+      payMode: document.getElementById('followPayMode')?.value || 'cheque',
+      payType: document.getElementById('followPayType')?.value || 'Part Payment',
+      payAmount: +(document.getElementById('followPayAmount')?.value || 0),
+      allocations,
+      receiptImage: document.getElementById('followPayReceiptPreview')?.dataset?.base64 || '',
+      ownerFallback: ownerOf(m),
+      paymentFollowperFallback: (currentUser ? currentUser.followperName : '') || ownerOf(m),
+      defaultNext: iso(new Date(today.getTime() + 2 * 86400000)),
+      newId: uid, money, now: Date.now(), visit
+    });
+    if (r.error) return toast(r.error);
+    const saving = persistFollowupChange({ marka: m, payload: r.payload, payment: r.payment });
+    closeModal('followupModal');
+    renderAll();
+    toast(await saving);
+    return;
+  }
+
+  if (isComplaint) {
+    const r = FollowupActions.applyComplaintFollowup(m, {
+      status: statusVal, date: followDate, followper, contactPerson, contactMode, remark, expected, promiseDate, nextDate,
+      claimNumber, escalateTo,
+      billIds: Array.from(document.querySelectorAll('.claim-bill-check:checked')).map(el => isNaN(+el.dataset.billId) ? el.dataset.billId : +el.dataset.billId),
+      minNext: iso(new Date(today.getTime() + 5 * 86400000)),
+      newEscId: () => 'e_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
+      visit
     });
     if (r.error) return toast(r.error);
     const saving = persistFollowupChange({ marka: m, payload: r.payload });

@@ -421,6 +421,36 @@
     const m = (markas || []).find(x => String(x.id) === String(p.markaId));
     if (!m) return { error: 'Party not found.' };
     const todayIso = iso(today);
+    const plus = n => iso(new Date(today.getTime() + n * 86400000));
+    if (action.op === 'payment') {
+      const ref = String(p.payRef || '').trim().toLowerCase();
+      const date = p.date || todayIso;
+      const dup = (payments || []).find(x => String(x.marka || '').toUpperCase() === String(m.marka).toUpperCase() &&
+        (ref && ref !== 'n/a' ? String(x.ref || '').toLowerCase() === ref : Number(x.amount) === Number(p.payRupees) && x.date === date));
+      if (dup) return { error: `This payment is already recorded (${dup.date}).` };
+      const r = FollowupActions.applyPaymentFollowup(m, payments, {
+        date, followper: p.followper, contactPerson: p.contactPerson, contactMode: p.contactMode, remark: p.remark,
+        expected: m.expected || 0, promiseDate: m.ptp || '', nextDate: p.nextDate,
+        payRef: p.payRef, payMode: p.payMode, payAmount: p.payRupees,
+        payType: Number(p.payRupees) >= totalOutstanding(m) ? 'Full Payment' : 'Part Payment',
+        ownerFallback: ownerOf(m), paymentFollowperFallback: actorName(),
+        defaultNext: plus(2), newId: uid, money, now: Date.now()
+      });
+      if (r.error) return r;
+      persistFollowupChange({ marka: m, payload: r.payload, payment: r.payment }).catch(e => console.warn('Payment sync error:', e));
+      return {};
+    }
+    if (action.op === 'complaint') {
+      const r = FollowupActions.applyComplaintFollowup(m, {
+        date: todayIso, followper: p.followper, contactPerson: p.contactPerson, contactMode: p.contactMode, remark: p.remark,
+        expected: m.expected || 0, promiseDate: m.ptp || '', nextDate: p.nextDate, claimNumber: p.claimNumber,
+        escalateTo: p.escalateTo, billIds: [], minNext: plus(5), requireDetail: true,
+        newEscId: () => 'e_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4)
+      });
+      if (r.error) return r;
+      persistFollowupChange({ marka: m, payload: r.payload }).catch(e => console.warn('Follow-up sync error:', e));
+      return {};
+    }
     if (p.promiseDate < todayIso || p.nextDate < todayIso) return { error: 'The promise date has passed. Please ask again.' };
     const r = FollowupActions.applyPtpFollowup(m, {
       date: todayIso, followper: p.followper, contactPerson: p.contactPerson, contactMode: p.contactMode,
@@ -462,10 +492,27 @@
       set('followper', p.followper);
       set('contactPerson', p.contactPerson);
       set('contactMode', p.contactMode);
-      set('actionStatus', 'Promise to Pay');
-      toggleConditionalFields();
-      set('expected', p.expectedRupees);
-      set('promiseDate', p.promiseDate);
+      if (action.op === 'payment') {
+        set('actionStatus', 'Payment Received');
+        toggleConditionalFields();
+        set('followPayType', p.payType);
+        set('followPayMode', p.payMode);
+        onFollowPayModeChange();
+        set('followPayRef', p.payRef);
+        set('followPayAmount', p.payRupees);
+        set('followDate', p.date);
+        updateFollowPayAllocations('amount');
+      } else if (action.op === 'complaint') {
+        set('actionStatus', 'WhatsApp Complaint / Claim Matter');
+        toggleConditionalFields();
+        set('claimNumber', p.claimNumber);
+        set('escalateTo', p.escalateTo);
+      } else {
+        set('actionStatus', 'Promise to Pay');
+        toggleConditionalFields();
+        set('expected', p.expectedRupees);
+        set('promiseDate', p.promiseDate);
+      }
       set('nextDate', p.nextDate);
       set('remark', p.remark);
     } else if (action.type === 'fms') {
@@ -498,7 +545,7 @@
       const execute = EXECUTORS[card.action.type] || (() => ({ error: 'Unknown action.' }));
       Object.assign(card, runCardAction(card, execute));
       if (card.status === 'saved') {
-        const note = SAVED_TEXT[card.action.type] || '✓ Saved.';
+        const note = card.action.op === 'payment' ? '✓ Payment saved.' : (SAVED_TEXT[card.action.type] || '✓ Saved.');
         chat.display.push({ role: 'bot', text: note });
         chat.messages.push({ role: 'assistant', content: note });
         try { renderAll(); } catch (e) { /* page views refresh on next visit */ }

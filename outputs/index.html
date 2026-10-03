@@ -14,7 +14,7 @@
   <title>CollectIQ - Payment Collection System</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="styles.css?v=6.12.2">
+  <link rel="stylesheet" href="styles.css?v=6.13.0">
   <script>
     function toggleMobileMenu(e) {
       if (e) {
@@ -736,7 +736,7 @@
               <option value="UPI">UPI</option>
             </select>
           </label>
-          <label id="followPayRefLabel">Cheque No / UTR / Txn ID
+          <label><span id="followPayRefLabel">Cheque No / UTR / Txn ID</span>
             <input id="followPayRef" placeholder="Enter Cheque No / UTR / Txn ID">
           </label>
           <label>Total Received Amount (₹)
@@ -805,7 +805,7 @@
             <option value="UPI">UPI</option>
           </select>
         </label>
-        <label id="payRefLabel">Cheque No / UTR / Txn ID<input id="payRef" required placeholder="Enter Cheque No / UTR / Txn ID"></label>
+        <label><span id="payRefLabel">Cheque No / UTR / Txn ID</span><input id="payRef" required placeholder="Enter Cheque No / UTR / Txn ID"></label>
         <label>Total received (₹)<input id="payAmount" type="number" min="1" required oninput="updatePayAllocations('amount')"></label>
         <label style="grid-column: 1 / -1;">Upload Transaction Receipt / Screenshot (Optional)
           <input id="payReceiptFile" type="file" accept="image/*" onchange="previewReceiptImage(this, 'payReceiptPreview')">
@@ -1521,17 +1521,17 @@ service cloud.firestore {
   <!-- Firebase Compatibility Libraries for Real-time Cloud DB -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-  <script src="latest-report-data.js?v=6.12.2"></script>
-  <script src="followup-actions.js?v=6.12.2"></script>
-  <script src="ticket-actions.js?v=6.12.2"></script>
-  <script src="app.js?v=6.12.2"></script>
-  <script src="ai-tools.js?v=6.12.2"></script>
-  <script src="ai-chat.js?v=6.12.2"></script>
+  <script src="latest-report-data.js?v=6.13.0"></script>
+  <script src="followup-actions.js?v=6.13.0"></script>
+  <script src="ticket-actions.js?v=6.13.0"></script>
+  <script src="app.js?v=6.13.0"></script>
+  <script src="ai-tools.js?v=6.13.0"></script>
+  <script src="ai-chat.js?v=6.13.0"></script>
   <!-- Progressive Web App Service Worker Registration -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
-        navigator.serviceWorker.register('sw.js?v=6.12.2').then(function(reg) {
+        navigator.serviceWorker.register('sw.js?v=6.13.0').then(function(reg) {
           console.log('[PWA] Service Worker registered with scope:', reg.scope);
         }).catch(function(err) {
           console.warn('[PWA] Service Worker registration failed:', err);

@@ -37,7 +37,7 @@ function buildSystemPrompt({ name, role, today } = {}) {
     '- Tool lists are already sorted and each row has a "rank". Keep exactly that order, start from rank 1 and never skip ranks.',
     '- Tool results give amounts as ready-made text like "₹10,43,80,733". Copy them exactly as given; never re-format, round or recalculate them.',
     '- In doer rows, "overdue" is a count of parties whose follow-up date has passed, and "balance" is the total amount of that doer\'s parties.',
-    '- For prepare_followup_form, fill contact_person, contact_mode, expected, next_date only if the user said them; otherwise leave them out.',
+    '- For prepare_followup_form, fill contact_person, contact_mode, expected, next_date, pay_ref, escalate_to only if the user said them; otherwise leave them out.',
     '- Never invent numbers, party names or dates. Use only what the tools return. If a tool has no data, say so plainly.',
     '- Use tools whenever the question is about parties, bills, follow-ups, PTPs, payments, tickets or performance.',
     '- If a tool returns "candidates", ask the user which party they mean.',
@@ -46,7 +46,9 @@ function buildSystemPrompt({ name, role, today } = {}) {
     '- When asked for a WhatsApp or reminder message, first get the party details, then put only the message text inside a block that starts with ```draft and ends with ```. Keep it respectful, mention the amount due and the oldest due date, and do not threaten.',
     '- When the user reports a Promise to Pay (party promised to pay on a date), call prepare_followup_form with status Promise to Pay. The chat shows a card: tell the user to check it and press Confirm. Ask for the promise date if the user did not say it.',
     '- If prepare_followup_form says the party has no followper, ask the user whose name to use, then call it again with followper set to that name. Never tell the user to open the form for this. If it returns a "suggestion", ask whether they mean that name.',
-    '- When the user reports a payment received or a complaint/claim, call prepare_followup_form with that status. Tell the user to press "Open form", check the details and press Save there.',
+    '- When money has come in ("aaya", "mila", "jama", "received", "cheque diya", "UPI kiya"), call prepare_followup_form with status Payment Received, amount, pay_mode (cheque, RTGS, NEFT, UPI or cash) and pay_ref (cheque no / UTR) if given. Ask for the amount or mode only if missing. The card shows which bills get cleared; tell the user to check it and press Confirm.',
+    '- When the party raises a complaint, claim, rate difference, short/damage or return, call prepare_followup_form with status WhatsApp Complaint / Claim Matter, with claim_number and remark. The party moves to CRM unless the user names escalate_to.',
+    '- Pick the status from the user\'s words; never ask the user to choose a status: "dega / denge / X tareekh ko / will pay" = Promise to Pay; "aaya / mila / received" = Payment Received; complaint words = WhatsApp Complaint / Claim Matter. If prepare_followup_form says a payment is already recorded, tell the user and do not call it again unless they say it is a different payment.',
     '- When the user says an FMS milestone (FMS-1 to FMS-4) is done for a party, call prepare_fms_done. Tell the user to check the card and press Confirm.',
     '- You never save anything yourself: never say a follow-up, FMS milestone or ticket was saved. Ask when the party or milestone is unclear.',
     '- Help tickets: before acting on an existing ticket, call find_tickets. For any ticket change (new ticket, in progress, done, reassign) call prepare_ticket_action. You never create or change a ticket yourself: never say it was created or changed. Tell the user to check the card and press Confirm.',
@@ -83,7 +85,7 @@ const TOOL_SCHEMAS = [
     name: { type: 'string', description: 'Doer name; omit for the full ranking' }
   }),
   fn('get_pending_work', 'Open help tickets assigned to the user and, for PC/admin, pending FMS milestones.'),
-  fn('prepare_followup_form', 'Prepare (not save) a follow-up entry. Promise to Pay gives a card the user confirms; Payment Received and complaints open the app\'s follow-up form pre-filled.', {
+  fn('prepare_followup_form', 'Prepare (not save) an Update Follow-up entry: Promise to Pay, Payment Received or WhatsApp Complaint / Claim Matter. The chat shows a card; nothing is saved until the user presses Confirm.', {
     party: { type: 'string', description: 'Party / marka name' },
     contact_person: { type: 'string', description: 'Person spoken to at the party' },
     followper: { type: 'string', description: 'Followper (doer) the follow-up is logged under; only when the user names one or the party has none' },
@@ -92,7 +94,13 @@ const TOOL_SCHEMAS = [
     expected: { type: 'number', description: 'Expected amount in rupees' },
     promise_date: { type: 'string', description: 'YYYY-MM-DD, required for Promise to Pay' },
     next_date: { type: 'string', description: 'YYYY-MM-DD next follow-up date' },
-    remark: { type: 'string', description: 'Conversation summary' }
+    remark: { type: 'string', description: 'Conversation summary' },
+    amount: { type: 'number', description: 'Payment Received: rupees received' },
+    pay_mode: { type: 'string', enum: ['cheque', 'RTGS', 'cash', 'NEFT', 'UPI'], description: 'Payment Received: how it was paid' },
+    pay_ref: { type: 'string', description: 'Payment Received: cheque number / UTR / transaction id' },
+    date: { type: 'string', description: 'Payment Received: YYYY-MM-DD the money came; default today' },
+    claim_number: { type: 'string', description: 'Complaint / Claim: complaint or claim number / short title' },
+    escalate_to: { type: 'string', description: 'Complaint / Claim: who handles it; default CRM' }
   }, ['party', 'status']),
   fn('find_tickets', 'List help tickets (id, party, subject, helper, requester, priority, status, next date), newest first. Use it before acting on an existing ticket.', {
     marka: { type: 'string', description: 'Party / marka name to filter by' },

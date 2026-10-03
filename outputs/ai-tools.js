@@ -300,25 +300,9 @@
       if (!found.marka) return found;
       if (args.status === 'Internal Help Ticket') return { error: 'For help tickets use prepare_ticket_action instead.' };
       if (args.status === 'Promise to Pay') return followupCard(ctx, found.marka, args);
-      if (!FORM_STATUSES.includes(args.status)) {
-        return { error: `Status must be one of: ${FORM_STATUSES.join(', ')}` };
-      }
-      const mode = args.contact_mode || 'Phone call';
-      if (!FORM_MODES.includes(mode)) return { error: `Contact mode must be one of: ${FORM_MODES.join(', ')}` };
-      const promiseDate = args.promise_date || '';
-      if (promiseDate && !ISO_DATE.test(promiseDate)) return { error: 'promise_date must be in YYYY-MM-DD format.' };
-      if (args.status === 'Promise to Pay' && !promiseDate) return { error: 'A promise date is required for Promise to Pay.' };
-      const nextDate = args.next_date || (args.status === 'Promise to Pay' ? promiseDate : '');
-      if (nextDate && !ISO_DATE.test(nextDate)) return { error: 'next_date must be in YYYY-MM-DD format.' };
-      const expected = Number(args.expected || 0);
-      if (!Number.isFinite(expected) || expected < 0) return { error: 'expected must be a valid amount.' };
-      return {
-        ok: true,
-        action: {
-          type: 'open_followup', markaId: found.marka.id, marka: found.marka.marka,
-          fields: { contactMode: mode, actionStatus: args.status, expected, promiseDate, nextDate, remark: String(args.remark || '') }
-        }
-      };
+      if (args.status === 'Payment Received') return paymentCard(ctx, found.marka, args);
+      if (args.status === 'WhatsApp Complaint / Claim Matter') return complaintCard(ctx, found.marka, args);
+      return { error: `Status must be one of: ${FORM_STATUSES.join(', ')}` };
     }
   });
 
@@ -338,20 +322,9 @@
     return u.followperName && norm(u.followperName) !== 'all' ? u.followperName : (u.email || 'Admin');
   }
 
-  // Promise to Pay: a card the user confirms; saved by followup-actions.js.
-  function followupCard(ctx, m, args) {
-    const denied = canUpdate(ctx, m);
-    if (denied) return denied;
-    const mode = args.contact_mode || 'Phone call';
-    if (!FA.CONTACT_MODES.includes(mode)) return { error: `Contact mode must be one of: ${FA.CONTACT_MODES.join(', ')}` };
-    const promiseDate = args.promise_date || '';
-    if (!ISO_DATE.test(promiseDate)) return { error: 'A promise date (YYYY-MM-DD) is required for Promise to Pay.' };
-    if (promiseDate < ctx.today) return { error: 'promise_date cannot be in the past.' };
-    const nextDate = args.next_date || promiseDate;
-    if (!ISO_DATE.test(nextDate)) return { error: 'next_date must be in YYYY-MM-DD format.' };
-    if (nextDate < ctx.today) return { error: 'next_date cannot be in the past.' };
-    const expected = Number(args.expected || 0);
-    if (!Number.isFinite(expected) || expected < 0) return { error: 'expected must be a valid amount.' };
+  // Followper the entry is logged under: the party owner, the name the user
+  // gave (doers only their own), or the user for an unassigned party.
+  function resolveFollowper(ctx, m, args) {
     const owner = ctx.h.ownerOf(m);
     const current = owner && owner !== 'Unassigned' ? owner : '';
     const me = ctx.user && ctx.user.followperName;
@@ -369,7 +342,126 @@
       if (!me || norm(me) === 'all') return { error: 'This party has no followper. Ask the user whose name to put it under, then call prepare_followup_form again with followper.' };
       followper = me;
     }
-    const followperLabel = current && norm(current) !== norm(followper) ? `${followper} (was ${current})` : followper;
+    const label = current && norm(current) !== norm(followper) ? `${followper} (was ${current})` : followper;
+    return { followper, current, label };
+  }
+
+  function contactMode(args) {
+    const mode = args.contact_mode || 'Phone call';
+    return FA.CONTACT_MODES.includes(mode) ? { mode } : { error: `Contact mode must be one of: ${FA.CONTACT_MODES.join(', ')}` };
+  }
+
+  const rupees = n => '₹' + INR.format(Math.round(n));
+
+  // Payment Received: a card showing which bills the money clears.
+  function paymentCard(ctx, m, args) {
+    const denied = canUpdate(ctx, m);
+    if (denied) return denied;
+    const amount = Number(args.amount || 0);
+    if (!Number.isFinite(amount) || amount <= 0) return { error: 'Ask the user how much was received (amount).' };
+    if (!args.pay_mode) return { error: 'Ask the user the payment mode: cheque, RTGS, NEFT, UPI or cash.' };
+    const payMode = FA.PAY_MODES.find(x => norm(x) === norm(args.pay_mode));
+    if (!payMode) return { error: `pay_mode must be one of: ${FA.PAY_MODES.join(', ')}` };
+    const date = args.date || ctx.today;
+    if (!ISO_DATE.test(date)) return { error: 'date must be in YYYY-MM-DD format.' };
+    if (date > ctx.today) return { error: 'The payment date cannot be in the future.' };
+    const cm = contactMode(args);
+    if (cm.error) return cm;
+    const who = resolveFollowper(ctx, m, args);
+    if (who.error) return who;
+
+    const payRef = String(args.pay_ref || '').trim();
+    const mine = (ctx.payments || []).filter(p => norm(p.marka) === norm(m.marka));
+    const hasRef = payRef && norm(payRef) !== 'n/a';
+    const dup = hasRef
+      ? mine.find(p => norm(p.ref) === norm(payRef))
+      : mine.find(p => Number(p.amount) === amount && p.date === date);
+    if (dup) {
+      return { error: `This payment is already recorded for ${m.marka}: ${rupees(Number(dup.amount) || 0)} on ${dup.date}${dup.ref && dup.ref !== 'N/A' ? ' (ref ' + dup.ref + ')' : ''}. Do not record it again unless the user confirms it is a different payment.` };
+    }
+
+    const nextArg = args.next_date || '';
+    if (nextArg && (!ISO_DATE.test(nextArg) || nextArg < ctx.today)) return { error: 'next_date must be today or later (YYYY-MM-DD).' };
+    const totalDue = ctx.h.totalOutstanding(m);
+    const payType = amount >= totalDue ? 'Full Payment' : 'Part Payment';
+    let rest = amount;
+    const billRows = (m.bills || []).filter(b => b.balance > 0)
+      .sort((a, b) => String(a.firstDate).localeCompare(String(b.firstDate)))
+      .map(b => {
+        const amt = Math.min(rest, b.balance);
+        rest -= amt;
+        return amt > 0 ? [`Bill ${b.firstDate}`, `${rupees(amt)} (${amt === b.balance ? 'full' : 'part'})`] : null;
+      }).filter(Boolean);
+    const after = totalDue - amount;
+    const closed = after <= 0;
+
+    const contactPerson = String(args.contact_person || '').trim();
+    const remark = String(args.remark || '').trim();
+    const rows = [['Marka', markaLabel(m)], ['Followper', who.label], ['Status', 'Payment Received'], ['Amount', rupees(amount)], ['Mode', payMode]];
+    if (hasRef) rows.push(['Cheque / UTR', payRef]);
+    if (date !== ctx.today) rows.push(['Date', date]);
+    rows.push(...billRows);
+    if (rest > 0) rows.push(['Advance', rupees(rest)]);
+    rows.push(['Balance after', rupees(Math.max(0, after))]);
+    rows.push(['Next date', closed ? 'Follow-up closed (all dues cleared)' : (nextArg || addDays(ctx.today, 2))]);
+    if (contactPerson) rows.push(['Contact', contactPerson]);
+    if (remark) rows.push(['Remark', remark]);
+    // payRupees, not amount: formatMoney would turn "amount" into text.
+    const payload = { markaId: m.id, marka: m.marka, followper: who.followper, contactPerson, contactMode: cm.mode, payMode, payRef, payRupees: amount, payType, nextDate: nextArg, remark, date };
+    return { ok: true, action: { type: 'followup', op: 'payment', payload, preview: { title: '💰 Payment received', rows } } };
+  }
+
+  // WhatsApp Complaint / Claim Matter: opens an escalation; the party moves to
+  // the escalation owner (CRM unless the user names someone).
+  function complaintCard(ctx, m, args) {
+    const denied = canUpdate(ctx, m);
+    if (denied) return denied;
+    const claimNumber = String(args.claim_number || '').trim();
+    const remark = String(args.remark || '').trim();
+    if (!claimNumber && !remark) return { error: 'Ask the user what the complaint / claim is about (or its number).' };
+    const cm = contactMode(args);
+    if (cm.error) return cm;
+    const who = resolveFollowper(ctx, m, args);
+    if (who.error) return who;
+    let escalateTo = 'CRM';
+    if (args.escalate_to) {
+      const picked = matchName(ctx.assignees || [], args.escalate_to, 'escalation');
+      if (picked.error) return picked;
+      escalateTo = picked.name;
+    }
+    const minNext = addDays(ctx.today, 5);
+    const nextArg = args.next_date || '';
+    if (nextArg && !ISO_DATE.test(nextArg)) return { error: 'next_date must be in YYYY-MM-DD format.' };
+    const nextDate = nextArg > minNext ? nextArg : minNext;
+    const contactPerson = String(args.contact_person || '').trim();
+    const owner = ctx.h.ownerOf(m);
+    const rows = [['Marka', markaLabel(m)], ['Followper', who.label], ['Status', 'WhatsApp Complaint / Claim Matter']];
+    if (claimNumber) rows.push(['Claim / Complaint no', claimNumber]);
+    rows.push(['Party goes to', owner && owner !== 'Unassigned' && norm(owner) !== norm(escalateTo) ? `${escalateTo} (was ${owner})` : escalateTo]);
+    rows.push(['Next date', nextDate]);
+    if (contactPerson) rows.push(['Contact', contactPerson]);
+    if (remark) rows.push(['Remark', remark]);
+    const payload = { markaId: m.id, marka: m.marka, followper: who.followper, contactPerson, contactMode: cm.mode, claimNumber, escalateTo, nextDate, remark };
+    return { ok: true, action: { type: 'followup', op: 'complaint', payload, preview: { title: '⚠️ Complaint / Claim', rows } } };
+  }
+
+  // Promise to Pay: a card the user confirms; saved by followup-actions.js.
+  function followupCard(ctx, m, args) {
+    const denied = canUpdate(ctx, m);
+    if (denied) return denied;
+    const mode = args.contact_mode || 'Phone call';
+    if (!FA.CONTACT_MODES.includes(mode)) return { error: `Contact mode must be one of: ${FA.CONTACT_MODES.join(', ')}` };
+    const promiseDate = args.promise_date || '';
+    if (!ISO_DATE.test(promiseDate)) return { error: 'A promise date (YYYY-MM-DD) is required for Promise to Pay.' };
+    if (promiseDate < ctx.today) return { error: 'promise_date cannot be in the past.' };
+    const nextDate = args.next_date || promiseDate;
+    if (!ISO_DATE.test(nextDate)) return { error: 'next_date must be in YYYY-MM-DD format.' };
+    if (nextDate < ctx.today) return { error: 'next_date cannot be in the past.' };
+    const expected = Number(args.expected || 0);
+    if (!Number.isFinite(expected) || expected < 0) return { error: 'expected must be a valid amount.' };
+    const who = resolveFollowper(ctx, m, args);
+    if (who.error) return who;
+    const { followper, label: followperLabel } = who;
     const contactPerson = String(args.contact_person || '').trim();
     const remark = String(args.remark || '').trim();
     const rows = [['Marka', markaLabel(m)], ['Followper', followperLabel], ['Mode', mode], ['Status', 'Promise to Pay']];

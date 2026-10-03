@@ -277,11 +277,59 @@ test('prepare_followup_form: Promise to Pay returns a follow-up card', () => {
   assert.equal(T.runTool(ctx(SURENDRA), 'prepare_followup_form', JSON.stringify({ party: 'JGG', status: 'Promise to Pay', expected: 50000, promise_date: '2026-10-10' })).action.payload.expectedRupees, 50000);
 });
 
-test('prepare_followup_form: payment and complaint still open the form; help ticket goes to the ticket tool', () => {
-  const pay = T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'Payment Received', remark: 'cheque mila' });
-  assert.equal(pay.action.type, 'open_followup');
-  assert.equal(T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'WhatsApp Complaint / Claim Matter' }).action.type, 'open_followup');
+test('prepare_followup_form: help ticket goes to the ticket tool', () => {
   assert.match(T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'Internal Help Ticket' }).error, /prepare_ticket_action/);
+});
+
+test('prepare_followup_form: Payment Received card shows the bills it clears', () => {
+  const r = T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'Payment Received', amount: 60000, pay_mode: 'cheque', pay_ref: '123456' });
+  assert.equal(r.action.type, 'followup');
+  assert.equal(r.action.op, 'payment');
+  assert.equal(r.action.preview.title, '💰 Payment received');
+  assert.deepEqual(r.action.payload, {
+    markaId: 'a', marka: 'JGG', followper: 'Surendra', contactPerson: '', contactMode: 'Phone call',
+    payMode: 'cheque', payRef: '123456', payRupees: 60000, payType: 'Part Payment', nextDate: '', remark: '', date: '2026-10-02'
+  });
+  const rows = r.action.preview.rows;
+  for (const row of [['Amount', '₹60,000'], ['Mode', 'cheque'], ['Cheque / UTR', '123456'], ['Bill 2026-09-01', '₹50,000 (full)'], ['Bill 2026-11-01', '₹10,000 (part)'], ['Balance after', '₹10,000'], ['Next date', '2026-10-04']]) {
+    assert.deepEqual(rows.find(x => x[0] === row[0]), row, row[0]);
+  }
+  // the amount survives runTool's money formatting
+  assert.equal(T.runTool(ctx(SURENDRA), 'prepare_followup_form', JSON.stringify({ party: 'JGG', status: 'Payment Received', amount: 60000, pay_mode: 'UPI' })).action.payload.payRupees, 60000);
+});
+
+test('prepare_followup_form: full and over payment close the follow-up', () => {
+  const full = T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'Payment Received', amount: 70000, pay_mode: 'NEFT' });
+  assert.equal(full.action.payload.payType, 'Full Payment');
+  assert.deepEqual(full.action.preview.rows.find(x => x[0] === 'Next date'), ['Next date', 'Follow-up closed (all dues cleared)']);
+  const over = T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'Payment Received', amount: 75000, pay_mode: 'NEFT' });
+  assert.deepEqual(over.action.preview.rows.find(x => x[0] === 'Advance'), ['Advance', '₹5,000']);
+});
+
+test('prepare_followup_form: Payment Received refusals and duplicate protection', () => {
+  const p = (args, extra) => T.tools.prepare_followup_form(ctx(SURENDRA, extra), { party: 'JGG', status: 'Payment Received', pay_mode: 'cheque', amount: 10000, ...args });
+  assert.match(p({ pay_mode: '' }).error, /mode/i);
+  assert.ok(p({ pay_mode: 'bitcoin' }).error);
+  assert.ok(p({ amount: 0 }).error);
+  assert.ok(p({ date: '2026-10-05' }).error);
+  assert.match(p({ party: 'SAN' }).error, /own parties/);
+  const paid = { payments: [{ date: '2026-09-30', marka: 'JGG', ref: '123456', amount: 10000, mode: 'cheque' }] };
+  assert.match(p({ pay_ref: '123456' }, paid).error, /already/);
+  const today = { payments: [{ date: '2026-10-02', marka: 'JGG', ref: 'N/A', amount: 10000, mode: 'cash' }] };
+  assert.match(p({ pay_mode: 'cash' }, today).error, /already/);
+});
+
+test('prepare_followup_form: complaint card moves the party to CRM', () => {
+  const r = T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'WhatsApp Complaint / Claim Matter', claim_number: 'CLM-102', remark: 'Rate difference' });
+  assert.equal(r.action.op, 'complaint');
+  assert.equal(r.action.preview.title, '⚠️ Complaint / Claim');
+  assert.deepEqual(r.action.payload, {
+    markaId: 'a', marka: 'JGG', followper: 'Surendra', contactPerson: '', contactMode: 'Phone call',
+    claimNumber: 'CLM-102', escalateTo: 'CRM', nextDate: '2026-10-07', remark: 'Rate difference'
+  });
+  assert.deepEqual(r.action.preview.rows.find(x => x[0] === 'Party goes to'), ['Party goes to', 'CRM (was Surendra)']);
+  assert.ok(T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'WhatsApp Complaint / Claim Matter' }).error);
+  assert.equal(T.tools.prepare_followup_form(ctx(SURENDRA, { assignees: ['Account Team', 'CRM'] }), { party: 'JGG', status: 'WhatsApp Complaint / Claim Matter', remark: 'x', escalate_to: 'account team' }).action.payload.escalateTo, 'Account Team');
 });
 
 test('prepare_followup_form: Promise to Pay refusals', () => {

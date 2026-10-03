@@ -89,3 +89,14 @@ test('prompt: relative dates, keeping earlier details, no Devanagari, never gues
   assert.match(p, /Devanagari/);
   assert.match(p, /never pick a party yourself/i);
 });
+
+test('prompt and schema: payment received and complaint go through cards; status follows the words', () => {
+  const fu = TOOL_SCHEMAS.find(t => t.function.name === 'prepare_followup_form').function.parameters.properties;
+  assert.deepEqual(fu.pay_mode.enum, ['cheque', 'RTGS', 'cash', 'NEFT', 'UPI']);
+  for (const k of ['amount', 'pay_ref', 'date', 'claim_number', 'escalate_to']) assert.ok(fu[k], k);
+  const p = buildSystemPrompt({ name: 'A', role: 'admin', today: '2026-10-03' });
+  assert.match(p, /dega/);
+  assert.match(p, /aaya/);
+  assert.doesNotMatch(p, /Open form/);
+  assert.match(p, /never ask the user to choose a status/i);
+});

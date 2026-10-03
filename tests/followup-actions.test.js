@@ -121,3 +121,120 @@ test('FMS definitions and contact modes match the app', () => {
   ]);
   assert.deepEqual(FA.CONTACT_MODES, ['Phone call', 'WhatsApp', 'Email', 'In person (Field Visit)']);
 });
+
+// ---- Payment Received (Update Follow-up form) ----
+
+const money = n => '₹' + n;
+let seq = 0;
+const newId = () => 'id' + (++seq);
+
+function billedParty() {
+  return {
+    id: 'p', marka: 'RKC', master: 'KALPESH MASTER', owner: 'Sajjan', expected: 0, ptp: '', history: [], fmsTasks: [],
+    bills: [
+      { id: 2, firstDate: '2026-07-15', balance: 20000 },
+      { id: 1, firstDate: '2026-07-01', balance: 30000 },
+      { id: 3, firstDate: '2026-06-01', balance: 0 }
+    ]
+  };
+}
+
+function pay(extra = {}) {
+  seq = 0;
+  return {
+    date: '2026-10-03', followper: 'Sajjan', contactPerson: '', contactMode: 'Phone call', remark: '', expected: 0, promiseDate: '',
+    nextDate: '', payRef: '123456', payMode: 'cheque', payType: 'Part Payment', payAmount: 40000, ownerFallback: 'Sajjan',
+    paymentFollowperFallback: 'Sajjan', defaultNext: '2026-10-05', newId, money, now: Date.parse('2026-10-03T10:00:00Z'), ...extra
+  };
+}
+
+test('applyPaymentFollowup: part payment clears oldest bills first', () => {
+  const m = billedParty();
+  const payments = [];
+  const r = FA.applyPaymentFollowup(m, payments, pay());
+  assert.equal(r.error, undefined);
+  assert.deepEqual(m.bills.map(b => [b.id, b.balance]), [[2, 10000], [1, 0], [3, 0]]);
+  assert.deepEqual(r.entry.allocations, [{ billId: 1, amount: 30000, settled: true }, { billId: 2, amount: 10000, settled: false }]);
+  assert.deepEqual(
+    { type: r.entry.type, status: r.entry.status, next: r.entry.next, amount: r.entry.amount, ref: r.entry.ref, remark: r.entry.remark, followper: r.entry.followper },
+    { type: 'payment', status: 'Payment Received', next: '2026-10-05', amount: 40000, ref: '123456', remark: 'Payment ₹40000 received (cheque ref: 123456); ₹10000 still due.', followper: 'Sajjan' }
+  );
+  assert.deepEqual(payments, [r.payment]);
+  assert.deepEqual(r.payment, {
+    id: 'id1', date: '2026-10-03', ref: '123456', mode: 'cheque', amount: 40000, marka: 'RKC', receiptImage: '', followper: 'Sajjan',
+    allocations: [{ billId: 1, amount: 30000, settled: true, isAdvance: false }, { billId: 2, amount: 10000, settled: false, isAdvance: false }]
+  });
+  assert.deepEqual({ next: m.nextDate, status: m.lastStatus, owner: m.owner, last: m.lastDate }, { next: '2026-10-05', status: 'Payment Received', owner: 'Sajjan', last: '2026-10-03' });
+  assert.equal(m.history.at(-1), r.entry);
+  assert.equal(r.payload.actionStatus, 'Payment Received');
+  assert.equal(r.payload.payAmount, 40000);
+});
+
+test('applyPaymentFollowup: full payment closes the follow-up; extra becomes advance', () => {
+  const full = billedParty();
+  const r1 = FA.applyPaymentFollowup(full, [], pay({ payAmount: 50000, payType: 'Full Payment' }));
+  assert.equal(r1.entry.next, '');
+  assert.equal(r1.entry.status, 'Payment Received');
+  assert.equal(r1.entry.remark, 'Full payment ₹50000 received (cheque ref: 123456). All dues cleared.');
+  const over = billedParty();
+  const r2 = FA.applyPaymentFollowup(over, [], pay({ payAmount: 55000, payType: 'Full Payment' }));
+  const adv = over.bills.at(-1);
+  assert.deepEqual(adv, { id: 'adv_id1', firstDate: '2026-10-03', balance: -5000, sourceAmount: -5000, billCount: 1, billNos: ['ADV/123456'], policyDate: '2026-10-03', policyName: 'ADVANCE PAYMENT' });
+  assert.deepEqual(r2.entry.allocations.at(-1), { billId: 'adv_id1', amount: 5000, settled: true, isAdvance: true });
+  assert.equal(r2.entry.status, 'Advance Payment');
+  assert.equal(r2.entry.next, '');
+});
+
+test('applyPaymentFollowup: given allocations (form) are used and capped at the bill balance', () => {
+  const m = billedParty();
+  const r = FA.applyPaymentFollowup(m, [], pay({ payAmount: 25000, allocations: [{ billId: 2, amount: 25000 }] }));
+  assert.deepEqual(r.entry.allocations[0], { billId: 2, amount: 20000, settled: true });
+  assert.equal(r.entry.allocations[1].isAdvance, true);
+  assert.equal(r.entry.allocations[1].amount, 5000);
+});
+
+test('applyPaymentFollowup: bad input changes nothing', () => {
+  for (const bad of [{ payAmount: 0 }, { payMode: 'bitcoin' }, { payType: 'Half' }, { allocations: [] }]) {
+    const m = billedParty();
+    const before = clone(m);
+    const payments = [];
+    assert.ok(FA.applyPaymentFollowup(m, payments, pay(bad)).error, JSON.stringify(bad));
+    assert.deepEqual(m, before);
+    assert.equal(payments.length, 0);
+  }
+});
+
+// ---- WhatsApp Complaint / Claim Matter ----
+
+function complaint(extra = {}) {
+  return {
+    date: '2026-10-03', followper: 'Sajjan', contactPerson: 'Seth ji', contactMode: 'WhatsApp', remark: 'Rate difference on 2 bills',
+    expected: 0, promiseDate: '', nextDate: '', claimNumber: 'CLM-102', escalateTo: '', billIds: [1], minNext: '2026-10-08',
+    newEscId: () => 'e_1', ...extra
+  };
+}
+
+test('applyComplaintFollowup: escalation, owner moves, next date at least +5', () => {
+  const m = billedParty();
+  const r = FA.applyComplaintFollowup(m, complaint());
+  assert.deepEqual(m.escalations, [{ id: 'e_1', date: '2026-10-03', type: 'Claim Matter', claimNumber: 'CLM-102', waComplaintNo: '', escalatedTo: 'CRM', followper: 'Sajjan', status: 'Open', remark: 'Rate difference on 2 bills', billIds: [1] }]);
+  assert.deepEqual(
+    { status: r.entry.status, next: r.entry.next, claim: r.entry.claimNumber, esc: r.entry.escalatedTo, billIds: r.entry.billIds, type: r.entry.type },
+    { status: 'WhatsApp Complaint / Claim Matter', next: '2026-10-08', claim: 'CLM-102', esc: 'CRM', billIds: [1], type: 'followup' }
+  );
+  assert.equal(m.owner, 'CRM');
+  assert.equal(m.nextDate, '2026-10-08');
+  assert.equal(r.payload.escId, 'e_1');
+  const later = FA.applyComplaintFollowup(billedParty(), complaint({ nextDate: '2026-10-20', escalateTo: 'Account Team', claimNumber: '' }));
+  assert.equal(later.entry.next, '2026-10-20');
+  assert.equal(later.entry.claimNumber, 'Rate difference on 2 bills');
+  assert.equal(later.escalation.escalatedTo, 'Account Team');
+});
+
+test('applyComplaintFollowup: needs a claim number or a remark', () => {
+  const m = billedParty();
+  const before = clone(m);
+  assert.ok(FA.applyComplaintFollowup(m, complaint({ claimNumber: '', remark: '', requireDetail: true })).error);
+  assert.equal(FA.applyComplaintFollowup(billedParty(), complaint({ claimNumber: '', remark: '' })).error, undefined);
+  assert.deepEqual(m, before);
+});
