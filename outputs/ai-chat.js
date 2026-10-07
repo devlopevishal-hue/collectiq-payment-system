@@ -86,9 +86,29 @@
 
   const CARD_STATUS_TEXT = { saved: '✓ Saved', cancelled: 'Cancelled', edited: '✏️ Opened in the form' };
 
-  // A help-ticket change proposed by the AI. Nothing is saved until Confirm.
+  function cardKind(action) {
+    if (action.type === 'followup') return action.op === 'payment' ? 'payment' : action.op === 'complaint' ? 'complaint' : 'ptp';
+    return action.type === 'fms' ? 'fms' : 'ticket';
+  }
+
+  const rupeeText = n => '₹' + new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(Math.round(n));
+
+  // Big amount + how much of the outstanding this payment clears.
+  function paymentSummary(action, esc) {
+    const amount = Number((action.payload || {}).payRupees) || 0;
+    if (!amount) return '';
+    const afterRow = ((action.preview || {}).rows || []).find(r => r[0] === 'Balance after');
+    const after = afterRow ? Number(String(afterRow[1]).replace(/[^\d]/g, '')) || 0 : 0;
+    const pct = Math.min(100, Math.round(amount * 100 / (amount + after)));
+    return `<div class="ai-card-amount" data-amount="${amount}">${esc(rupeeText(amount))}</div>` +
+      `<div class="ai-card-progress" style="--pct:${pct}%"><i></i></div>` +
+      `<div class="ai-card-progress-cap"><span>${pct}% of dues cleared</span><span>Left ${esc(rupeeText(after))}</span></div>`;
+  }
+
+  // An action the AI proposes (ticket, follow-up, payment, FMS). Nothing is saved until Confirm.
   function renderTicketCard(action, status, index, esc, error) {
     const preview = action.preview || {};
+    const kind = cardKind(action);
     const rows = (preview.rows || []).map(([label, value]) =>
       `<tr><th>${esc(String(label))}</th><td>${esc(String(value))}</td></tr>`).join('');
     const footer = status === 'pending'
@@ -98,8 +118,11 @@
           <button type="button" class="ai-ticket-cancel" data-ticket-cancel data-card="${esc(String(index))}">✗ Cancel</button>
         </div>`
       : `<div class="ai-ticket-status">${status === 'error' ? '⚠️ ' + esc(String(error || 'Could not save.')) : (CARD_STATUS_TEXT[status] || '')}</div>`;
-    return `<div class="ai-ticket-card ${esc(String(status))}"><div class="ai-ticket-title">${esc(String(preview.title || 'Help ticket'))}</div>` +
-      `<table class="ai-ticket-rows">${rows}</table>${footer}</div>`;
+    const stamp = status === 'saved' ? '<div class="ai-card-stamp" aria-hidden="true">SAVED</div>' : '';
+    return `<div class="ai-ticket-card ${esc(String(status))} kind-${kind}" data-card-ref="${esc(String(index))}">` +
+      `<div class="ai-card-top"><div class="ai-ticket-title">${esc(String(preview.title || 'Help ticket'))}</div></div>` +
+      (kind === 'payment' ? paymentSummary(action, esc) : '') +
+      `<table class="ai-ticket-rows">${rows}</table>${footer}${stamp}</div>`;
   }
 
   // Runs a pending card once; any other card is returned unchanged.
@@ -141,7 +164,29 @@
 
   const CHIPS = ['Who should I call today?', 'Show broken PTPs', "What's my score?", 'Party status: '];
 
-  const state = { chats: [], currentId: null, status: 'idle', busy: false, mounted: false, showList: false };
+  const TILES = [
+    { icon: '📞', tint: 'violet', title: "Today's follow-ups", sub: 'Who to call first', chip: 'Who should I call today?' },
+    { icon: '💰', tint: 'green', title: 'Payment entry', sub: 'Cheque / UPI received', chip: 'Payment aaya: ' },
+    { icon: '⚠️', tint: 'amber', title: 'Broken PTPs', sub: 'Promises not kept', chip: 'Show broken PTPs' },
+    { icon: '🎫', tint: 'pink', title: 'Help ticket', sub: 'Assign a task', chip: 'Help ticket: ' }
+  ];
+
+  // What the "thinking" bubble says while a tool runs.
+  const TOOL_STEPS = {
+    get_party_details: 'Checking the party…', search_parties: 'Searching parties…', get_today_followups: "Checking today's follow-ups…",
+    get_broken_ptps: 'Looking for broken promises…', get_collections: 'Adding up collections…', get_doer_performance: 'Scoring the team…',
+    get_pending_work: 'Checking pending work…', find_tickets: 'Looking up tickets…', prepare_ticket_action: 'Preparing the ticket card…',
+    prepare_followup_form: 'Matching bills and preparing the card…', prepare_fms_done: 'Preparing the FMS card…'
+  };
+
+  const THEME_KEY = 'collectiq_ai_theme';
+  const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const state = {
+    chats: [], currentId: null, status: 'idle', busy: false, mounted: false, showList: false,
+    step: '', seen: {}, celebrate: null, counted: new Set(),
+    theme: (function () { try { return localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light'; } catch (e) { return 'light'; } })()
+  };
 
   function user() {
     return (typeof currentUser !== 'undefined' && currentUser) || { email: 'guest', role: 'user', followperName: '' };
@@ -250,9 +295,15 @@
 
   // ---------- Rendering ----------
 
+  function robot(cls) {
+    return `<svg class="${cls}" viewBox="0 0 40 40" aria-hidden="true"><circle class="ai-bot-ant" cx="20" cy="5" r="3"/><rect x="19" y="7" width="2" height="5" class="ai-bot-neck"/>` +
+      '<rect x="7" y="12" width="26" height="20" rx="7" class="ai-bot-head"/><g class="ai-bot-eyes"><circle cx="15" cy="21" r="3"/><circle cx="25" cy="21" r="3"/></g>' +
+      '<rect x="15" y="26" width="10" height="2" rx="1" class="ai-bot-mouth"/></svg>';
+  }
+
   function shell() {
     return `
-      <div class="ai-shell ${state.showList ? 'show-list' : ''}">
+      <div class="ai-shell ${state.showList ? 'show-list' : ''}" data-theme="${state.theme}">
         <aside class="ai-sidebar">
           <button type="button" class="ai-new-btn" data-new>＋ New chat</button>
           <div class="ai-chat-list" id="aiChatList"></div>
@@ -261,12 +312,13 @@
           <div class="ai-header">
             <div class="ai-title">
               <button type="button" class="ai-list-toggle" data-toggle-list title="Past chats">☰</button>
-              <span class="ai-logo">🤖</span>
-              <div><b>CollectIQ AI Assistant</b><small>Answers from your collection data</small></div>
+              <span class="ai-logo">${robot('ai-bot')}</span>
+              <div><b>CollectIQ AI Assistant</b><small>Your collection co-pilot</small></div>
             </div>
             <div class="ai-header-actions">
               <span id="aiStatus" class="ai-status"></span>
-              <button type="button" class="ai-summary-btn" data-summary>☀️ Morning summary</button>
+              <button type="button" class="ai-theme-btn" data-theme-toggle title="Day / night look" aria-label="Switch day or night look">${state.theme === 'dark' ? '☀️' : '🌙'}</button>
+              <button type="button" class="ai-summary-btn" data-summary>☀️ <span>Morning summary</span></button>
             </div>
           </div>
           <div class="ai-messages" id="aiMessages"></div>
@@ -287,32 +339,111 @@
       </button>`).join('') : '<p class="ai-empty-list">No chats yet.</p>';
   }
 
+  function greeting() {
+    const h = new Date().getHours();
+    const part = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+    const name = user().followperName && user().followperName !== 'all' ? user().followperName : '';
+    return `${part}${name ? ', ' + name : ''} 👋`;
+  }
+
+  function welcomeHtml() {
+    let s = null;
+    try { s = CollectIQAITools.computeMorningSummary(buildCtx()); } catch (e) { /* numbers are optional */ }
+    const stats = s ? `
+      <div class="ai-stats">
+        <div class="ai-stat" style="--d:.35s"><small>Due today</small><b data-count="${s.followupsToday}">${s.followupsToday}</b></div>
+        <div class="ai-stat" style="--d:.45s"><small>Collected today</small><b data-count="${s.collectedToday}" data-money="1">${escapeHtml(money(s.collectedToday))}</b></div>
+        <div class="ai-stat warn" style="--d:.55s"><small>Broken PTPs</small><b data-count="${s.brokenPtps}">${s.brokenPtps}</b></div>
+      </div>` : '';
+    return `
+      <div class="ai-welcome">
+        <div class="ai-welcome-bot">${robot('ai-bot big')}</div>
+        <h3><span class="ai-typed" style="--chars:${greeting().length + 2}">${escapeHtml(greeting())}</span></h3>
+        <p>Ask about parties, bills and payments, or tell me what happened. I prepare follow-ups, payments, FMS and tickets for you to confirm.</p>
+        ${stats}
+        <div class="ai-tiles">${TILES.map((t, i) => `
+          <button type="button" class="ai-tile tint-${t.tint}" style="--d:${(0.65 + i * 0.08).toFixed(2)}s" data-chip="${escapeHtml(t.chip)}">
+            <span class="ai-tile-icon">${t.icon}</span><b>${escapeHtml(t.title)}</b><small>${escapeHtml(t.sub)}</small>
+          </button>`).join('')}</div>
+        <div class="ai-chips">${CHIPS.filter(c => !TILES.some(t => t.chip === c)).map(c => `<button type="button" class="ai-chip" data-chip="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')}</div>
+      </div>`;
+  }
+
+  // Numbers roll up from zero once, when they first appear.
+  function countUp(el, to, asMoney) {
+    if (REDUCED_MOTION || !to) return;
+    const start = performance.now();
+    const ms = 900;
+    (function step(t) {
+      const k = Math.min(1, (t - start) / ms);
+      const v = Math.round(to * (1 - Math.pow(1 - k, 3)));
+      el.textContent = asMoney ? money(v) : String(v);
+      if (k < 1) requestAnimationFrame(step);
+    })(start);
+  }
+
+  function confetti(card) {
+    if (REDUCED_MOTION || !card) return;
+    const colors = ['#5b4bc4', '#12a37a', '#f59e0b', '#ec4899', '#7c6cf0'];
+    for (let i = 0; i < 24; i++) {
+      const c = document.createElement('i');
+      c.className = 'ai-confetti';
+      c.style.background = colors[i % colors.length];
+      c.style.setProperty('--x', Math.round(Math.random() * 280 - 140) + 'px');
+      c.style.setProperty('--y', Math.round(-Math.random() * 160 - 40) + 'px');
+      c.style.animationDelay = (Math.random() * 0.15).toFixed(2) + 's';
+      card.appendChild(c);
+      setTimeout(() => c.remove(), 1400);
+    }
+  }
+
+  function thinkingHtml() {
+    return `<div class="ai-msg bot ai-enter"><div class="ai-bubble ai-thinking"><span class="ai-orb"><i></i><i></i></span><span id="aiStep">${escapeHtml(state.step || 'Thinking…')}</span></div></div>`;
+  }
+
+  function setStep(text) {
+    state.step = text;
+    const el = document.getElementById('aiStep');
+    if (el) el.textContent = text;
+  }
+
   function renderMessages() {
     const el = document.getElementById('aiMessages');
     if (!el) return;
     const chat = currentChat();
     if (!chat || !chat.display.length) {
-      const name = user().followperName && user().followperName !== 'all' ? user().followperName : '';
-      el.innerHTML = `
-        <div class="ai-welcome">
-          <div class="ai-welcome-icon">🤖</div>
-          <h3>Hello${name ? ' ' + escapeHtml(name) : ''}!</h3>
-          <p>Ask me about your parties, bills, follow-ups and payments. I can also draft WhatsApp reminders and prepare follow-ups, FMS milestones and help tickets for you to confirm.</p>
-          <div class="ai-chips">${CHIPS.map(c => `<button type="button" class="ai-chip" data-chip="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')}</div>
-        </div>`;
+      el.innerHTML = welcomeHtml();
+      el.querySelectorAll('.ai-stat b[data-count]').forEach(b => countUp(b, Number(b.dataset.count), !!b.dataset.money));
+      if (chat) state.seen[chat.id] = 0;
       return;
     }
+    // Only messages added since the last render slide in.
+    if (state.seen[chat.id] === undefined) state.seen[chat.id] = chat.display.length;
+    const firstNew = state.seen[chat.id];
+    state.seen[chat.id] = chat.display.length;
     el.innerHTML = chat.display.map((d, i) => {
-      if (d.role === 'user') return `<div class="ai-msg user"><div class="ai-bubble">${escapeHtml(d.text).replace(/\n/g, '<br>')}</div></div>`;
+      const enter = i >= firstNew ? ' ai-enter' : '';
+      if (d.role === 'user') return `<div class="ai-msg user${enter}"><div class="ai-bubble">${escapeHtml(d.text).replace(/\n/g, '<br>')}</div></div>`;
       const actions = (d.actions || []).map((a, j) =>
         `<button type="button" class="ai-action-btn" data-action="${i}:${j}">📝 Open form: ${escapeHtml(a.marka)}</button>`).join('');
       const cards = (d.cards || []).map((c, j) => renderTicketCard(c.action, c.status, `${i}:${j}`, escapeHtml, c.error)).join('');
       return `
-        <div class="ai-msg bot ${d.error ? 'error' : ''}">
+        <div class="ai-msg bot ${d.error ? 'error' : ''}${enter}">
           <div class="ai-bubble">${renderMessageHtml(d.text, escapeHtml)}${actions ? `<div class="ai-actions">${actions}</div>` : ''}${cards}</div>
           ${d.error ? '' : `<div class="ai-meta"><button type="button" class="ai-copy-msg" data-copy-msg="${i}">📋 Copy</button>${d.provider ? `<span>${d.provider === 'glm' ? 'GLM' : 'Groq'}</span>` : ''}</div>`}
         </div>`;
-    }).join('') + (state.busy ? '<div class="ai-msg bot"><div class="ai-bubble ai-typing"><span></span><span></span><span></span></div></div>' : '');
+    }).join('') + (state.busy ? thinkingHtml() : '');
+    el.querySelectorAll('.ai-msg.ai-enter .ai-card-amount[data-amount]').forEach(a => {
+      const ref = a.closest('.ai-ticket-card').dataset.cardRef;
+      if (state.counted.has(chat.id + ref)) return;
+      state.counted.add(chat.id + ref);
+      countUp(a, Number(a.dataset.amount), true);
+    });
+    if (state.celebrate) {
+      const card = el.querySelector(`.ai-ticket-card[data-card-ref="${state.celebrate}"]`);
+      if (card) { card.classList.add('celebrate'); confetti(card); }
+      state.celebrate = null;
+    }
     el.scrollTop = el.scrollHeight;
   }
 
@@ -545,6 +676,7 @@
       const execute = EXECUTORS[card.action.type] || (() => ({ error: 'Unknown action.' }));
       Object.assign(card, runCardAction(card, execute));
       if (card.status === 'saved') {
+        state.celebrate = t.dataset.card;
         const note = card.action.op === 'payment' ? '✓ Payment saved.' : (SAVED_TEXT[card.action.type] || '✓ Saved.');
         chat.display.push({ role: 'bot', text: note });
         chat.messages.push({ role: 'assistant', content: note });
@@ -584,6 +716,7 @@
     chat.display.push({ role: 'user', text: displayText });
     chat.updatedAt = Date.now();
     state.busy = true;
+    state.step = opts.noTools ? 'Writing your summary…' : 'Reading your message…';
     setStatus('busy');
     renderAllAI();
 
@@ -598,7 +731,10 @@
         result = await runAgentTurn({
           messages: history,
           postChat,
-          runTool: (name, args) => CollectIQAITools.runTool(ctx, name, args)
+          runTool: (name, args) => {
+            setStep(TOOL_STEPS[name] || 'Checking your data…');
+            return CollectIQAITools.runTool(ctx, name, args);
+          }
         });
       }
       chat.messages = result.messages;
@@ -636,6 +772,13 @@
       if (t.hasAttribute('data-new')) { newChat(); state.showList = false; mount(true); return; }
       if (t.hasAttribute('data-toggle-list')) { state.showList = !state.showList; container.querySelector('.ai-shell').classList.toggle('show-list', state.showList); return; }
       if (t.hasAttribute('data-summary')) { askSummary(); return; }
+      if (t.hasAttribute('data-theme-toggle')) {
+        state.theme = state.theme === 'dark' ? 'light' : 'dark';
+        try { localStorage.setItem(THEME_KEY, state.theme); } catch (err) { /* per-browser preference only */ }
+        container.querySelector('.ai-shell').dataset.theme = state.theme;
+        t.textContent = state.theme === 'dark' ? '☀️' : '🌙';
+        return;
+      }
       if (t.dataset.open) { state.currentId = t.dataset.open; state.showList = false; mount(true); return; }
       if (t.dataset.chip) {
         const input = document.getElementById('aiInput');

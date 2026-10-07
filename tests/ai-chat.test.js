@@ -147,3 +147,28 @@ test('renderTicketCard also renders follow-up and FMS cards', () => {
   assert.ok(saved.includes('✓ Saved'));
   assert.ok(!saved.includes('data-ticket-confirm'));
 });
+
+test('renderTicketCard: payment card shows the big amount and how much of the balance it clears', () => {
+  const action = {
+    type: 'followup', op: 'payment', payload: { payRupees: 30000 },
+    preview: { title: '💰 Payment received', rows: [['Amount', '₹30,000'], ['Balance after', '₹70,000']] }
+  };
+  const html = renderTicketCard(action, 'pending', '1:0', escapeHtml);
+  assert.ok(html.includes('kind-payment'));
+  assert.ok(html.includes('data-amount="30000"'));
+  assert.ok(html.includes('₹30,000'));
+  assert.ok(html.includes('--pct:30%'));
+  const saved = renderTicketCard(action, 'saved', '1:0', escapeHtml);
+  assert.ok(saved.includes('ai-card-stamp'));
+  assert.ok(!renderTicketCard(action, 'pending', '1:0', escapeHtml).includes('ai-card-stamp'));
+});
+
+test('renderTicketCard: each action kind gets its own class', () => {
+  const kinds = [
+    [{ type: 'followup', op: 'ptp' }, 'kind-ptp'], [{ type: 'followup', op: 'complaint' }, 'kind-complaint'],
+    [{ type: 'fms', op: 'done' }, 'kind-fms'], [{ type: 'ticket', op: 'create' }, 'kind-ticket']
+  ];
+  for (const [a, cls] of kinds) {
+    assert.ok(renderTicketCard({ ...a, payload: {}, preview: { title: 'x', rows: [] } }, 'pending', '0:0', escapeHtml).includes(cls), cls);
+  }
+});
