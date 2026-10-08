@@ -178,8 +178,33 @@
     return result.error ? { status: 'error', error: result.error } : { status: 'saved' };
   }
 
+  // ---------- Voice helpers (pure) ----------
+
+  const AUDIO_TYPES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
+
+  function pickAudioType(isSupported) {
+    return AUDIO_TYPES.find(t => { try { return isSupported(t); } catch (e) { return false; } }) || '';
+  }
+
+  // What the speaker reads aloud: the sentences, without tables, drafts,
+  // markdown marks or emoji.
+  function speakableText(text) {
+    const lines = String(text || '').replace(/```draft[^\n]*\n?[\s\S]*?```/g, '').split('\n');
+    const words = lines
+      .filter(l => !/^\s*\|/.test(l))
+      .map(l => l.replace(/\*\*/g, '').replace(/^\s*(?:[-*•]|\d+\.)\s+/, '').replace(/[\p{Extended_Pictographic}️]/gu, '').trim())
+      .filter(Boolean)
+      .map(l => (/[.!?:]$/.test(l) ? l : l + '.'));
+    return words.join(' ').slice(0, 600);
+  }
+
+  function formatClock(seconds) {
+    const s = Math.max(0, Math.floor(seconds));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }
+
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { renderMessageHtml, runAgentTurn, renderTicketCard, runCardAction };
+    module.exports = { renderMessageHtml, runAgentTurn, renderTicketCard, runCardAction, pickAudioType, speakableText, formatClock };
     return;
   }
 
@@ -221,12 +246,16 @@
   };
 
   const THEME_KEY = 'collectiq_ai_theme';
+  const SPEAK_KEY = 'collectiq_ai_speak';
+  const MAX_RECORD_SECONDS = 60;
   const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const state = {
     chats: [], currentId: null, status: 'idle', busy: false, mounted: false, showList: false,
     step: '', seen: {}, celebrate: null, counted: new Set(),
-    theme: (function () { try { return localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light'; } catch (e) { return 'light'; } })()
+    theme: (function () { try { return localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light'; } catch (e) { return 'light'; } })(),
+    speak: (function () { try { return localStorage.getItem(SPEAK_KEY) === '1'; } catch (e) { return false; } })(),
+    rec: null
   };
 
   function user() {
@@ -358,13 +387,16 @@
             </div>
             <div class="ai-header-actions">
               <span id="aiStatus" class="ai-status"></span>
+              <button type="button" class="ai-theme-btn ai-speak-btn${state.speak ? ' on' : ''}" data-speak-toggle title="Read replies aloud" aria-label="Read replies aloud" aria-pressed="${state.speak}">${state.speak ? '🔊' : '🔇'}</button>
               <button type="button" class="ai-theme-btn" data-theme-toggle title="Day / night look" aria-label="Switch day or night look">${state.theme === 'dark' ? '☀️' : '🌙'}</button>
               <button type="button" class="ai-summary-btn" data-summary>☀️ <span>Morning summary</span></button>
             </div>
           </div>
           <div class="ai-messages" id="aiMessages"></div>
           <form class="ai-input" id="aiForm">
-            <textarea id="aiInput" rows="1" placeholder="Ask a question… (e.g. How is JGG doing?)"></textarea>
+            <button type="button" class="ai-mic" id="aiMic" data-mic title="Speak your message" aria-label="Speak your message">🎤</button>
+            <div class="ai-rec" id="aiRec" hidden><span class="ai-rec-dot"></span><span class="ai-rec-wave"><i></i><i></i><i></i><i></i><i></i></span><b id="aiRecTime">0:00</b><small id="aiRecHint">Listening… tap 🎤 to stop</small></div>
+            <textarea id="aiInput" rows="1" placeholder="Type or tap 🎤 and speak… (e.g. RKC se 30,000 ka cheque aaya)"></textarea>
             <button type="submit" class="ai-send" id="aiSend" title="Send">➤</button>
           </form>
         </div>
@@ -835,6 +867,138 @@
     return lines.join('\n');
   }
 
+  // ---------- Voice ----------
+
+  const VOICE_ERRORS = {
+    no_speech: "Couldn't hear anything. Please try again closer to the mic.",
+    too_large: 'That recording was too long. Please keep it under a minute.',
+    bad_audio: "This browser's recording format isn't supported. Please type instead.",
+    not_configured: ERRORS.not_configured, rate_limited: ERRORS.rate_limited, busy: ERRORS.busy, offline: ERRORS.offline, no_server: ERRORS.no_server
+  };
+
+  function setRecordingUi(mode, seconds) {
+    const mic = document.getElementById('aiMic');
+    const rec = document.getElementById('aiRec');
+    const input = document.getElementById('aiInput');
+    if (mic) {
+      mic.classList.toggle('rec', mode === 'recording');
+      mic.classList.toggle('busy', mode === 'working');
+      mic.textContent = mode === 'recording' ? '⏹' : mode === 'working' ? '⏳' : '🎤';
+    }
+    if (rec) rec.hidden = mode === 'idle';
+    if (input) input.hidden = mode !== 'idle';
+    const time = document.getElementById('aiRecTime');
+    if (time) time.textContent = formatClock(seconds || 0);
+    const hint = document.getElementById('aiRecHint');
+    if (hint) hint.textContent = mode === 'working' ? 'Converting your voice to text…' : 'Listening… tap ⏹ to stop';
+  }
+
+  async function startRecording() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === 'undefined') {
+      toast('Voice is not supported in this browser. Please type instead.');
+      return;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+      toast('Microphone permission is blocked. Allow the mic for this site in browser settings.');
+      return;
+    }
+    stopSpeaking();
+    const type = pickAudioType(t => MediaRecorder.isTypeSupported(t));
+    const recorder = new MediaRecorder(stream, type ? { mimeType: type, audioBitsPerSecond: 32000 } : { audioBitsPerSecond: 32000 });
+    const rec = { recorder, stream, chunks: [], started: Date.now(), timer: null };
+    recorder.ondataavailable = e => { if (e.data && e.data.size) rec.chunks.push(e.data); };
+    recorder.onstop = () => {
+      clearInterval(rec.timer);
+      stream.getTracks().forEach(tr => tr.stop());
+      const blob = new Blob(rec.chunks, { type: recorder.mimeType || type || 'audio/webm' });
+      state.rec = null;
+      sendAudio(blob);
+    };
+    state.rec = rec;
+    recorder.start();
+    setRecordingUi('recording', 0);
+    rec.timer = setInterval(() => {
+      const secs = (Date.now() - rec.started) / 1000;
+      setRecordingUi('recording', secs);
+      if (secs >= MAX_RECORD_SECONDS) stopRecording();
+    }, 250);
+  }
+
+  function stopRecording() {
+    if (state.rec && state.rec.recorder.state !== 'inactive') state.rec.recorder.stop();
+  }
+
+  function toggleRecording() {
+    if (state.busy) return;
+    if (state.rec) stopRecording();
+    else if (!state.transcribing) startRecording();
+  }
+
+  function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function sendAudio(blob) {
+    if (!blob || blob.size < 1200) {
+      setRecordingUi('idle');
+      toast(VOICE_ERRORS.no_speech);
+      return;
+    }
+    state.transcribing = true;
+    setRecordingUi('working');
+    try {
+      const audio = await blobToBase64(blob);
+      const { text } = await request('/transcribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audio, mime: blob.type })
+      });
+      const input = document.getElementById('aiInput');
+      if (input) {
+        input.value = input.value.trim() ? input.value.trim() + ' ' + text : text;
+        setRecordingUi('idle');
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+      }
+      toast('Check the text, then press ➤ to send.');
+    } catch (e) {
+      setRecordingUi('idle');
+      toast(VOICE_ERRORS[e.code] || ERRORS.busy);
+    } finally {
+      state.transcribing = false;
+      setRecordingUi('idle');
+    }
+  }
+
+  function pickVoice() {
+    const voices = (window.speechSynthesis && speechSynthesis.getVoices()) || [];
+    return voices.find(v => /en-IN/i.test(v.lang)) || voices.find(v => /hi-IN/i.test(v.lang)) || voices.find(v => /^en/i.test(v.lang)) || null;
+  }
+
+  function speak(text) {
+    if (!('speechSynthesis' in window)) return;
+    const words = speakableText(text);
+    if (!words) return;
+    stopSpeaking();
+    const u = new SpeechSynthesisUtterance(words);
+    const v = pickVoice();
+    if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = 'en-IN'; }
+    u.rate = 1;
+    speechSynthesis.speak(u);
+  }
+
+  function stopSpeaking() {
+    if ('speechSynthesis' in window && (speechSynthesis.speaking || speechSynthesis.pending)) speechSynthesis.cancel();
+  }
+
   async function ask(displayText, apiText, opts = {}) {
     if (state.busy) return;
     const chat = currentChat() || newChat();
@@ -842,6 +1006,7 @@
     chat.display.push({ role: 'user', text: displayText });
     chat.updatedAt = Date.now();
     state.busy = true;
+    stopSpeaking();
     state.step = opts.noTools ? 'Writing your summary…' : 'Reading your message…';
     setStatus('busy');
     renderAllAI();
@@ -872,6 +1037,7 @@
         provider: result.provider
       });
       setStatus('ready');
+      if (state.speak) speak(result.finalText);
     } catch (e) {
       chat.messages = history.slice(0, -1);
       const fallback = opts.fallbackText ? '\n\n' + opts.fallbackText : '';
@@ -898,6 +1064,17 @@
       if (t.hasAttribute('data-new')) { newChat(); state.showList = false; mount(true); return; }
       if (t.hasAttribute('data-toggle-list')) { state.showList = !state.showList; container.querySelector('.ai-shell').classList.toggle('show-list', state.showList); return; }
       if (t.hasAttribute('data-summary')) { askSummary(); return; }
+      if (t.hasAttribute('data-mic')) { toggleRecording(); return; }
+      if (t.hasAttribute('data-speak-toggle')) {
+        state.speak = !state.speak;
+        try { localStorage.setItem(SPEAK_KEY, state.speak ? '1' : '0'); } catch (err) { /* per-browser preference only */ }
+        t.textContent = state.speak ? '🔊' : '🔇';
+        t.classList.toggle('on', state.speak);
+        t.setAttribute('aria-pressed', String(state.speak));
+        if (!state.speak) stopSpeaking();
+        toast(state.speak ? 'Replies will be read aloud' : 'Reading aloud is off');
+        return;
+      }
       if (t.hasAttribute('data-theme-toggle')) {
         state.theme = state.theme === 'dark' ? 'light' : 'dark';
         try { localStorage.setItem(THEME_KEY, state.theme); } catch (err) { /* per-browser preference only */ }

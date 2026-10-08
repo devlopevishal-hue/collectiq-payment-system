@@ -123,3 +123,43 @@ test('no keys gives not_configured, provider failure gives busy', async () => {
   assert.equal((await r2.json()).error, 'busy');
   await s2.close();
 });
+
+function voice(base, body, headers = {}) {
+  return fetch(base + '/transcribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: OK_ORIGIN, ...headers },
+    body: typeof body === 'string' ? body : JSON.stringify(body)
+  });
+}
+
+const VOICE = { audio: Buffer.from('opus').toString('base64'), mime: 'audio/webm' };
+
+test('transcribe returns the text from Whisper for our site only', async () => {
+  const whisper = async () => ({ ok: true, status: 200, json: async () => ({ text: 'RKC se cheque aaya' }) });
+  const s = await start({ env: KEYS, fetchImpl: whisper });
+  const ok = await voice(s.base, VOICE);
+  assert.equal(ok.status, 200);
+  assert.deepEqual(await ok.json(), { text: 'RKC se cheque aaya' });
+  assert.equal(ok.headers.get('access-control-allow-origin'), OK_ORIGIN);
+  assert.equal((await voice(s.base, VOICE, { Origin: 'https://evil.example' })).status, 403);
+  const pre = await fetch(s.base + '/transcribe', { method: 'OPTIONS', headers: { Origin: OK_ORIGIN } });
+  assert.equal(pre.status, 204);
+  await s.close();
+});
+
+test('transcribe maps failures to clear errors and accepts recordings above the chat size limit', async () => {
+  const s = await start({ env: KEYS, fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ text: 'ok' }) }) });
+  const big = { audio: Buffer.alloc(400 * 1024, 1).toString('base64'), mime: 'audio/webm' };
+  assert.equal((await voice(s.base, big)).status, 200);
+  const bad = await voice(s.base, { audio: '', mime: 'audio/webm' });
+  assert.equal(bad.status, 400);
+  assert.deepEqual(await bad.json(), { error: 'bad_audio' });
+  assert.equal((await voice(s.base, '{oops')).status, 400);
+  await s.close();
+  const down = await start({ env: KEYS, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }) });
+  assert.deepEqual(await (await voice(down.base, VOICE)).json(), { error: 'busy' });
+  await down.close();
+  const none = await start({ env: {}, fetchImpl: async () => ({}) });
+  assert.equal((await voice(none.base, VOICE)).status, 503);
+  await none.close();
+});

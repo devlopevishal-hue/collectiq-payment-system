@@ -5,9 +5,12 @@
 const http = require('http');
 const { buildSystemPrompt, TOOL_SCHEMAS } = require('./prompt.js');
 const { callWithFallback, isConfigured } = require('./providers.js');
+const { transcribe } = require('./transcribe.js');
 
 const DEFAULT_ORIGINS = 'https://devlopevishal-hue.github.io,http://localhost:3000';
 const MAX_BODY = 200 * 1024;
+const MAX_VOICE_BODY = 2200 * 1024; // base64 of ~1.5 MB audio
+const VOICE_LIMIT = 20;
 const MAX_MESSAGES = 12;
 const RATE_LIMIT = 30;
 const RATE_WINDOW_MS = 10 * 60 * 1000;
@@ -37,7 +40,7 @@ function trimHistory(messages) {
   return recent;
 }
 
-function readBody(req) {
+function readBody(req, maxBody = MAX_BODY) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
@@ -45,10 +48,10 @@ function readBody(req) {
     // client still receives the 413 response.
     req.on('data', chunk => {
       size += chunk.length;
-      if (size <= MAX_BODY) chunks.push(chunk);
+      if (size <= maxBody) chunks.push(chunk);
     });
     req.on('end', () => {
-      if (size > MAX_BODY) reject(Object.assign(new Error('too large'), { status: 413 }));
+      if (size > maxBody) reject(Object.assign(new Error('too large'), { status: 413 }));
       else resolve(Buffer.concat(chunks).toString('utf8'));
     });
     req.on('error', reject);
@@ -59,15 +62,16 @@ function createServer({ env = process.env, fetchImpl = fetch, now = Date.now } =
   const allowed = new Set(String(env.ALLOWED_ORIGINS || DEFAULT_ORIGINS).split(',').map(s => s.trim()).filter(Boolean));
   const hits = new Map();
 
-  function rateLimited(ip) {
+  function rateLimited(ip, limit = RATE_LIMIT, bucket = 'chat') {
     const t = now();
-    const recent = (hits.get(ip) || []).filter(x => t - x < RATE_WINDOW_MS);
-    if (recent.length >= RATE_LIMIT) {
-      hits.set(ip, recent);
+    const key = bucket + ':' + ip;
+    const recent = (hits.get(key) || []).filter(x => t - x < RATE_WINDOW_MS);
+    if (recent.length >= limit) {
+      hits.set(key, recent);
       return true;
     }
     recent.push(t);
-    hits.set(ip, recent);
+    hits.set(key, recent);
     return false;
   }
 
@@ -80,7 +84,7 @@ function createServer({ env = process.env, fetchImpl = fetch, now = Date.now } =
       return send(res, 200, { ok: true, configured: isConfigured(env) }, okOrigin);
     }
 
-    if (url.pathname !== '/chat') return send(res, 404, { error: 'not_found' }, okOrigin);
+    if (url.pathname !== '/chat' && url.pathname !== '/transcribe') return send(res, 404, { error: 'not_found' }, okOrigin);
 
     if (req.method === 'OPTIONS') {
       if (!okOrigin) return send(res, 403, { error: 'origin' });
@@ -98,6 +102,25 @@ function createServer({ env = process.env, fetchImpl = fetch, now = Date.now } =
     if (!okOrigin) return send(res, 403, { error: 'origin' });
 
     const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || 'unknown';
+    if (url.pathname === '/transcribe') {
+      if (rateLimited(ip, VOICE_LIMIT, 'voice')) return send(res, 429, { error: 'rate_limited' }, okOrigin);
+      let body;
+      try {
+        body = JSON.parse(await readBody(req, MAX_VOICE_BODY));
+      } catch (e) {
+        return send(res, e && e.status === 413 ? 413 : 400, { error: e && e.status === 413 ? 'too_large' : 'bad_request' }, okOrigin);
+      }
+      try {
+        const result = await transcribe({ audioBase64: body && body.audio, mime: body && body.mime, env, fetchImpl });
+        return send(res, 200, result, okOrigin);
+      } catch (e) {
+        const map = { NOT_CONFIGURED: [503, 'not_configured'], BAD_AUDIO: [400, 'bad_audio'], TOO_LARGE: [413, 'too_large'], EMPTY: [422, 'no_speech'] };
+        const [status, error] = map[e && e.code] || [503, 'busy'];
+        if (status === 503 && error === 'busy') console.warn('Voice failed:', e && e.message);
+        return send(res, status, { error }, okOrigin);
+      }
+    }
+
     if (rateLimited(ip)) return send(res, 429, { error: 'rate_limited' }, okOrigin);
 
     let payload;

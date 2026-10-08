@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { renderMessageHtml, runAgentTurn, renderTicketCard, runCardAction } = require('../ai-chat.js');
+const { renderMessageHtml, runAgentTurn, renderTicketCard, runCardAction, pickAudioType, speakableText, formatClock } = require('../ai-chat.js');
 
 // Same implementation as escapeHtml in app.js.
 function escapeHtml(str) {
@@ -202,4 +202,21 @@ test('renderTicketCard: a saved card lists the chosen invoices without checkboxe
   assert.ok(!html.includes('data-bill-pick'));
   assert.ok(html.includes('Bill 2026-09-01 (1)'));
   assert.ok(!html.includes('Bill &lt;2026-11-01&gt;'));
+});
+
+test('pickAudioType: first recording format the browser supports', () => {
+  assert.equal(pickAudioType(t => t === 'audio/webm' || t === 'audio/mp4'), 'audio/webm');
+  assert.equal(pickAudioType(t => t === 'audio/mp4'), 'audio/mp4');
+  assert.equal(pickAudioType(() => false), '');
+});
+
+test('speakableText: reads the words, not tables, drafts, markdown or emoji', () => {
+  const text = '**JGG** ka status 👇\n| Bill | Due |\n|---|---|\n| 1 | ₹500 |\n- Outstanding: ₹96,15,528\n```draft\nNamaste ji\n```\nConfirm dabayein.';
+  assert.equal(speakableText(text), 'JGG ka status. Outstanding: ₹96,15,528. Confirm dabayein.');
+  assert.equal(speakableText('x'.repeat(900)).length, 600);
+});
+
+test('formatClock: seconds as m:ss', () => {
+  assert.equal(formatClock(5), '0:05');
+  assert.equal(formatClock(65), '1:05');
 });
