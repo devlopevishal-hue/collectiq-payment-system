@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { renderMessageHtml, runAgentTurn, renderTicketCard, runCardAction, pickAudioType, speakableText, formatClock } = require('../ai-chat.js');
+const { renderMessageHtml, runAgentTurn, renderTicketCard, runCardAction, pickAudioType, speakableText, formatClock, speechChunks } = require('../ai-chat.js');
 
 // Same implementation as escapeHtml in app.js.
 function escapeHtml(str) {
@@ -219,4 +219,12 @@ test('speakableText: reads the words, not tables, drafts, markdown or emoji', ()
 test('formatClock: seconds as m:ss', () => {
   assert.equal(formatClock(5), '0:05');
   assert.equal(formatClock(65), '1:05');
+});
+
+test('speechChunks: short sentences so Chrome does not cut the voice off', () => {
+  assert.deepEqual(speechChunks('JGG ka status. Outstanding: ₹96,15,528. Confirm dabayein!'), ['JGG ka status.', 'Outstanding: ₹96,15,528.', 'Confirm dabayein!']);
+  const long = speechChunks('a '.repeat(300));
+  assert.ok(long.length > 1);
+  assert.ok(long.every(p => p.length <= 180));
+  assert.deepEqual(speechChunks(''), []);
 });

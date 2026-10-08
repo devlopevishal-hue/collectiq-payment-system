@@ -198,13 +198,31 @@
     return words.join(' ').slice(0, 600);
   }
 
+  // Sentence-sized pieces (max 180 characters): Chrome stops speaking long
+  // utterances part-way through.
+  function speechChunks(text) {
+    const sentences = String(text || '').match(/[^.!?]+[.!?]*/g) || [];
+    const out = [];
+    sentences.map(x => x.trim()).filter(Boolean).forEach(sentence => {
+      let rest = sentence;
+      while (rest.length > 180) {
+        const cut = rest.lastIndexOf(' ', 180);
+        const at = cut > 40 ? cut : 180;
+        out.push(rest.slice(0, at).trim());
+        rest = rest.slice(at).trim();
+      }
+      if (rest) out.push(rest);
+    });
+    return out;
+  }
+
   function formatClock(seconds) {
     const s = Math.max(0, Math.floor(seconds));
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   }
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { renderMessageHtml, runAgentTurn, renderTicketCard, runCardAction, pickAudioType, speakableText, formatClock };
+    module.exports = { renderMessageHtml, runAgentTurn, renderTicketCard, runCardAction, pickAudioType, speakableText, formatClock, speechChunks };
     return;
   }
 
@@ -1012,16 +1030,30 @@
     return voices.find(v => /en-IN/i.test(v.lang)) || voices.find(v => /hi-IN/i.test(v.lang)) || voices.find(v => /^en/i.test(v.lang)) || null;
   }
 
-  function speak(text) {
-    if (!('speechSynthesis' in window)) return;
-    const words = speakableText(text);
-    if (!words) return;
-    stopSpeaking();
-    const u = new SpeechSynthesisUtterance(words);
+  // Reads text aloud sentence by sentence. Chrome can stay "paused" or drop
+  // long utterances, so the queue is reset and resumed each time.
+  function speak(text, plain) {
+    if (!('speechSynthesis' in window)) {
+      toast('This browser cannot read replies aloud.');
+      return;
+    }
+    const words = plain ? String(text || '') : speakableText(text);
+    const parts = speechChunks(words);
+    if (!parts.length) return;
+    speechSynthesis.cancel();
     const v = pickVoice();
-    if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = 'en-IN'; }
-    u.rate = 1;
-    speechSynthesis.speak(u);
+    parts.forEach(part => {
+      const u = new SpeechSynthesisUtterance(part);
+      if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = 'en-IN'; }
+      u.rate = 1;
+      speechSynthesis.speak(u);
+    });
+    speechSynthesis.resume();
+  }
+
+  // Voices load late in Chrome; asking early fills the list.
+  if ('speechSynthesis' in window) {
+    try { speechSynthesis.getVoices(); speechSynthesis.addEventListener('voiceschanged', () => speechSynthesis.getVoices()); } catch (e) { /* optional */ }
   }
 
   function stopSpeaking() {
@@ -1101,6 +1133,7 @@
         t.classList.toggle('on', state.speak);
         t.setAttribute('aria-pressed', String(state.speak));
         if (!state.speak) stopSpeaking();
+        else speak('Theek hai, ab main jawab bol ke sunaunga.', true);
         toast(state.speak ? 'Replies will be read aloud' : 'Reading aloud is off');
         return;
       }
