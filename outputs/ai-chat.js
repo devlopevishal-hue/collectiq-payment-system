@@ -106,10 +106,51 @@
   }
 
   // An action the AI proposes (ticket, follow-up, payment, FMS). Nothing is saved until Confirm.
-  function renderTicketCard(action, status, index, esc, error) {
+  // Spreads a payment over the ticked bills, oldest first (same as the form).
+  function allocate(bills, selected, amount) {
+    let rest = Number(amount) || 0;
+    const out = {};
+    bills.forEach(b => {
+      if (!selected.includes(String(b.id)) || rest <= 0) return;
+      const amt = Math.min(rest, b.due);
+      out[String(b.id)] = amt;
+      rest -= amt;
+    });
+    return { perBill: out, advance: Math.max(0, rest) };
+  }
+
+  // Invoice checklist inside complaint and payment cards.
+  function billPicker(kind, action, status, index, esc, extra) {
+    const bills = extra.bills || [];
+    const selected = (extra.selected || []).map(String);
+    const isPay = kind === 'payment';
+    const alloc = isPay ? allocate(bills, selected, (action.payload || {}).payRupees) : null;
+    const pending = status === 'pending';
+    const shown = pending ? bills : bills.filter(b => selected.includes(String(b.id)));
+    const items = shown.map(b => {
+      const on = selected.includes(String(b.id));
+      const amt = isPay && on ? alloc.perBill[String(b.id)] : null;
+      const note = isPay
+        ? (amt ? `${rupeeText(amt)} ${amt === b.due ? 'full' : 'part'}` : on ? 'not needed' : `due ${rupeeText(b.due)}`)
+        : `due ${rupeeText(b.due)}`;
+      const box = pending ? `<input type="checkbox" data-bill-pick="${esc(String(index))}" value="${esc(String(b.id))}"${on ? ' checked' : ''}>` : '<span class="ai-bill-dot">✓</span>';
+      return `<label class="ai-bill${on ? ' on' : ''}" data-text="${esc(String(b.label).toLowerCase())}">${box}<span>${esc(String(b.label))}</span><em>${esc(note)}</em></label>`;
+    }).join('');
+    const head = isPay ? 'Apply to invoices' : 'Affected invoices';
+    const summary = isPay && alloc.advance > 0 ? `<div class="ai-bill-advance">Advance ${esc(rupeeText(alloc.advance))}</div>` : '';
+    const search = pending && bills.length > 8 ? `<input class="ai-bill-search" data-bill-search="${esc(String(index))}" placeholder="Search bill no. or date">` : '';
+    return `<div class="ai-bill-pick"><div class="ai-bill-head"><b>${head}</b><span>${selected.length} selected</span></div>${search}` +
+      `<div class="ai-bill-list">${items || '<p class="ai-bill-empty">No invoices selected.</p>'}</div>${summary}</div>`;
+  }
+
+  function renderTicketCard(action, status, index, esc, error, extra) {
     const preview = action.preview || {};
     const kind = cardKind(action);
-    const rows = (preview.rows || []).map(([label, value]) =>
+    const picker = extra && extra.bills && (kind === 'payment' || kind === 'complaint');
+    // The checklist replaces the tool's fixed bill lines, which go stale once ticks change.
+    const visibleRows = (preview.rows || []).filter(([label]) =>
+      !picker || !(/^Bill /.test(label) || label === 'Advance' || label === 'Invoices'));
+    const rows = visibleRows.map(([label, value]) =>
       `<tr><th>${esc(String(label))}</th><td>${esc(String(value))}</td></tr>`).join('');
     const footer = status === 'pending'
       ? `<div class="ai-ticket-buttons">
@@ -122,7 +163,7 @@
     return `<div class="ai-ticket-card ${esc(String(status))} kind-${kind}" data-card-ref="${esc(String(index))}">` +
       `<div class="ai-card-top"><div class="ai-ticket-title">${esc(String(preview.title || 'Help ticket'))}</div></div>` +
       (kind === 'payment' ? paymentSummary(action, esc) : '') +
-      `<table class="ai-ticket-rows">${rows}</table>${footer}${stamp}</div>`;
+      `<table class="ai-ticket-rows">${rows}</table>${picker ? billPicker(kind, action, status, index, esc, extra) : ''}${footer}${stamp}</div>`;
   }
 
   // Runs a pending card once; any other card is returned unchanged.
@@ -426,7 +467,7 @@
       if (d.role === 'user') return `<div class="ai-msg user${enter}"><div class="ai-bubble">${escapeHtml(d.text).replace(/\n/g, '<br>')}</div></div>`;
       const actions = (d.actions || []).map((a, j) =>
         `<button type="button" class="ai-action-btn" data-action="${i}:${j}">📝 Open form: ${escapeHtml(a.marka)}</button>`).join('');
-      const cards = (d.cards || []).map((c, j) => renderTicketCard(c.action, c.status, `${i}:${j}`, escapeHtml, c.error)).join('');
+      const cards = (d.cards || []).map((c, j) => renderTicketCard(c.action, c.status, `${i}:${j}`, escapeHtml, c.error, pickerFor(c))).join('');
       return `
         <div class="ai-msg bot ${d.error ? 'error' : ''}${enter}">
           <div class="ai-bubble">${renderMessageHtml(d.text, escapeHtml)}${actions ? `<div class="ai-actions">${actions}</div>` : ''}${cards}</div>
@@ -547,7 +588,43 @@
   }
 
   // Confirm on a Promise-to-Pay card: same write as the Update Follow-up form.
-  function executeFollowup(action) {
+  function partyOf(action) {
+    const id = (action.payload || {}).markaId;
+    return (markas || []).find(x => String(x.id) === String(id)) || null;
+  }
+
+  function openBillsOf(m) {
+    return (m.bills || []).filter(b => b.balance > 0)
+      .sort((a, b) => String(a.firstDate).localeCompare(String(b.firstDate)))
+      .map(b => ({ id: b.id, label: `Bill ${b.firstDate}${(b.billNos || []).length ? ' (' + b.billNos.join(', ') + ')' : ''}`, due: b.balance }));
+  }
+
+  // Ticked invoices: the user's ticks, else the bills the AI picked, else
+  // (payments) the oldest bills the amount covers.
+  function selectionOf(card, bills) {
+    if (Array.isArray(card.selected)) return card.selected;
+    const p = card.action.payload || {};
+    if (Array.isArray(p.billIds)) return p.billIds.map(String);
+    if (card.action.op !== 'payment') return [];
+    const all = bills.map(b => String(b.id));
+    return Object.keys(allocate(bills, all, p.payRupees).perBill);
+  }
+
+  function pickerFor(card) {
+    const kind = cardKind(card.action);
+    if (kind !== 'payment' && kind !== 'complaint') return null;
+    const m = partyOf(card.action);
+    if (!m) return null;
+    const bills = openBillsOf(m);
+    return { bills, selected: selectionOf(card, bills) };
+  }
+
+  function realBillId(m, id) {
+    const b = (m.bills || []).find(x => String(x.id) === String(id));
+    return b ? b.id : id;
+  }
+
+  function executeFollowup(action, card) {
     const p = action.payload || {};
     const m = (markas || []).find(x => String(x.id) === String(p.markaId));
     if (!m) return { error: 'Party not found.' };
@@ -562,7 +639,12 @@
       const r = FollowupActions.applyPaymentFollowup(m, payments, {
         date, followper: p.followper, contactPerson: p.contactPerson, contactMode: p.contactMode, remark: p.remark,
         expected: m.expected || 0, promiseDate: m.ptp || '', nextDate: p.nextDate,
-        payRef: p.payRef, payMode: p.payMode, payAmount: p.payRupees,
+        payRef: p.payRef, payMode: p.payMode, payAmount: p.payRupees, visit: p.visit,
+        allocations: (() => {
+          const bills = openBillsOf(m);
+          const per = allocate(bills, selectionOf(card || { action }, bills), p.payRupees).perBill;
+          return Object.keys(per).map(id => ({ billId: realBillId(m, id), amount: per[id] }));
+        })(),
         payType: Number(p.payRupees) >= totalOutstanding(m) ? 'Full Payment' : 'Part Payment',
         ownerFallback: ownerOf(m), paymentFollowperFallback: actorName(),
         defaultNext: plus(2), newId: uid, money, now: Date.now()
@@ -575,7 +657,8 @@
       const r = FollowupActions.applyComplaintFollowup(m, {
         date: todayIso, followper: p.followper, contactPerson: p.contactPerson, contactMode: p.contactMode, remark: p.remark,
         expected: m.expected || 0, promiseDate: m.ptp || '', nextDate: p.nextDate, claimNumber: p.claimNumber,
-        escalateTo: p.escalateTo, billIds: [], minNext: plus(5), requireDetail: true,
+        escalateTo: p.escalateTo, visit: p.visit, minNext: plus(5), requireDetail: true,
+        billIds: selectionOf(card || { action }, openBillsOf(m)).map(id => realBillId(m, id)),
         newEscId: () => 'e_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4)
       });
       if (r.error) return r;
@@ -585,7 +668,7 @@
     if (p.promiseDate < todayIso || p.nextDate < todayIso) return { error: 'The promise date has passed. Please ask again.' };
     const r = FollowupActions.applyPtpFollowup(m, {
       date: todayIso, followper: p.followper, contactPerson: p.contactPerson, contactMode: p.contactMode,
-      expected: p.expectedRupees, promiseDate: p.promiseDate, nextDate: p.nextDate, remark: p.remark,
+      expected: p.expectedRupees, promiseDate: p.promiseDate, nextDate: p.nextDate, remark: p.remark, visit: p.visit,
       ownerFallback: ownerOf(m)
     });
     if (r.error) return r;
@@ -613,7 +696,7 @@
     return {};
   }
 
-  function editAction(action) {
+  function editAction(action, card) {
     const p = action.payload || {};
     const set = (id, v) => { const el = document.getElementById(id); if (el && v) el.value = v; };
     if (action.type === 'ticket') return editTicket(action);
@@ -633,16 +716,36 @@
         set('followPayAmount', p.payRupees);
         set('followDate', p.date);
         updateFollowPayAllocations('amount');
+        const m = partyOf(action);
+        if (m) {
+          const bills = openBillsOf(m);
+          const per = allocate(bills, selectionOf(card || { action }, bills), p.payRupees).perBill;
+          document.querySelectorAll('.follow-pay-check').forEach(chk => {
+            const inp = document.querySelector(`.follow-pay-amt[data-bill-id="${chk.dataset.billId}"]`);
+            const amt = per[String(chk.dataset.billId)] || 0;
+            chk.checked = amt > 0;
+            if (inp) inp.value = amt;
+          });
+          updateFollowPayAllocations('custom');
+        }
       } else if (action.op === 'complaint') {
         set('actionStatus', 'WhatsApp Complaint / Claim Matter');
         toggleConditionalFields();
         set('claimNumber', p.claimNumber);
+        const m = partyOf(action);
+        const ticked = m ? selectionOf(card || { action }, openBillsOf(m)) : [];
+        document.querySelectorAll('.claim-bill-check').forEach(chk => { chk.checked = ticked.includes(String(chk.dataset.billId)); });
         set('escalateTo', p.escalateTo);
       } else {
         set('actionStatus', 'Promise to Pay');
         toggleConditionalFields();
         set('expected', p.expectedRupees);
         set('promiseDate', p.promiseDate);
+      }
+      if (p.visit) {
+        set('visitPurpose', p.visit.purpose);
+        set('visitPersonMet', p.visit.personMet);
+        set('visitNotes', p.visit.notes);
       }
       set('nextDate', p.nextDate);
       set('remark', p.remark);
@@ -661,6 +764,29 @@
   const EXECUTORS = { ticket: executeTicket, followup: executeFollowup, fms: executeFms };
   const SAVED_TEXT = { ticket: '✓ Ticket saved.', followup: '✓ Follow-up saved.', fms: '✓ FMS saved.' };
 
+  // Re-draws one card after its ticks change, keeping the list scroll and search.
+  function refreshCard(ref, card) {
+    const el = document.querySelector(`.ai-ticket-card[data-card-ref="${ref}"]`);
+    if (!el) return;
+    const list = el.querySelector('.ai-bill-list');
+    const scroll = list ? list.scrollTop : 0;
+    const search = el.querySelector('.ai-bill-search');
+    const query = search ? search.value : '';
+    el.outerHTML = renderTicketCard(card.action, card.status, ref, escapeHtml, card.error, pickerFor(card));
+    const fresh = document.querySelector(`.ai-ticket-card[data-card-ref="${ref}"]`);
+    if (!fresh) return;
+    const freshSearch = fresh.querySelector('.ai-bill-search');
+    if (freshSearch && query) { freshSearch.value = query; filterBills(freshSearch); }
+    const freshList = fresh.querySelector('.ai-bill-list');
+    if (freshList) freshList.scrollTop = scroll;
+  }
+
+  function filterBills(input) {
+    const q = input.value.trim().toLowerCase();
+    const list = input.closest('.ai-bill-pick').querySelector('.ai-bill-list');
+    list.querySelectorAll('.ai-bill').forEach(row => { row.hidden = !!q && !row.dataset.text.includes(q); });
+  }
+
   function cardAt(ref) {
     const [i, j] = String(ref).split(':').map(Number);
     const chat = currentChat();
@@ -674,7 +800,7 @@
     if (!chat || !card || card.status !== 'pending') return;
     if (t.hasAttribute('data-ticket-confirm')) {
       const execute = EXECUTORS[card.action.type] || (() => ({ error: 'Unknown action.' }));
-      Object.assign(card, runCardAction(card, execute));
+      Object.assign(card, runCardAction(card, a => execute(a, card)));
       if (card.status === 'saved') {
         state.celebrate = t.dataset.card;
         const note = card.action.op === 'payment' ? '✓ Payment saved.' : (SAVED_TEXT[card.action.type] || '✓ Saved.');
@@ -683,7 +809,7 @@
         try { renderAll(); } catch (e) { /* page views refresh on next visit */ }
       }
     } else if (t.hasAttribute('data-ticket-edit')) {
-      if (editAction(card.action)) card.status = 'edited';
+      if (editAction(card.action, card)) card.status = 'edited';
     } else if (t.hasAttribute('data-ticket-cancel')) {
       card.status = 'cancelled';
     }
@@ -797,6 +923,20 @@
         const [i, j] = t.dataset.action.split(':').map(Number);
         openFormAction(currentChat().display[i].actions[j]);
       }
+    });
+    container.addEventListener('change', e => {
+      const box = e.target.closest('[data-bill-pick]');
+      if (!box) return;
+      const ref = box.dataset.billPick;
+      const card = cardAt(ref);
+      if (!card || card.status !== 'pending') return;
+      card.selected = Array.from(container.querySelectorAll(`[data-bill-pick="${ref}"]`)).filter(x => x.checked).map(x => x.value);
+      saveChats();
+      refreshCard(ref, card);
+    });
+    container.addEventListener('input', e => {
+      const box = e.target.closest('[data-bill-search]');
+      if (box) filterBills(box);
     });
     container.addEventListener('submit', e => {
       e.preventDefault();

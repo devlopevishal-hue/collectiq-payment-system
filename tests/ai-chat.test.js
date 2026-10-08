@@ -172,3 +172,34 @@ test('renderTicketCard: each action kind gets its own class', () => {
     assert.ok(renderTicketCard({ ...a, payload: {}, preview: { title: 'x', rows: [] } }, 'pending', '0:0', escapeHtml).includes(cls), cls);
   }
 });
+
+const BILLS = [{ id: 1, label: 'Bill 2026-09-01 (1)', due: 50000 }, { id: 2, label: 'Bill <2026-11-01>', due: 20000 }];
+
+test('renderTicketCard: complaint card lets the user tick affected invoices', () => {
+  const action = { type: 'followup', op: 'complaint', payload: {}, preview: { title: '⚠️ Complaint / Claim', rows: [['Invoices', 'old'], ['Remark', 'x']] } };
+  const html = renderTicketCard(action, 'pending', '4:0', escapeHtml, '', { bills: BILLS, selected: ['2'] });
+  assert.match(html, /data-bill-pick="4:0" value="1"(?! checked)/);
+  assert.match(html, /data-bill-pick="4:0" value="2" checked/);
+  assert.ok(html.includes('Bill &lt;2026-11-01&gt;'));
+  assert.ok(!html.includes('<th>Invoices</th>'));
+  assert.ok(html.includes('1 selected'));
+});
+
+test('renderTicketCard: payment card spreads the amount over the ticked bills', () => {
+  const action = { type: 'followup', op: 'payment', payload: { payRupees: 60000 }, preview: { title: '💰 Payment received', rows: [['Bill 2026-09-01', 'stale'], ['Advance', 'stale'], ['Balance after', '₹10,000']] } };
+  const both = renderTicketCard(action, 'pending', '1:0', escapeHtml, '', { bills: BILLS, selected: ['1', '2'] });
+  assert.ok(both.includes('₹50,000 full'));
+  assert.ok(both.includes('₹10,000 part'));
+  assert.ok(!both.includes('stale'));
+  const one = renderTicketCard(action, 'pending', '1:0', escapeHtml, '', { bills: BILLS, selected: ['2'] });
+  assert.ok(one.includes('₹20,000 full'));
+  assert.ok(one.includes('Advance ₹40,000'));
+});
+
+test('renderTicketCard: a saved card lists the chosen invoices without checkboxes', () => {
+  const action = { type: 'followup', op: 'complaint', payload: {}, preview: { title: 'x', rows: [] } };
+  const html = renderTicketCard(action, 'saved', '4:0', escapeHtml, '', { bills: BILLS, selected: ['1'] });
+  assert.ok(!html.includes('data-bill-pick'));
+  assert.ok(html.includes('Bill 2026-09-01 (1)'));
+  assert.ok(!html.includes('Bill &lt;2026-11-01&gt;'));
+});

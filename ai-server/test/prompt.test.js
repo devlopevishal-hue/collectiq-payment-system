@@ -100,3 +100,15 @@ test('prompt and schema: payment received and complaint go through cards; status
   assert.doesNotMatch(p, /Open form/);
   assert.match(p, /never ask the user to choose a status/i);
 });
+
+test('prompt and schema: professional tone, ask missing details together, visits and invoices', () => {
+  const fu = TOOL_SCHEMAS.find(t => t.function.name === 'prepare_followup_form').function.parameters.properties;
+  assert.deepEqual(fu.visit_purpose.enum, ['Cheque Collection', 'Account Statement Reconciliation', 'Payment Follow-up / Reminder', 'Dispute / Claim Verification', 'General Relationship Visit']);
+  for (const k of ['visit_person_met', 'visit_notes']) assert.ok(fu[k], k);
+  assert.equal(fu.bills.type, 'array');
+  const p = buildSystemPrompt({ name: 'A', role: 'user', today: '2026-10-08' });
+  assert.match(p, /professional/i);
+  assert.match(p, /"missing"/);
+  assert.match(p, /single message/i);
+  assert.match(p, /tick/i);
+});

@@ -248,6 +248,8 @@ test('get_pending_work: open tickets assigned to me; FMS only for PC/admin', () 
   assert.equal(pc.fms.overdue, 5);
 });
 
+const TALK = { contact_mode: 'Phone call', contact_person: 'Seth ji', remark: 'baat hui' };
+
 test('prepare_followup_form: rejects a status the form does not have', () => {
   const r = T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'Not Responding' });
   assert.match(r.error, /Promise to Pay/);
@@ -259,14 +261,14 @@ test('prepare_followup_form: Promise to Pay needs a promise date', () => {
 
 test('prepare_followup_form: Promise to Pay returns a follow-up card', () => {
   const r = T.tools.prepare_followup_form(ctx(SURENDRA), {
-    party: 'jgg', status: 'Promise to Pay', expected: 50000, promise_date: '2026-10-10', contact_person: 'Ramesh ji'
+    party: 'jgg', status: 'Promise to Pay', expected: 50000, promise_date: '2026-10-10', ...TALK, contact_person: 'Ramesh ji'
   });
   assert.equal(r.ok, true);
   assert.equal(r.action.type, 'followup');
   assert.equal(r.action.op, 'ptp');
   assert.deepEqual(r.action.payload, {
     markaId: 'a', marka: 'JGG', followper: 'Surendra', contactPerson: 'Ramesh ji', contactMode: 'Phone call',
-    expectedRupees: 50000, promiseDate: '2026-10-10', nextDate: '2026-10-10', remark: ''
+    expectedRupees: 50000, promiseDate: '2026-10-10', nextDate: '2026-10-10', remark: 'baat hui'
   });
   assert.equal(r.action.preview.title, '📞 Follow-up update');
   const rows = r.action.preview.rows;
@@ -274,7 +276,7 @@ test('prepare_followup_form: Promise to Pay returns a follow-up card', () => {
     assert.deepEqual(rows.find(x => x[0] === row[0]), row);
   }
   // runTool must not turn the payload amount into text
-  assert.equal(T.runTool(ctx(SURENDRA), 'prepare_followup_form', JSON.stringify({ party: 'JGG', status: 'Promise to Pay', expected: 50000, promise_date: '2026-10-10' })).action.payload.expectedRupees, 50000);
+  assert.equal(T.runTool(ctx(SURENDRA), 'prepare_followup_form', JSON.stringify({ party: 'JGG', status: 'Promise to Pay', expected: 50000, promise_date: '2026-10-10', ...TALK })).action.payload.expectedRupees, 50000);
 });
 
 test('prepare_followup_form: help ticket goes to the ticket tool', () => {
@@ -282,32 +284,32 @@ test('prepare_followup_form: help ticket goes to the ticket tool', () => {
 });
 
 test('prepare_followup_form: Payment Received card shows the bills it clears', () => {
-  const r = T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'Payment Received', amount: 60000, pay_mode: 'cheque', pay_ref: '123456' });
+  const r = T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'Payment Received', amount: 60000, pay_mode: 'cheque', pay_ref: '123456', ...TALK });
   assert.equal(r.action.type, 'followup');
   assert.equal(r.action.op, 'payment');
   assert.equal(r.action.preview.title, '💰 Payment received');
   assert.deepEqual(r.action.payload, {
-    markaId: 'a', marka: 'JGG', followper: 'Surendra', contactPerson: '', contactMode: 'Phone call',
-    payMode: 'cheque', payRef: '123456', payRupees: 60000, payType: 'Part Payment', nextDate: '', remark: '', date: '2026-10-02'
+    markaId: 'a', marka: 'JGG', followper: 'Surendra', contactPerson: 'Seth ji', contactMode: 'Phone call',
+    payMode: 'cheque', payRef: '123456', payRupees: 60000, payType: 'Part Payment', nextDate: '', remark: 'baat hui', date: '2026-10-02'
   });
   const rows = r.action.preview.rows;
   for (const row of [['Amount', '₹60,000'], ['Mode', 'cheque'], ['Cheque / UTR', '123456'], ['Bill 2026-09-01', '₹50,000 (full)'], ['Bill 2026-11-01', '₹10,000 (part)'], ['Balance after', '₹10,000'], ['Next date', '2026-10-04']]) {
     assert.deepEqual(rows.find(x => x[0] === row[0]), row, row[0]);
   }
   // the amount survives runTool's money formatting
-  assert.equal(T.runTool(ctx(SURENDRA), 'prepare_followup_form', JSON.stringify({ party: 'JGG', status: 'Payment Received', amount: 60000, pay_mode: 'UPI' })).action.payload.payRupees, 60000);
+  assert.equal(T.runTool(ctx(SURENDRA), 'prepare_followup_form', JSON.stringify({ party: 'JGG', status: 'Payment Received', amount: 60000, pay_mode: 'UPI', pay_ref: 'UTR1', ...TALK })).action.payload.payRupees, 60000);
 });
 
 test('prepare_followup_form: full and over payment close the follow-up', () => {
-  const full = T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'Payment Received', amount: 70000, pay_mode: 'NEFT' });
+  const full = T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'Payment Received', amount: 70000, pay_mode: 'NEFT', pay_ref: 'UTR7', ...TALK });
   assert.equal(full.action.payload.payType, 'Full Payment');
   assert.deepEqual(full.action.preview.rows.find(x => x[0] === 'Next date'), ['Next date', 'Follow-up closed (all dues cleared)']);
-  const over = T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'Payment Received', amount: 75000, pay_mode: 'NEFT' });
+  const over = T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'Payment Received', amount: 75000, pay_mode: 'NEFT', pay_ref: 'UTR8', ...TALK });
   assert.deepEqual(over.action.preview.rows.find(x => x[0] === 'Advance'), ['Advance', '₹5,000']);
 });
 
 test('prepare_followup_form: Payment Received refusals and duplicate protection', () => {
-  const p = (args, extra) => T.tools.prepare_followup_form(ctx(SURENDRA, extra), { party: 'JGG', status: 'Payment Received', pay_mode: 'cheque', amount: 10000, ...args });
+  const p = (args, extra) => T.tools.prepare_followup_form(ctx(SURENDRA, extra), { party: 'JGG', status: 'Payment Received', pay_mode: 'cheque', amount: 10000, pay_ref: 'CHQ-9', ...TALK, ...args });
   assert.match(p({ pay_mode: '' }).error, /mode/i);
   assert.ok(p({ pay_mode: 'bitcoin' }).error);
   assert.ok(p({ amount: 0 }).error);
@@ -316,24 +318,24 @@ test('prepare_followup_form: Payment Received refusals and duplicate protection'
   const paid = { payments: [{ date: '2026-09-30', marka: 'JGG', ref: '123456', amount: 10000, mode: 'cheque' }] };
   assert.match(p({ pay_ref: '123456' }, paid).error, /already/);
   const today = { payments: [{ date: '2026-10-02', marka: 'JGG', ref: 'N/A', amount: 10000, mode: 'cash' }] };
-  assert.match(p({ pay_mode: 'cash' }, today).error, /already/);
+  assert.match(p({ pay_mode: 'cash', pay_ref: '' }, today).error, /already/);
 });
 
 test('prepare_followup_form: complaint card moves the party to CRM', () => {
-  const r = T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'WhatsApp Complaint / Claim Matter', claim_number: 'CLM-102', remark: 'Rate difference' });
+  const r = T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'WhatsApp Complaint / Claim Matter', claim_number: 'CLM-102', ...TALK, remark: 'Rate difference' });
   assert.equal(r.action.op, 'complaint');
   assert.equal(r.action.preview.title, '⚠️ Complaint / Claim');
   assert.deepEqual(r.action.payload, {
-    markaId: 'a', marka: 'JGG', followper: 'Surendra', contactPerson: '', contactMode: 'Phone call',
+    markaId: 'a', marka: 'JGG', followper: 'Surendra', contactPerson: 'Seth ji', contactMode: 'Phone call',
     claimNumber: 'CLM-102', escalateTo: 'CRM', nextDate: '2026-10-07', remark: 'Rate difference'
   });
   assert.deepEqual(r.action.preview.rows.find(x => x[0] === 'Party goes to'), ['Party goes to', 'CRM (was Surendra)']);
   assert.ok(T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'WhatsApp Complaint / Claim Matter' }).error);
-  assert.equal(T.tools.prepare_followup_form(ctx(SURENDRA, { assignees: ['Account Team', 'CRM'] }), { party: 'JGG', status: 'WhatsApp Complaint / Claim Matter', remark: 'x', escalate_to: 'account team' }).action.payload.escalateTo, 'Account Team');
+  assert.equal(T.tools.prepare_followup_form(ctx(SURENDRA, { assignees: ['Account Team', 'CRM'] }), { party: 'JGG', status: 'WhatsApp Complaint / Claim Matter', ...TALK, remark: 'x', escalate_to: 'account team' }).action.payload.escalateTo, 'Account Team');
 });
 
 test('prepare_followup_form: Promise to Pay refusals', () => {
-  const ptp = (user, args) => T.tools.prepare_followup_form(ctx(user), { status: 'Promise to Pay', party: 'JGG', promise_date: '2026-10-10', ...args });
+  const ptp = (user, args) => T.tools.prepare_followup_form(ctx(user), { status: 'Promise to Pay', party: 'JGG', promise_date: '2026-10-10', expected: 10000, ...TALK, ...args });
   assert.ok(ptp(SURENDRA, { promise_date: '2026-10-01' }).error);
   assert.ok(ptp(SURENDRA, { next_date: '2026-10-01' }).error);
   assert.ok(ptp(SURENDRA, { contact_mode: 'Fax' }).error);
@@ -513,7 +515,7 @@ test('prepare_ticket_action: resolved or unknown tickets and bad op are errors',
 });
 
 const FOLLOWPERS = ['Surendra', 'Sajjan', 'Mahavir', 'Girdharilal'];
-const ptpArgs = extra => ({ status: 'Promise to Pay', promise_date: '2026-10-10', ...extra });
+const ptpArgs = extra => ({ status: 'Promise to Pay', promise_date: '2026-10-10', expected: 10000, contact_mode: 'Phone call', contact_person: 'Seth ji', remark: 'baat hui', ...extra });
 
 test('prepare_followup_form: admin names the followper for an unassigned party', () => {
   const c = ctx(ADMIN, { followpers: FOLLOWPERS });
@@ -546,7 +548,39 @@ test('prepare_followup_form: a doer can only use their own name', () => {
   assert.match(T.tools.prepare_followup_form(c, ptpArgs({ party: 'JGG', followper: 'Sajjan' })).error, /own name/);
 });
 
-test('prepare_followup_form: the card always shows the expected amount line', () => {
-  const r = T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'Promise to Pay', promise_date: '2026-10-10' });
-  assert.deepEqual(r.action.preview.rows.find(x => x[0] === 'Expected'), ['Expected', '— not given']);
+test('prepare_followup_form: asks for everything the form needs, in one go', () => {
+  const ask = args => T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', ...args });
+  const ptp = ask({ status: 'Promise to Pay' });
+  assert.deepEqual(ptp.missing, ['contact_mode', 'contact_person', 'remark', 'promise_date', 'expected']);
+  assert.match(ptp.error, /one message/);
+  assert.equal(ptp.action, undefined);
+  const visit = ask({ status: 'Promise to Pay', promise_date: '2026-10-10', expected: 5000, contact_mode: 'In person (Field Visit)', contact_person: 'Seth ji', remark: 'mila' });
+  assert.deepEqual(visit.missing, ['visit_purpose', 'visit_notes']);
+  const pay = ask({ status: 'Payment Received', ...TALK });
+  assert.deepEqual(pay.missing, ['amount', 'pay_mode', 'pay_ref']);
+  assert.equal(ask({ status: 'Payment Received', ...TALK, amount: 5000, pay_mode: 'cash' }).missing, undefined);
+  assert.deepEqual(ask({ status: 'WhatsApp Complaint / Claim Matter', contact_mode: 'WhatsApp' }).missing, ['contact_person', 'remark']);
+});
+
+test('prepare_followup_form: a field visit card carries the visit details', () => {
+  const r = T.tools.prepare_followup_form(ctx(SURENDRA), {
+    party: 'JGG', status: 'Promise to Pay', promise_date: '2026-10-10', expected: 5000, contact_mode: 'In person (Field Visit)',
+    contact_person: 'Seth ji', remark: 'shop pe mile', visit_purpose: 'Cheque Collection', visit_notes: 'Surat office'
+  });
+  assert.deepEqual(r.action.payload.visit, { purpose: 'Cheque Collection', personMet: 'Seth ji', notes: 'Surat office' });
+  assert.deepEqual(r.action.preview.rows.find(x => x[0] === 'Visit'), ['Visit', 'Cheque Collection · met Seth ji · Surat office']);
+  assert.ok(T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'Promise to Pay', promise_date: '2026-10-10', expected: 5000, contact_mode: 'In person (Field Visit)', contact_person: 'Seth ji', remark: 'x', visit_purpose: 'Party', visit_notes: 'y' }).error);
+});
+
+test('prepare_followup_form: invoices the user names are pre-selected', () => {
+  const c = T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'WhatsApp Complaint / Claim Matter', ...TALK, remark: 'rate diff', bills: ['2'] });
+  assert.deepEqual(c.action.payload.billIds, [2]);
+  assert.deepEqual(c.action.preview.rows.find(x => x[0] === 'Invoices'), ['Invoices', 'Bill 2026-11-01 (2)']);
+  const byDate = T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'WhatsApp Complaint / Claim Matter', ...TALK, bills: ['2026-09-01'] });
+  assert.deepEqual(byDate.action.payload.billIds, [1]);
+  assert.match(T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'WhatsApp Complaint / Claim Matter', ...TALK, bills: ['999'] }).error, /999/);
+  const pay = T.tools.prepare_followup_form(ctx(SURENDRA), { party: 'JGG', status: 'Payment Received', amount: 30000, pay_mode: 'UPI', pay_ref: 'U1', ...TALK, bills: ['2'] });
+  assert.deepEqual(pay.action.payload.billIds, [2]);
+  assert.deepEqual(pay.action.preview.rows.find(x => x[0] === 'Bill 2026-11-01'), ['Bill 2026-11-01', '₹20,000 (full)']);
+  assert.deepEqual(pay.action.preview.rows.find(x => x[0] === 'Advance'), ['Advance', '₹10,000']);
 });

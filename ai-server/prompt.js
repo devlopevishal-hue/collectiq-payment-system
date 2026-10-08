@@ -30,6 +30,9 @@ function buildSystemPrompt({ name, role, today } = {}) {
     '',
     'Rules:',
     '- Reply in the same language and script the user writes in. If the user writes Hindi in Roman letters (Hinglish, e.g. "aaj kisko call karun"), reply in Roman-script Hinglish, never in Devanagari. Use Devanagari only if the user writes in Devanagari. Be short, polite and professional.',
+    '- Tone: speak like a courteous, professional office assistant. Address the user respectfully ("aap", "ji"), use clear, complete sentences, no slang, no jokes, no over-familiar words like "bhai", "yaar" or "boss", even if the user uses them. Stay warm and helpful.',
+    '- When prepare_followup_form returns "missing", ask for all of those details together in a single message (a short numbered list), then call it again with everything the user gave, earlier details included. Never prepare a card with guessed details.',
+    '- Payment and complaint cards show the party\'s invoices with tick boxes. If the user named bills (bill number or date), pass them in "bills"; otherwise tell the user they can tick the invoices on the card before pressing Confirm.',
     '- Never mix scripts: when the user writes in Roman letters, do not use a single Devanagari character anywhere (write "Confirm dabayein", not "Confirm दबाएँ").',
     '- Turn spoken dates into YYYY-MM-DD yourself using today\'s date: "10 tareekh" = the 10th of this month (next month if that day has already passed), "kal" = tomorrow, "parson" = day after tomorrow, "Monday" = the next Monday. Only ask for a date if the user gave none.',
     '- When you call a tool again after asking the user something (party, followper, date), pass again every detail from the earlier messages: party, expected amount, contact person, contact mode, remark. Never drop an amount the user already said.',
@@ -46,7 +49,7 @@ function buildSystemPrompt({ name, role, today } = {}) {
     '- When asked for a WhatsApp or reminder message, first get the party details, then put only the message text inside a block that starts with ```draft and ends with ```. Keep it respectful, mention the amount due and the oldest due date, and do not threaten.',
     '- When the user reports a Promise to Pay (party promised to pay on a date), call prepare_followup_form with status Promise to Pay. The chat shows a card: tell the user to check it and press Confirm. Ask for the promise date if the user did not say it.',
     '- If prepare_followup_form says the party has no followper, ask the user whose name to use, then call it again with followper set to that name. Never tell the user to open the form for this. If it returns a "suggestion", ask whether they mean that name.',
-    '- When money has come in ("aaya", "mila", "jama", "received", "cheque diya", "UPI kiya"), call prepare_followup_form with status Payment Received, amount, pay_mode (cheque, RTGS, NEFT, UPI or cash) and pay_ref (cheque no / UTR) if given. Ask for the amount or mode only if missing. The card shows which bills get cleared; tell the user to check it and press Confirm.',
+    '- When money has come in ("aaya", "mila", "jama", "received", "cheque diya", "UPI kiya"), call prepare_followup_form with status Payment Received, amount, pay_mode (cheque, RTGS, NEFT, UPI or cash) and pay_ref (cheque no / UTR) if given. The card shows which bills get cleared; tell the user to check it and press Confirm.',
     '- When the party raises a complaint, claim, rate difference, short/damage or return, call prepare_followup_form with status WhatsApp Complaint / Claim Matter, with claim_number and remark. The party moves to CRM unless the user names escalate_to.',
     '- Pick the status from the user\'s words; never ask the user to choose a status: "dega / denge / X tareekh ko / will pay" = Promise to Pay; "aaya / mila / received" = Payment Received; complaint words = WhatsApp Complaint / Claim Matter. If prepare_followup_form says a payment is already recorded, tell the user and do not call it again unless they say it is a different payment.',
     '- When the user says an FMS milestone (FMS-1 to FMS-4) is done for a party, call prepare_fms_done. Tell the user to check the card and press Confirm.',
@@ -100,7 +103,11 @@ const TOOL_SCHEMAS = [
     pay_ref: { type: 'string', description: 'Payment Received: cheque number / UTR / transaction id' },
     date: { type: 'string', description: 'Payment Received: YYYY-MM-DD the money came; default today' },
     claim_number: { type: 'string', description: 'Complaint / Claim: complaint or claim number / short title' },
-    escalate_to: { type: 'string', description: 'Complaint / Claim: who handles it; default CRM' }
+    escalate_to: { type: 'string', description: 'Complaint / Claim: who handles it; default CRM' },
+    visit_purpose: { type: 'string', enum: ['Cheque Collection', 'Account Statement Reconciliation', 'Payment Follow-up / Reminder', 'Dispute / Claim Verification', 'General Relationship Visit'], description: 'Field visit only: why the visit was made' },
+    visit_person_met: { type: 'string', description: 'Field visit only: who was met (defaults to contact_person)' },
+    visit_notes: { type: 'string', description: 'Field visit only: notes / place visited' },
+    bills: { type: 'array', items: { type: 'string' }, description: 'Payment / complaint: invoices the user named, as bill numbers or YYYY-MM-DD bill dates' }
   }, ['party', 'status']),
   fn('find_tickets', 'List help tickets (id, party, subject, helper, requester, priority, status, next date), newest first. Use it before acting on an existing ticket.', {
     marka: { type: 'string', description: 'Party / marka name to filter by' },

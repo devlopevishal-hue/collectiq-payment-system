@@ -2256,6 +2256,23 @@ html, body, button, input, select, textarea {
 .ai-table th, .ai-table td { border: 1px solid var(--ai-line); padding: 5px 8px; text-align: left; position: static; box-shadow: none; background: var(--ai-panel); color: var(--ai-ink); }
 .ai-table th { background: var(--ai-soft); color: var(--ai-p1); font: 700 11px Manrope, sans-serif; }
 
+/* Invoice tick list inside payment / complaint cards */
+.ai-bill-pick { margin: 6px 14px 2px; border: 1px solid var(--ai-line); border-radius: 12px; background: var(--ai-bg); overflow: hidden; }
+.ai-bill-head { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; font-size: 12px; border-bottom: 1px solid var(--ai-line); }
+.ai-bill-head b { color: var(--ai-ink); }
+.ai-bill-head span { color: var(--ai-p1); font-weight: 700; }
+.ai-bill-search { width: calc(100% - 16px); margin: 8px; padding: 7px 10px; border: 1px solid var(--ai-line); border-radius: 8px; background: var(--ai-panel); color: var(--ai-ink); font: 500 12px Manrope, sans-serif; }
+.ai-bill-list { max-height: 190px; overflow-y: auto; padding: 4px; }
+.ai-bill { display: grid; grid-template-columns: 20px 1fr auto; gap: 8px; align-items: center; padding: 7px 8px; border-radius: 8px; font-size: 12px; color: var(--ai-ink); cursor: pointer; }
+.ai-bill:hover { background: var(--ai-soft); }
+.ai-bill.on { background: rgba(18, 163, 122, .08); }
+.ai-bill input { width: 16px; height: 16px; accent-color: var(--ai-g); margin: 0; }
+.ai-bill em { font-style: normal; font-weight: 700; font-size: 11px; color: var(--ai-muted); white-space: nowrap; }
+.ai-bill.on em { color: var(--ai-g); }
+.ai-bill-dot { color: var(--ai-g); font-weight: 800; }
+.ai-bill-advance { padding: 8px 10px; border-top: 1px solid var(--ai-line); font: 700 12px Manrope, sans-serif; color: var(--ai-p1); }
+.ai-bill-empty { margin: 8px; font-size: 12px; color: var(--ai-muted); }
+
 @keyframes aiSlideL { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: none; } }
 @keyframes aiFadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 @keyframes aiMsgIn { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }

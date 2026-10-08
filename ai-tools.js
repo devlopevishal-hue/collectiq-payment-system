@@ -299,6 +299,12 @@
       const found = findParty(ctx, args.party);
       if (!found.marka) return found;
       if (args.status === 'Internal Help Ticket') return { error: 'For help tickets use prepare_ticket_action instead.' };
+      if (FORM_STATUSES.includes(args.status)) {
+        const missing = missingFor(args);
+        if (missing.length) {
+          return { error: `Ask the user in one message for: ${missing.map(k => ASK_TEXT[k]).join('; ')}. Do not prepare the card until you have them.`, missing };
+        }
+      }
       if (args.status === 'Promise to Pay') return followupCard(ctx, found.marka, args);
       if (args.status === 'Payment Received') return paymentCard(ctx, found.marka, args);
       if (args.status === 'WhatsApp Complaint / Claim Matter') return complaintCard(ctx, found.marka, args);
@@ -320,6 +326,70 @@
   function actor(ctx) {
     const u = ctx.user || {};
     return u.followperName && norm(u.followperName) !== 'all' ? u.followperName : (u.email || 'Admin');
+  }
+
+  const VISIT_PURPOSES = ['Cheque Collection', 'Account Statement Reconciliation', 'Payment Follow-up / Reminder', 'Dispute / Claim Verification', 'General Relationship Visit'];
+
+  // What the AI must ask for, in the words it should use.
+  const ASK_TEXT = {
+    contact_mode: 'how they spoke (phone call, WhatsApp, email or field visit)',
+    contact_person: 'who they spoke to (contact person)',
+    remark: 'what was discussed (remark)',
+    visit_purpose: `purpose of the visit (${VISIT_PURPOSES.join(', ')})`,
+    visit_notes: 'visit notes / place visited',
+    promise_date: 'the date the party promised to pay',
+    expected: 'the amount the party promised',
+    amount: 'the amount received',
+    pay_mode: 'payment mode (cheque, RTGS, NEFT, UPI or cash)',
+    pay_ref: 'cheque number / UTR'
+  };
+
+  const blank = v => v == null || String(v).trim() === '';
+
+  // Everything the Update Follow-up form would need, so the card is complete.
+  function missingFor(args) {
+    const missing = [];
+    for (const k of ['contact_mode', 'contact_person', 'remark']) if (blank(args[k])) missing.push(k);
+    if (/person|visit/i.test(args.contact_mode || '')) {
+      if (blank(args.visit_purpose)) missing.push('visit_purpose');
+      if (blank(args.visit_notes)) missing.push('visit_notes');
+    }
+    if (args.status === 'Promise to Pay') {
+      if (blank(args.promise_date)) missing.push('promise_date');
+      if (!(Number(args.expected) > 0)) missing.push('expected');
+    } else if (args.status === 'Payment Received') {
+      if (!(Number(args.amount) > 0)) missing.push('amount');
+      if (blank(args.pay_mode)) missing.push('pay_mode');
+      if (norm(args.pay_mode) !== 'cash' && blank(args.pay_ref)) missing.push('pay_ref');
+    }
+    return missing;
+  }
+
+  // Visit details for a field visit; null for calls.
+  function visitDetails(args, contactPerson) {
+    if (!/person|visit/i.test(args.contact_mode || '')) return { visit: null };
+    const purpose = VISIT_PURPOSES.find(v => norm(v) === norm(args.visit_purpose));
+    if (!purpose) return { error: `visit_purpose must be one of: ${VISIT_PURPOSES.join(', ')}` };
+    const visit = { purpose, personMet: String(args.visit_person_met || contactPerson || '').trim(), notes: String(args.visit_notes || '').trim() };
+    return { visit, row: ['Visit', `${visit.purpose} · met ${visit.personMet || '—'} · ${visit.notes}`] };
+  }
+
+  function billLabel(b) {
+    return `Bill ${b.firstDate}${(b.billNos || []).length ? ' (' + b.billNos.join(', ') + ')' : ''}`;
+  }
+
+  // Bills the user named (bill number or YYYY-MM-DD date) among the open bills.
+  function pickBills(m, refs) {
+    if (!Array.isArray(refs) || !refs.length) return { bills: null };
+    const open = (m.bills || []).filter(b => b.balance > 0);
+    const picked = [];
+    for (const ref of refs) {
+      const r = norm(ref).replace(/^bill\s*/, '');
+      const hits = open.filter(b => (b.billNos || []).some(n => norm(n) === r) || b.firstDate === r || b.policyDate === r);
+      if (!hits.length) return { error: `No open bill "${ref}" found for ${m.marka}. Ask the user to check the bill number or date.` };
+      hits.forEach(b => { if (!picked.includes(b)) picked.push(b); });
+    }
+    return { bills: picked.sort((a, b) => String(a.firstDate).localeCompare(String(b.firstDate))) };
   }
 
   // Followper the entry is logged under: the party owner, the name the user
@@ -384,9 +454,11 @@
     if (nextArg && (!ISO_DATE.test(nextArg) || nextArg < ctx.today)) return { error: 'next_date must be today or later (YYYY-MM-DD).' };
     const totalDue = ctx.h.totalOutstanding(m);
     const payType = amount >= totalDue ? 'Full Payment' : 'Part Payment';
+    const chosen = pickBills(m, args.bills);
+    if (chosen.error) return chosen;
     let rest = amount;
-    const billRows = (m.bills || []).filter(b => b.balance > 0)
-      .sort((a, b) => String(a.firstDate).localeCompare(String(b.firstDate)))
+    const billRows = (chosen.bills || (m.bills || []).filter(b => b.balance > 0)
+      .sort((a, b) => String(a.firstDate).localeCompare(String(b.firstDate))))
       .map(b => {
         const amt = Math.min(rest, b.balance);
         rest -= amt;
@@ -397,6 +469,8 @@
 
     const contactPerson = String(args.contact_person || '').trim();
     const remark = String(args.remark || '').trim();
+    const vd = visitDetails(args, contactPerson);
+    if (vd.error) return vd;
     const rows = [['Marka', markaLabel(m)], ['Followper', who.label], ['Status', 'Payment Received'], ['Amount', rupees(amount)], ['Mode', payMode]];
     if (hasRef) rows.push(['Cheque / UTR', payRef]);
     if (date !== ctx.today) rows.push(['Date', date]);
@@ -405,9 +479,12 @@
     rows.push(['Balance after', rupees(Math.max(0, after))]);
     rows.push(['Next date', closed ? 'Follow-up closed (all dues cleared)' : (nextArg || addDays(ctx.today, 2))]);
     if (contactPerson) rows.push(['Contact', contactPerson]);
+    if (vd.row) rows.push(vd.row);
     if (remark) rows.push(['Remark', remark]);
     // payRupees, not amount: formatMoney would turn "amount" into text.
     const payload = { markaId: m.id, marka: m.marka, followper: who.followper, contactPerson, contactMode: cm.mode, payMode, payRef, payRupees: amount, payType, nextDate: nextArg, remark, date };
+    if (vd.visit) payload.visit = vd.visit;
+    if (chosen.bills) payload.billIds = chosen.bills.map(b => b.id);
     return { ok: true, action: { type: 'followup', op: 'payment', payload, preview: { title: '💰 Payment received', rows } } };
   }
 
@@ -434,14 +511,22 @@
     if (nextArg && !ISO_DATE.test(nextArg)) return { error: 'next_date must be in YYYY-MM-DD format.' };
     const nextDate = nextArg > minNext ? nextArg : minNext;
     const contactPerson = String(args.contact_person || '').trim();
+    const vd = visitDetails(args, contactPerson);
+    if (vd.error) return vd;
+    const chosen = pickBills(m, args.bills);
+    if (chosen.error) return chosen;
     const owner = ctx.h.ownerOf(m);
     const rows = [['Marka', markaLabel(m)], ['Followper', who.label], ['Status', 'WhatsApp Complaint / Claim Matter']];
     if (claimNumber) rows.push(['Claim / Complaint no', claimNumber]);
     rows.push(['Party goes to', owner && owner !== 'Unassigned' && norm(owner) !== norm(escalateTo) ? `${escalateTo} (was ${owner})` : escalateTo]);
+    if (chosen.bills) rows.push(['Invoices', chosen.bills.map(billLabel).join(', ')]);
     rows.push(['Next date', nextDate]);
     if (contactPerson) rows.push(['Contact', contactPerson]);
+    if (vd.row) rows.push(vd.row);
     if (remark) rows.push(['Remark', remark]);
     const payload = { markaId: m.id, marka: m.marka, followper: who.followper, contactPerson, contactMode: cm.mode, claimNumber, escalateTo, nextDate, remark };
+    if (vd.visit) payload.visit = vd.visit;
+    if (chosen.bills) payload.billIds = chosen.bills.map(b => b.id);
     return { ok: true, action: { type: 'followup', op: 'complaint', payload, preview: { title: '⚠️ Complaint / Claim', rows } } };
   }
 
@@ -464,13 +549,17 @@
     const { followper, label: followperLabel } = who;
     const contactPerson = String(args.contact_person || '').trim();
     const remark = String(args.remark || '').trim();
+    const vd = visitDetails(args, contactPerson);
+    if (vd.error) return vd;
     const rows = [['Marka', markaLabel(m)], ['Followper', followperLabel], ['Mode', mode], ['Status', 'Promise to Pay']];
     if (contactPerson) rows.push(['Contact', contactPerson]);
+    if (vd.row) rows.push(vd.row);
     rows.push(['Expected', expected > 0 ? '₹' + INR.format(Math.round(expected)) : '— not given']);
     rows.push(['Promise date', promiseDate], ['Next date', nextDate]);
     if (remark) rows.push(['Remark', remark]);
     // expectedRupees, not expected: formatMoney would turn "expected" into text.
     const payload = { markaId: m.id, marka: m.marka, followper, contactPerson, contactMode: mode, expectedRupees: expected, promiseDate, nextDate, remark };
+    if (vd.visit) payload.visit = vd.visit;
     return { ok: true, action: { type: 'followup', op: 'ptp', payload, preview: { title: '📞 Follow-up update', rows } } };
   }
 
