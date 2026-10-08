@@ -893,18 +893,27 @@
     if (hint) hint.textContent = mode === 'working' ? 'Converting your voice to text…' : 'Listening… tap ⏹ to stop';
   }
 
+  // Only one recording at a time. state.starting covers the wait for the mic
+  // permission prompt, when a second tap used to start a second recorder.
   async function startRecording() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === 'undefined') {
       toast('Voice is not supported in this browser. Please type instead.');
       return;
     }
+    if (state.starting || state.rec) return;
+    state.starting = true;
+    const mic = document.getElementById('aiMic');
+    if (mic) { mic.textContent = '⏳'; mic.title = 'Waiting for microphone…'; }
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (e) {
+      state.starting = false;
+      setRecordingUi('idle');
       toast('Microphone permission is blocked. Allow the mic for this site in browser settings.');
       return;
     }
+    state.starting = false;
     stopSpeaking();
     const type = pickAudioType(t => MediaRecorder.isTypeSupported(t));
     const recorder = new MediaRecorder(stream, type ? { mimeType: type, audioBitsPerSecond: 32000 } : { audioBitsPerSecond: 32000 });
@@ -913,28 +922,38 @@
     recorder.onstop = () => {
       clearInterval(rec.timer);
       stream.getTracks().forEach(tr => tr.stop());
-      const blob = new Blob(rec.chunks, { type: recorder.mimeType || type || 'audio/webm' });
-      state.rec = null;
-      sendAudio(blob);
+      if (state.rec === rec) state.rec = null;
+      sendAudio(new Blob(rec.chunks, { type: recorder.mimeType || type || 'audio/webm' }));
     };
     state.rec = rec;
     recorder.start();
     setRecordingUi('recording', 0);
     rec.timer = setInterval(() => {
+      if (recorder.state === 'inactive') { clearInterval(rec.timer); return; }
       const secs = (Date.now() - rec.started) / 1000;
       setRecordingUi('recording', secs);
-      if (secs >= MAX_RECORD_SECONDS) stopRecording();
+      if (secs >= MAX_RECORD_SECONDS) stopRec(rec);
     }, 250);
   }
 
+  // Stops one recording; the timer stops at once, the upload follows in onstop.
+  function stopRec(rec) {
+    if (!rec) return;
+    clearInterval(rec.timer);
+    if (rec.recorder.state !== 'inactive') {
+      setRecordingUi('working');
+      rec.recorder.stop();
+    }
+  }
+
   function stopRecording() {
-    if (state.rec && state.rec.recorder.state !== 'inactive') state.rec.recorder.stop();
+    stopRec(state.rec);
   }
 
   function toggleRecording() {
-    if (state.busy) return;
+    if (state.busy || state.starting || state.transcribing) return;
     if (state.rec) stopRecording();
-    else if (!state.transcribing) startRecording();
+    else startRecording();
   }
 
   function blobToBase64(blob) {
