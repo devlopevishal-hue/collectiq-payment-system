@@ -184,7 +184,7 @@ let users = [];
 let currentUser = null;
 let tab = 'all';
 let markaSubtab = 'markas';
-let F = { followper: 'all', master: 'all', marka: '', min: '', max: '', minCount: '', maxCount: '', from: '', to: '' };
+let F = { followper: 'all', master: 'all', marka: '', min: '', max: '', minCount: '', maxCount: '', from: '', to: '', dateField: 'next', year: '', status: 'all', minDue: '', maxDue: '' };
 
 // User Access Control & Auth State
 const DEFAULT_USERS = [
@@ -1023,6 +1023,26 @@ function compareVal(a, b, dir) {
 // ==========================================
 // FILTER SYSTEM
 // ==========================================
+const FILTER_DATE_FIELDS = { next: 'Next follow-up', last: 'Last contact', due: 'Due date (policy)' };
+const FILTER_STATUSES = { locked: 'GP locked', overdue: 'Overdue', today: 'Due today', upcoming: 'Upcoming', closed: 'Closed (no next date)' };
+
+function filterDateOf(m) {
+  if (F.dateField === 'due') return oldestDueDate(m);
+  if (F.dateField === 'last') return m.lastDate || '';
+  return m.nextDate || '';
+}
+
+function matchesStatus(m, status) {
+  if (status === 'locked') return isLocked(m);
+  if (status === 'closed') return !m.nextDate;
+  if (!m.nextDate) return false;
+  const d = days(m.nextDate);
+  if (status === 'overdue') return d > 0;
+  if (status === 'today') return d === 0;
+  if (status === 'upcoming') return d < 0;
+  return true;
+}
+
 function filtered(list = activeMarkas()) {
   if (currentUser) {
     if (currentUser.role === 'user') {
@@ -1084,21 +1104,61 @@ function filtered(list = activeMarkas()) {
     if (F.minCount !== '' && F.minCount !== null && !isNaN(+F.minCount) && count < +F.minCount) return false;
     if (F.maxCount !== '' && F.maxCount !== null && !isNaN(+F.maxCount) && count > +F.maxCount) return false;
 
-    // 6. Date Range filter (oldest invoice due date)
-    const due = oldestDueDate(m);
-    if (F.from && due && due < F.from) return false;
-    if (F.to && due && due > F.to) return false;
+    // 6. Already-due range
+    if (F.minDue || F.maxDue) {
+      const ad = alreadyDueAmount(m);
+      if (F.minDue !== '' && !isNaN(+F.minDue) && ad < +F.minDue) return false;
+      if (F.maxDue !== '' && F.maxDue != null && !isNaN(+F.maxDue) && ad > +F.maxDue) return false;
+    }
+
+    // 7. Date range / year on the chosen date (next follow-up, last contact or due date)
+    if (F.from || F.to || F.year) {
+      const dv = filterDateOf(m);
+      if (!dv) return false;
+      if (F.from && dv < F.from) return false;
+      if (F.to && dv > F.to) return false;
+      if (F.year && String(dv).slice(0, 4) !== String(F.year)) return false;
+    }
+
+    // 8. Status
+    if (F.status && F.status !== 'all' && !matchesStatus(m, F.status)) return false;
 
     return true;
   });
 }
 
+function filterYears() {
+  const y = today.getFullYear();
+  return [y + 1, y, y - 1, y - 2, y - 3, y - 4];
+}
+
+// Small removable chips for every filter that is switched on.
+function filterChipsHtml() {
+  const chips = [];
+  const add = (label, keys) => chips.push(`<button type="button" class="filter-chip" onclick="clearF('${keys}')">${escapeHtml(label)} <b>✕</b></button>`);
+  const dateName = FILTER_DATE_FIELDS[F.dateField] || FILTER_DATE_FIELDS.next;
+  if (F.from || F.to) add(`${dateName}: ${F.from ? fmt(F.from) : '…'} → ${F.to ? fmt(F.to) : '…'}`, 'from,to');
+  if (F.year) add(`${dateName}: year ${F.year}`, 'year');
+  if (F.status && F.status !== 'all') add(`Status: ${FILTER_STATUSES[F.status] || F.status}`, 'status');
+  if (F.minDue || F.maxDue) add(`Already due: ${F.minDue ? money(+F.minDue) : '0'} – ${F.maxDue ? money(+F.maxDue) : 'any'}`, 'minDue,maxDue');
+  if (F.min || F.max) add(`Outstanding: ${F.min ? money(+F.min) : '0'} – ${F.max ? money(+F.max) : 'any'}`, 'min,max');
+  if (F.minCount || F.maxCount) add(`Follow-ups: ${F.minCount || 0} – ${F.maxCount || 'any'}`, 'minCount,maxCount');
+  if (F.master && F.master !== 'all') add(`Master: ${F.master}`, 'master');
+  if (F.marka) add(`Search: ${F.marka}`, 'marka');
+  if (!chips.length) return '';
+  return chips.join('') + '<button type="button" class="filter-chip clear" onclick="clearFilters()">Clear all</button>';
+}
+
+function filterActiveCount() {
+  return ['from', 'to', 'year', 'minDue', 'maxDue', 'min', 'max', 'minCount', 'maxCount'].filter(k => F[k]).length + (F.status && F.status !== 'all' ? 1 : 0);
+}
+
 function filters(containerId) {
   const container = document.getElementById(containerId);
   if (!container) return;
-  
+
   const isUserRole = currentUser && currentUser.role === 'user';
-  
+
   // If already rendered, do in-place value sync without destroying active input focus
   const existingInputs = container.querySelectorAll('.filter-input');
   if (existingInputs && existingInputs.length >= 8) {
@@ -1109,52 +1169,236 @@ function filters(containerId) {
         if (el.value !== F[k]) el.value = F[k];
       }
     });
+    const chipsEl = container.querySelector('.filter-chips');
+    if (chipsEl) chipsEl.innerHTML = filterChipsHtml();
+    const countEl = container.querySelector('.filter-count');
+    if (countEl) countEl.textContent = filterActiveCount() ? String(filterActiveCount()) : '';
     return;
   }
-  
+
   const masters = allMasters();
   const followpers = allFollowpers();
-  
+
   const followperOptions = isUserRole
     ? `<option value="${escapeHtml(currentUser.followperName)}" ${F.followper === currentUser.followperName ? 'selected' : ''}>My Markas (${escapeHtml(currentUser.followperName)})</option><option value="all" ${F.followper === 'all' ? 'selected' : ''}>All Team Markas</option>`
     : `<option value="all">All Followpers</option>` + followpers.map(f => `<option value="${escapeHtml(f)}" ${F.followper === f ? 'selected' : ''}>${escapeHtml(f)}</option>`).join('');
 
-  const hasAdv = Boolean(F.min || F.max || F.minCount || F.maxCount || F.from || F.to);
+  const opt = (value, label, current) => `<option value="${escapeHtml(String(value))}" ${String(current) === String(value) ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+  const num = (k, label) => `<label class="f-field"><span>${label}</span><input class="filter-input" type="number" min="0" data-k="${k}" value="${escapeHtml(String(F[k] || ''))}" oninput="setF(this)"></label>`;
+  const active = filterActiveCount();
   container.innerHTML = `
     <div class="filter-mobile-search-row">
       <input class="filter-input search-input" type="text" data-k="marka" placeholder="🔍 Search Party / Marka name..." value="${escapeHtml(F.marka || '')}" oninput="setF(this)">
-      <button type="button" class="filter-adv-toggle-btn ${hasAdv ? 'has-active' : ''}" onclick="toggleAdvFilters(this)">
-        ⚙ Filters ${hasAdv ? '<span class="filter-dot">•</span>' : ''}
+      <button type="button" class="filter-adv-toggle-btn ${active ? 'has-active' : ''}" onclick="toggleAdvFilters(this)">
+        ⚙ More filters <span class="filter-count">${active || ''}</span>
       </button>
     </div>
     <div class="filter-primary-row">
-      <select class="filter-input" data-k="followper" onchange="setF(this)" ${isUserRole ? 'disabled' : ''}>
-        ${followperOptions}
-      </select>
-      <select class="filter-input" data-k="master" onchange="setF(this)">
-        <option value="all">All Masters</option>
-        ${masters.map(m => `<option value="${escapeHtml(m)}" ${F.master === m ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('')}
-      </select>
+      <label class="f-field"><span>Followper</span><select class="filter-input" data-k="followper" onchange="setF(this)" ${isUserRole ? 'disabled' : ''}>${followperOptions}</select></label>
+      <label class="f-field"><span>Master</span><select class="filter-input" data-k="master" onchange="setF(this)"><option value="all">All Masters</option>${masters.map(m => `<option value="${escapeHtml(m)}" ${F.master === m ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('')}</select></label>
+      <label class="f-field"><span>Status</span><select class="filter-input" data-k="status" onchange="setF(this)">${opt('all', 'All statuses', F.status)}${Object.keys(FILTER_STATUSES).map(k => opt(k, FILTER_STATUSES[k], F.status)).join('')}</select></label>
+      <label class="f-field"><span>Date by</span><select class="filter-input" data-k="dateField" onchange="setF(this)">${Object.keys(FILTER_DATE_FIELDS).map(k => opt(k, FILTER_DATE_FIELDS[k], F.dateField || 'next')).join('')}</select></label>
+      <label class="f-field"><span>From</span><input class="filter-input" type="date" data-k="from" value="${F.from || ''}" onchange="setF(this)"></label>
+      <label class="f-field"><span>To</span><input class="filter-input" type="date" data-k="to" value="${F.to || ''}" onchange="setF(this)"></label>
+      <label class="f-field"><span>Year</span><select class="filter-input" data-k="year" onchange="setF(this)">${opt('', 'All years', F.year)}${filterYears().map(y => opt(y, String(y), F.year)).join('')}</select></label>
     </div>
-    <div class="filter-adv-panel" style="${hasAdv ? 'display:flex;' : 'display:none;'}">
-      <input class="filter-input" type="number" data-k="min" placeholder="Min amount ₹" value="${F.min || ''}" oninput="setF(this)">
-      <input class="filter-input" type="number" data-k="max" placeholder="Max amount ₹" value="${F.max || ''}" oninput="setF(this)">
-      <input class="filter-input" type="number" data-k="minCount" placeholder="Min follow-ups" value="${F.minCount || ''}" oninput="setF(this)">
-      <input class="filter-input" type="number" data-k="maxCount" placeholder="Max follow-ups" value="${F.maxCount || ''}" oninput="setF(this)">
-      <input class="filter-input" type="date" data-k="from" title="From Due Date" value="${F.from || ''}" onchange="setF(this)">
-      <input class="filter-input" type="date" data-k="to" title="To Due Date" value="${F.to || ''}" onchange="setF(this)">
-      <button type="button" onclick="clearFilters()" class="tiny-btn clear-filter-btn">Clear All</button>
+    <div class="filter-quick-row">
+      <span>Quick:</span>
+      <button type="button" class="filter-quick" onclick="setRange('today')">Today</button>
+      <button type="button" class="filter-quick" onclick="setRange('week')">This week</button>
+      <button type="button" class="filter-quick" onclick="setRange('month')">This month</button>
+      <button type="button" class="filter-quick" onclick="setRange('lastmonth')">Last month</button>
+      <button type="button" class="filter-quick" onclick="setRange('year')">This year</button>
     </div>
+    <div class="filter-adv-panel">
+      ${num('minDue', 'Already due min ₹')}${num('maxDue', 'Already due max ₹')}
+      ${num('min', 'Outstanding min ₹')}${num('max', 'Outstanding max ₹')}
+      ${num('minCount', 'Follow-ups min')}${num('maxCount', 'Follow-ups max')}
+    </div>
+    <div class="filter-chips">${filterChipsHtml()}</div>
   `;
 }
 
+// Quick date periods on the chosen date field.
+function setRange(kind) {
+  const d0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  let from = d0, to = d0;
+  if (kind === 'week') {
+    const dow = (d0.getDay() + 6) % 7;
+    from = new Date(d0.getTime() - dow * 86400000);
+    to = new Date(from.getTime() + 6 * 86400000);
+  } else if (kind === 'month') {
+    from = new Date(d0.getFullYear(), d0.getMonth(), 1);
+    to = new Date(d0.getFullYear(), d0.getMonth() + 1, 0);
+  } else if (kind === 'lastmonth') {
+    from = new Date(d0.getFullYear(), d0.getMonth() - 1, 1);
+    to = new Date(d0.getFullYear(), d0.getMonth(), 0);
+  } else if (kind === 'year') {
+    from = new Date(d0.getFullYear(), 0, 1);
+    to = new Date(d0.getFullYear(), 11, 31);
+  }
+  F.from = iso(from);
+  F.to = iso(to);
+  F.year = '';
+  if (typeof PAGINATION !== 'undefined' && PAGINATION.schedule) PAGINATION.schedule.page = 1;
+  renderAll();
+}
+window.setRange = setRange;
+
+// Removes one filter (chip ✕).
+function clearF(keys) {
+  String(keys).split(',').forEach(k => {
+    if (k === 'followper') F[k] = (currentUser && currentUser.role === 'user') ? currentUser.followperName : 'all';
+    else F[k] = (k === 'status' || k === 'master') ? 'all' : '';
+  });
+  renderAll();
+}
+window.clearF = clearF;
+
+// ---------- Column header filters (Follow-up schedule) ----------
+const COL_FILTERS = {
+  marka: { title: 'Marka / party', keys: 'marka' },
+  master: { title: 'Master', keys: 'master' },
+  due: { title: 'Due date (policy)', date: 'due' },
+  alreadyDue: { title: 'Already due', keys: 'minDue,maxDue' },
+  outstanding: { title: 'Total outstanding', keys: 'min,max' },
+  followper: { title: 'Followper', keys: 'followper' },
+  followups: { title: 'Follow-ups', keys: 'minCount,maxCount' },
+  next: { title: 'Next follow-up', date: 'next' },
+  last: { title: 'Last contact', date: 'last' },
+  status: { title: 'Status', keys: 'status' }
+};
+
+function colFilterActive(col) {
+  const c = COL_FILTERS[col];
+  if (!c) return false;
+  if (c.date) return F.dateField === c.date && Boolean(F.from || F.to || F.year);
+  return c.keys.split(',').some(k => {
+    if (k === 'master' || k === 'status') return F[k] && F[k] !== 'all';
+    if (k === 'followper') return F[k] && F[k] !== 'all' && !(currentUser && currentUser.role === 'user');
+    return Boolean(F[k]);
+  });
+}
+
+function updateColFilterIcons() {
+  document.querySelectorAll('.th-filter').forEach(b => b.classList.toggle('active', colFilterActive(b.dataset.col)));
+}
+
+function colFilterBody(col) {
+  const c = COL_FILTERS[col];
+  const num = (k, label) => `<label><span>${label}</span><input type="number" min="0" data-k="${k}" value="${escapeHtml(String(F[k] || ''))}" oninput="setF(this)"></label>`;
+  const opt = (value, label, current) => `<option value="${escapeHtml(String(value))}" ${String(current) === String(value) ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+  if (c.date) {
+    const mine = F.dateField === c.date;
+    const v = k => (mine ? F[k] || '' : '');
+    return `
+      <label><span>From</span><input type="date" value="${v('from')}" onchange="setColDate('${c.date}', 'from', this.value)"></label>
+      <label><span>To</span><input type="date" value="${v('to')}" onchange="setColDate('${c.date}', 'to', this.value)"></label>
+      <label><span>Year</span><select onchange="setColDate('${c.date}', 'year', this.value)">${opt('', 'All years', v('year'))}${filterYears().map(y => opt(y, String(y), v('year'))).join('')}</select></label>
+      <div class="col-filter-quick">
+        <button type="button" onclick="setColQuick('${c.date}', 'today')">Today</button>
+        <button type="button" onclick="setColQuick('${c.date}', 'week')">This week</button>
+        <button type="button" onclick="setColQuick('${c.date}', 'month')">This month</button>
+        <button type="button" onclick="setColQuick('${c.date}', 'lastmonth')">Last month</button>
+        <button type="button" onclick="setColQuick('${c.date}', 'year')">This year</button>
+      </div>`;
+  }
+  if (col === 'marka') return `<label><span>Search</span><input type="text" data-k="marka" placeholder="Party, master or remark" value="${escapeHtml(F.marka || '')}" oninput="setF(this)"></label>`;
+  if (col === 'master') return `<label><span>Master</span><select data-k="master" onchange="setF(this)">${opt('all', 'All masters', F.master)}${allMasters().map(m => opt(m, m, F.master)).join('')}</select></label>`;
+  if (col === 'followper') {
+    const locked = currentUser && currentUser.role === 'user';
+    return `<label><span>Followper</span><select data-k="followper" onchange="setF(this)" ${locked ? 'disabled' : ''}>${opt('all', 'All followpers', F.followper)}${allFollowpers().map(f => opt(f, f, F.followper)).join('')}</select></label>`;
+  }
+  if (col === 'status') return `<label><span>Status</span><select data-k="status" onchange="setF(this)">${opt('all', 'All statuses', F.status)}${Object.keys(FILTER_STATUSES).map(k => opt(k, FILTER_STATUSES[k], F.status)).join('')}</select></label>`;
+  if (col === 'alreadyDue') return num('minDue', 'Min ₹') + num('maxDue', 'Max ₹');
+  if (col === 'outstanding') return num('min', 'Min ₹') + num('max', 'Max ₹');
+  if (col === 'followups') return num('minCount', 'Min') + num('maxCount', 'Max');
+  return '';
+}
+
+function closeColFilter() {
+  const pop = document.getElementById('colFilterPop');
+  if (pop) pop.remove();
+  document.removeEventListener('mousedown', colFilterOutside, true);
+  document.removeEventListener('keydown', colFilterEsc, true);
+}
+window.closeColFilter = closeColFilter;
+
+function colFilterOutside(e) {
+  const pop = document.getElementById('colFilterPop');
+  if (pop && !pop.contains(e.target) && !e.target.closest('.th-filter')) closeColFilter();
+}
+
+function colFilterEsc(e) {
+  if (e.key === 'Escape') closeColFilter();
+}
+
+function openColFilter(ev, col) {
+  ev.stopPropagation();
+  ev.preventDefault();
+  const already = document.getElementById('colFilterPop');
+  const sameCol = already && already.dataset.col === col;
+  closeColFilter();
+  if (sameCol || !COL_FILTERS[col]) return;
+  const btn = ev.currentTarget || ev.target;
+  const rect = btn.getBoundingClientRect();
+  const pop = document.createElement('div');
+  pop.id = 'colFilterPop';
+  pop.className = 'col-filter-pop';
+  pop.dataset.col = col;
+  pop.innerHTML = `
+    <div class="col-filter-head"><b>${escapeHtml(COL_FILTERS[col].title)}</b><button type="button" onclick="closeColFilter()" aria-label="Close">✕</button></div>
+    <div class="col-filter-body">${colFilterBody(col)}</div>
+    <div class="col-filter-foot"><button type="button" class="col-clear" onclick="clearColFilter('${col}')">Clear</button><button type="button" class="col-done" onclick="closeColFilter()">Done</button></div>`;
+  document.body.appendChild(pop);
+  const w = pop.offsetWidth;
+  pop.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, rect.left)) + 'px';
+  pop.style.top = Math.min(window.innerHeight - pop.offsetHeight - 8, rect.bottom + 6) + 'px';
+  const first = pop.querySelector('input, select');
+  if (first) first.focus();
+  document.addEventListener('mousedown', colFilterOutside, true);
+  document.addEventListener('keydown', colFilterEsc, true);
+}
+window.openColFilter = openColFilter;
+
+function refreshColFilter() {
+  const pop = document.getElementById('colFilterPop');
+  if (pop) pop.querySelector('.col-filter-body').innerHTML = colFilterBody(pop.dataset.col);
+}
+
+// A date column filter: switching to another date column starts a fresh range.
+function setColDate(field, part, value) {
+  if (F.dateField !== field) { F.from = ''; F.to = ''; F.year = ''; F.dateField = field; }
+  F[part] = value;
+  if (part === 'year' && value) { F.from = ''; F.to = ''; }
+  if (part !== 'year' && value) F.year = '';
+  if (typeof PAGINATION !== 'undefined' && PAGINATION.schedule) PAGINATION.schedule.page = 1;
+  refreshColFilter();
+  renderAll();
+}
+window.setColDate = setColDate;
+
+function setColQuick(field, kind) {
+  F.dateField = field;
+  setRange(kind);
+  refreshColFilter();
+}
+window.setColQuick = setColQuick;
+
+function clearColFilter(col) {
+  const c = COL_FILTERS[col];
+  if (c.date) { if (F.dateField === c.date) clearF('from,to,year'); }
+  else clearF(c.keys);
+  closeColFilter();
+}
+window.clearColFilter = clearColFilter;
 
 function toggleAdvFilters(btn) {
-  const panel = btn.closest('.filterbar').querySelector('.filter-adv-panel');
-  if (!panel) return;
-  const isHidden = panel.style.display === 'none' || !panel.style.display;
-  panel.style.display = isHidden ? 'flex' : 'none';
-  btn.classList.toggle('active', isHidden);
+  const bar = btn.closest('.filterbar');
+  if (!bar) return;
+  const open = !bar.classList.contains('adv-open');
+  bar.classList.toggle('adv-open', open);
+  btn.classList.toggle('active', open);
 }
 
 let setFDebounceTimer = null;
@@ -1177,16 +1421,10 @@ function setF(el) {
 }
 
 function clearFilters() {
-  F = { 
-    followper: (currentUser && currentUser.role === 'user') ? currentUser.followperName : 'all', 
-    master: 'all', 
-    marka: '', 
-    min: '', 
-    max: '', 
-    minCount: '', 
-    maxCount: '', 
-    from: '', 
-    to: '' 
+  F = {
+    followper: (currentUser && currentUser.role === 'user') ? currentUser.followperName : 'all',
+    master: 'all', marka: '', min: '', max: '', minCount: '', maxCount: '', from: '', to: '',
+    dateField: F.dateField || 'next', year: '', status: 'all', minDue: '', maxDue: ''
   };
   ['filterBar', 'lockFilters', 'rokadFilters', 'analysisFilters', 'markaFilters', 'fmsFilters'].forEach(id => {
     const el = document.getElementById(id);
@@ -1563,6 +1801,7 @@ function schedule() {
     `;
   }).join('') : '<tr><td colspan="11" style="text-align:center;color:#788882;padding:24px;">No cases match these filters.</td></tr>';
   renderPaginationControls('schedulePagination', totalCount, 'schedule', 'changeSchedulePage');
+  updateColFilterIcons();
 }
 
 function locks() {

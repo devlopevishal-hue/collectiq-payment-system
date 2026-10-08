@@ -14,7 +14,7 @@
   <title>CollectIQ - Payment Collection System</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="styles.css?v=6.15.0">
+  <link rel="stylesheet" href="styles.css?v=6.16.0">
   <script>
     function toggleMobileMenu(e) {
       if (e) {
@@ -199,16 +199,16 @@
         <table>
           <thead>
             <tr>
-              <th class="sortable" onclick="sortTable('schedule', 'marka')">MARKA <span class="sort-icon" id="sort_schedule_marka">▲</span></th>
-              <th class="sortable" onclick="sortTable('schedule', 'master')">MASTER <span class="sort-icon" id="sort_schedule_master">⇅</span></th>
-              <th class="sortable" onclick="sortTable('schedule', 'oldestDue')">DUE DATE (POLICY) <span class="sort-icon" id="sort_schedule_oldestDue">⇅</span></th>
-              <th class="sortable" onclick="sortTable('schedule', 'alreadyDue')">ALREADY DUE <span class="sort-icon" id="sort_schedule_alreadyDue">⇅</span></th>
-              <th class="sortable" onclick="sortTable('schedule', 'balance')">TOTAL OUTSTANDING <span class="sort-icon" id="sort_schedule_balance">⇅</span></th>
-              <th class="sortable" onclick="sortTable('schedule', 'owner')">FOLLOWPER <span class="sort-icon" id="sort_schedule_owner">⇅</span></th>
-              <th class="sortable" onclick="sortTable('schedule', 'count')">FOLLOW-UPS <span class="sort-icon" id="sort_schedule_count">⇅</span></th>
-              <th class="sortable" onclick="sortTable('schedule', 'nextDate')">NEXT FOLLOW-UP <span class="sort-icon" id="sort_schedule_nextDate">⇅</span></th>
-              <th class="sortable" onclick="sortTable('schedule', 'lastDate')">LAST CONTACT (ACTUAL) <span class="sort-icon" id="sort_schedule_lastDate">⇅</span></th>
-              <th class="sortable" onclick="sortTable('schedule', 'status')">STATUS <span class="sort-icon" id="sort_schedule_status">⇅</span></th>
+              <th class="sortable" onclick="sortTable('schedule', 'marka')">MARKA <button type="button" class="th-filter" data-col="marka" onclick="openColFilter(event, 'marka')" title="Filter" aria-label="Filter this column">⏷</button> <span class="sort-icon" id="sort_schedule_marka">▲</span></th>
+              <th class="sortable" onclick="sortTable('schedule', 'master')">MASTER <button type="button" class="th-filter" data-col="master" onclick="openColFilter(event, 'master')" title="Filter" aria-label="Filter this column">⏷</button> <span class="sort-icon" id="sort_schedule_master">⇅</span></th>
+              <th class="sortable" onclick="sortTable('schedule', 'oldestDue')">DUE DATE (POLICY) <button type="button" class="th-filter" data-col="due" onclick="openColFilter(event, 'due')" title="Filter" aria-label="Filter this column">⏷</button> <span class="sort-icon" id="sort_schedule_oldestDue">⇅</span></th>
+              <th class="sortable" onclick="sortTable('schedule', 'alreadyDue')">ALREADY DUE <button type="button" class="th-filter" data-col="alreadyDue" onclick="openColFilter(event, 'alreadyDue')" title="Filter" aria-label="Filter this column">⏷</button> <span class="sort-icon" id="sort_schedule_alreadyDue">⇅</span></th>
+              <th class="sortable" onclick="sortTable('schedule', 'balance')">TOTAL OUTSTANDING <button type="button" class="th-filter" data-col="outstanding" onclick="openColFilter(event, 'outstanding')" title="Filter" aria-label="Filter this column">⏷</button> <span class="sort-icon" id="sort_schedule_balance">⇅</span></th>
+              <th class="sortable" onclick="sortTable('schedule', 'owner')">FOLLOWPER <button type="button" class="th-filter" data-col="followper" onclick="openColFilter(event, 'followper')" title="Filter" aria-label="Filter this column">⏷</button> <span class="sort-icon" id="sort_schedule_owner">⇅</span></th>
+              <th class="sortable" onclick="sortTable('schedule', 'count')">FOLLOW-UPS <button type="button" class="th-filter" data-col="followups" onclick="openColFilter(event, 'followups')" title="Filter" aria-label="Filter this column">⏷</button> <span class="sort-icon" id="sort_schedule_count">⇅</span></th>
+              <th class="sortable" onclick="sortTable('schedule', 'nextDate')">NEXT FOLLOW-UP <button type="button" class="th-filter" data-col="next" onclick="openColFilter(event, 'next')" title="Filter" aria-label="Filter this column">⏷</button> <span class="sort-icon" id="sort_schedule_nextDate">⇅</span></th>
+              <th class="sortable" onclick="sortTable('schedule', 'lastDate')">LAST CONTACT (ACTUAL) <button type="button" class="th-filter" data-col="last" onclick="openColFilter(event, 'last')" title="Filter" aria-label="Filter this column">⏷</button> <span class="sort-icon" id="sort_schedule_lastDate">⇅</span></th>
+              <th class="sortable" onclick="sortTable('schedule', 'status')">STATUS <button type="button" class="th-filter" data-col="status" onclick="openColFilter(event, 'status')" title="Filter" aria-label="Filter this column">⏷</button> <span class="sort-icon" id="sort_schedule_status">⇅</span></th>
               <th>ACTIONS</th>
             </tr>
           </thead>
@@ -1521,17 +1521,17 @@ service cloud.firestore {
   <!-- Firebase Compatibility Libraries for Real-time Cloud DB -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-  <script src="latest-report-data.js?v=6.15.0"></script>
-  <script src="followup-actions.js?v=6.15.0"></script>
-  <script src="ticket-actions.js?v=6.15.0"></script>
-  <script src="app.js?v=6.15.0"></script>
-  <script src="ai-tools.js?v=6.15.0"></script>
-  <script src="ai-chat.js?v=6.15.0"></script>
+  <script src="latest-report-data.js?v=6.16.0"></script>
+  <script src="followup-actions.js?v=6.16.0"></script>
+  <script src="ticket-actions.js?v=6.16.0"></script>
+  <script src="app.js?v=6.16.0"></script>
+  <script src="ai-tools.js?v=6.16.0"></script>
+  <script src="ai-chat.js?v=6.16.0"></script>
   <!-- Progressive Web App Service Worker Registration -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
-        navigator.serviceWorker.register('sw.js?v=6.15.0').then(function(reg) {
+        navigator.serviceWorker.register('sw.js?v=6.16.0').then(function(reg) {
           console.log('[PWA] Service Worker registered with scope:', reg.scope);
         }).catch(function(err) {
           console.warn('[PWA] Service Worker registration failed:', err);
