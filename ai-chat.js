@@ -396,7 +396,7 @@
           <form class="ai-input" id="aiForm">
             <button type="button" class="ai-mic" id="aiMic" data-mic title="Speak your message" aria-label="Speak your message">🎤</button>
             <div class="ai-rec" id="aiRec" hidden><span class="ai-rec-dot"></span><span class="ai-rec-wave"><i></i><i></i><i></i><i></i><i></i></span><b id="aiRecTime">0:00</b><small id="aiRecHint">Listening… tap 🎤 to stop</small></div>
-            <textarea id="aiInput" rows="1" placeholder="Type or tap 🎤 and speak… (e.g. RKC se 30,000 ka cheque aaya)"></textarea>
+            <textarea id="aiInput" rows="1" placeholder="Type or tap 🎤 to speak…"></textarea>
             <button type="submit" class="ai-send" id="aiSend" title="Send">➤</button>
           </form>
         </div>
@@ -956,6 +956,15 @@
     else startRecording();
   }
 
+  // The message box grows with its text (up to ~5 lines) instead of showing
+  // scroll arrows; past that it scrolls without a visible bar.
+  function autoSize(el) {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+    el.style.overflowY = el.scrollHeight > 120 ? 'auto' : 'hidden';
+  }
+
   function blobToBase64(blob) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -986,6 +995,7 @@
         setRecordingUi('idle');
         input.focus();
         input.setSelectionRange(input.value.length, input.value.length);
+        autoSize(input);
       }
       toast('Check the text, then press ➤ to send.');
     } catch (e) {
@@ -1131,6 +1141,7 @@
       refreshCard(ref, card);
     });
     container.addEventListener('input', e => {
+      if (e.target.id === 'aiInput') { autoSize(e.target); return; }
       const box = e.target.closest('[data-bill-search]');
       if (box) filterBills(box);
     });
@@ -1140,6 +1151,7 @@
       const text = input.value.trim();
       if (!text) return;
       input.value = '';
+      autoSize(input);
       ask(text, text);
     });
     container.addEventListener('keydown', e => {

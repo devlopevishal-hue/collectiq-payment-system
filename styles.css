@@ -2388,3 +2388,7 @@ body:has(#aiAssistant.active) .mobile-fab-container { display: none !important; 
 @keyframes aiRipple { from { transform: scale(1); opacity: .8; } to { transform: scale(1.7); opacity: 0; } }
 @keyframes aiWave { 0%, 100% { height: 18px; } 50% { height: 4px; } }
 @media (max-width: 768px) { .ai-rec small { display: none; } .ai-mic { width: 40px; height: 40px; } }
+
+/* AI message box: no scroll arrows; grows with the text (v6.17.2) */
+.ai-input textarea { overflow-y: hidden; line-height: 1.45; min-height: 44px; box-sizing: border-box; scrollbar-width: none; }
+.ai-input textarea::-webkit-scrollbar { display: none; }
