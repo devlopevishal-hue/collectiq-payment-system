@@ -3726,48 +3726,69 @@ function visitsView() {
     }).join('') || '<tr><td colspan="11" style="text-align:center;color:#788882;padding:24px;">No active parties found.</td></tr>';
   }
 
-  // Subtab 3: Daily Summary Table
+  // Subtab 3: Daily Activity Summary — counts per doer + every history entry
   const sumTbody = document.getElementById('dailySummaryTable');
-  if (sumTbody) {
-    const doerMap = {};
-    activeMarkaList.forEach(m => {
-      const d = ownerOf(m);
-      if (!doerMap[d]) doerMap[d] = { markas: 0, todayVisits: 0, todayCalls: 0, todayWa: 0, todayPtp: 0, totalVisits: 0, totalActions: 0 };
-      doerMap[d].markas++;
+  if (sumTbody) renderActivitySummary(sumTbody, { isUserRole, curDoer, todayIso });
+}
 
-      (m.history || []).forEach(h => {
-        doerMap[d].totalActions++;
-        const isV = h.mode && (h.mode.toLowerCase().includes('person') || h.mode.toLowerCase().includes('visit'));
-        const isC = h.mode && h.mode.toLowerCase().includes('phone');
-        const isW = h.mode && h.mode.toLowerCase().includes('whatsapp');
-        const isP = h.status === 'Promise to Pay';
+const ACTIVITY_ICONS = { call: '📞', whatsapp: '💬', email: '✉️', visit: '🚶', payment: '💰', complaint: '⚠️', help: '🎫', fms: '✅', other: '📝' };
+const ACTIVITY_LIMIT = 300;
 
-        if (isV) doerMap[d].totalVisits++;
-        if (h.date === todayIso) {
-          if (isV) doerMap[d].todayVisits++;
-          if (isC) doerMap[d].todayCalls++;
-          if (isW) doerMap[d].todayWa++;
-          if (isP) doerMap[d].todayPtp++;
-        }
-      });
-    });
+function renderActivitySummary(sumTbody, { isUserRole, curDoer, todayIso }) {
+  // No dates chosen = today; one date chosen = open range on the other side.
+  const from = F.visitFrom || (F.visitTo ? '' : todayIso);
+  const to = F.visitTo || (F.visitFrom ? '' : todayIso);
+  const doer = isUserRole ? (currentUser.followperName || '') : (curDoer === 'all' ? '' : curDoer);
+  const rows = ActivityLog.collectActivity(markas, { from, to, doer, search: F.visitSearch || '', ownerOf });
+  const summary = ActivityLog.summarize(rows);
 
-    sumTbody.innerHTML = Object.keys(doerMap).map(d => {
-      const s = doerMap[d];
-      return `
-        <tr>
-          <td><b style="color:#087454;">${escapeHtml(d)}</b></td>
-          <td>${s.markas} active parties</td>
-          <td style="text-align:center; font-weight:700; ${s.todayVisits > 0 ? 'color:#087454;' : ''}">${s.todayVisits}</td>
-          <td style="text-align:center;">${s.todayCalls}</td>
-          <td style="text-align:center;">${s.todayWa}</td>
-          <td style="text-align:center; font-weight:700;">${s.todayPtp}</td>
-          <td style="text-align:center; font-weight:700; color:#087454;">${s.totalVisits}</td>
-          <td style="text-align:center; font-weight:800;">${s.totalActions}</td>
-        </tr>
-      `;
-    }).join('') || '<tr><td colspan="8" style="text-align:center;color:#788882;padding:24px;">No activity logged.</td></tr>';
+  const label = document.getElementById('activityRangeLabel');
+  if (label) label.textContent = from && to && from === to ? (from === todayIso ? `Today · ${fmt(from)}` : fmt(from)) : `${from ? fmt(from) : 'Start'} → ${to ? fmt(to) : 'Today'}`;
+
+  const n = v => `<td style="text-align:center;${v ? 'font-weight:700;color:#087454;' : 'color:#9ab0a6;'}">${v}</td>`;
+  sumTbody.innerHTML = summary.map(s => `
+    <tr>
+      <td><b style="color:#087454;">${escapeHtml(s.doer)}</b></td>
+      ${n(s.calls)}${n(s.whatsapp)}${n(s.visits)}${n(s.ptp)}
+      <td style="text-align:center;${s.payments ? 'font-weight:700;color:#087454;' : 'color:#9ab0a6;'}">${s.payments ? `${s.payments} · ${money(s.paymentAmount)}` : 0}</td>
+      ${n(s.complaints)}${n(s.help)}
+      <td style="text-align:center;font-weight:800;">${s.total}</td>
+    </tr>`).join('') || '<tr><td colspan="9" style="text-align:center;color:#788882;padding:24px;">No activity logged for this period.</td></tr>';
+
+  const countEl = document.getElementById('activityCount');
+  if (countEl) countEl.textContent = rows.length ? `${rows.length.toLocaleString('en-IN')} ${rows.length === 1 ? 'entry' : 'entries'}` : '';
+  const logEl = document.getElementById('activityLog');
+  if (!logEl) return;
+  if (!rows.length) {
+    logEl.innerHTML = '<p class="activity-empty">No follow-up history for this period. Pick other dates in From / To above.</p>';
+    return;
   }
+  const shown = rows.slice(0, ACTIVITY_LIMIT);
+  const byDay = {};
+  shown.forEach(r => { (byDay[r.date] = byDay[r.date] || []).push(r); });
+  logEl.innerHTML = Object.keys(byDay).sort().reverse().map(day => `
+    <div class="activity-day">
+      <div class="activity-day-head">${fmt(day)} <span>${byDay[day].length} ${byDay[day].length === 1 ? 'entry' : 'entries'}</span></div>
+      ${byDay[day].map(r => `
+        <div class="activity-item kind-${r.kind}">
+          <span class="activity-icon" aria-hidden="true">${ACTIVITY_ICONS[r.kind] || '📝'}</span>
+          <div class="activity-main">
+            <div class="activity-top">
+              <button type="button" class="activity-party" onclick="openHistory('${escapeHtml(String(r.markaId))}')" title="Open this party's history">${escapeHtml(r.marka)}</button>
+              <small>${escapeHtml(r.master)}</small>
+              <span class="activity-status">${escapeHtml(r.status || r.kind)}</span>
+            </div>
+            <div class="activity-meta">by <b>${escapeHtml(r.doer)}</b>${r.mode ? ' · ' + escapeHtml(r.mode) : ''}${r.contact ? ' · with ' + escapeHtml(r.contact) : ''}</div>
+            ${r.ptp && r.promise ? `<div class="activity-extra">PTP ${r.expected ? money(r.expected) + ' ' : ''}on ${fmt(r.promise)}</div>` : ''}
+            ${r.kind === 'payment' && r.amount ? `<div class="activity-extra">Collected ${money(r.amount)}${r.ref ? ' · ref ' + escapeHtml(r.ref) : ''}</div>` : ''}
+            ${r.remark ? `<div class="activity-remark">${escapeHtml(r.remark)}</div>` : ''}
+          </div>
+          <div class="activity-side">
+            ${r.next ? `<small>Next: <b>${fmt(r.next)}</b></small>` : ''}
+            <button type="button" onclick="openFollowup('${escapeHtml(String(r.markaId))}')" class="row-action">+ Next Action</button>
+          </div>
+        </div>`).join('')}
+    </div>`).join('') + (rows.length > ACTIVITY_LIMIT ? `<p class="activity-empty">Showing the latest ${ACTIVITY_LIMIT} of ${rows.length.toLocaleString('en-IN')} entries. Narrow the dates to see the rest.</p>` : '');
 }
 window.visitsView = visitsView;
 
