@@ -3728,22 +3728,48 @@ function visitsView() {
 
   // Subtab 3: Daily Activity Summary — counts per doer + every history entry
   const sumTbody = document.getElementById('dailySummaryTable');
-  if (sumTbody) renderActivitySummary(sumTbody, { isUserRole, curDoer, todayIso });
+  if (sumTbody) {
+    try {
+      renderActivitySummary(sumTbody, { isUserRole, curDoer, todayIso });
+    } catch (err) {
+      console.error('Daily activity summary failed:', err);
+      sumTbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#c44d48;padding:24px;">Could not build the activity summary. Please refresh the page; if it continues, send a screenshot.</td></tr>';
+      const logEl = document.getElementById('activityLog');
+      if (logEl) logEl.innerHTML = '';
+    }
+  }
 }
+
+// Quick periods for the Daily Activity Summary (they also set the page's From / To).
+function setActivityRange(kind) {
+  const d0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const days = n => iso(new Date(d0.getTime() - n * 86400000));
+  if (kind === 'today') { F.visitFrom = iso(d0); F.visitTo = iso(d0); }
+  else if (kind === 'week') { F.visitFrom = ''; F.visitTo = ''; }
+  else if (kind === 'month') { F.visitFrom = iso(new Date(d0.getFullYear(), d0.getMonth(), 1)); F.visitTo = iso(d0); }
+  else if (kind === 'quarter') { F.visitFrom = days(90); F.visitTo = iso(d0); }
+  visitsView();
+}
+window.setActivityRange = setActivityRange;
 
 const ACTIVITY_ICONS = { call: '📞', whatsapp: '💬', email: '✉️', visit: '🚶', payment: '💰', complaint: '⚠️', help: '🎫', fms: '✅', other: '📝' };
 const ACTIVITY_LIMIT = 300;
 
 function renderActivitySummary(sumTbody, { isUserRole, curDoer, todayIso }) {
-  // No dates chosen = today; one date chosen = open range on the other side.
-  const from = F.visitFrom || (F.visitTo ? '' : todayIso);
+  // No dates chosen = the last 7 days; one date chosen = open range on the other side.
+  const weekAgo = iso(new Date(today.getTime() - 6 * 86400000));
+  const from = F.visitFrom || (F.visitTo ? '' : weekAgo);
   const to = F.visitTo || (F.visitFrom ? '' : todayIso);
   const doer = isUserRole ? (currentUser.followperName || '') : (curDoer === 'all' ? '' : curDoer);
   const rows = ActivityLog.collectActivity(markas, { from, to, doer, search: F.visitSearch || '', ownerOf });
   const summary = ActivityLog.summarize(rows);
 
   const label = document.getElementById('activityRangeLabel');
-  if (label) label.textContent = from && to && from === to ? (from === todayIso ? `Today · ${fmt(from)}` : fmt(from)) : `${from ? fmt(from) : 'Start'} → ${to ? fmt(to) : 'Today'}`;
+  if (label) {
+    label.textContent = !F.visitFrom && !F.visitTo ? `Last 7 days · ${fmt(from)} → ${fmt(to)}`
+      : from && to && from === to ? (from === todayIso ? `Today · ${fmt(from)}` : fmt(from))
+      : `${from ? fmt(from) : 'Start'} → ${to ? fmt(to) : 'Today'}`;
+  }
 
   const n = v => `<td style="text-align:center;${v ? 'font-weight:700;color:#087454;' : 'color:#9ab0a6;'}">${v}</td>`;
   sumTbody.innerHTML = summary.map(s => `

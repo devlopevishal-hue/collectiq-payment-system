@@ -2509,3 +2509,4 @@ body:has(#aiAssistant.active) .mobile-fab-container { display: none !important; 
   .activity-side { grid-column: 2; flex-direction: row; align-items: center; justify-content: space-between; }
   .activity-side .row-action { min-height: 34px; }
 }
+.activity-quick { display: inline-flex; flex-wrap: wrap; gap: 6px; }

@@ -62,3 +62,18 @@ test('summarize: counts per doer with payment total', () => {
   assert.deepEqual(s.find(x => x.doer === 'Mahavir'), { doer: 'Mahavir', calls: 0, whatsapp: 0, emails: 1, visits: 0, ptp: 1, payments: 1, paymentAmount: 30000, complaints: 1, help: 0, fms: 1, total: 4 });
   assert.equal(s[0].doer, 'Mahavir');
 });
+
+test('collectActivity survives odd old data: missing names, numeric or Date dates, empty history', () => {
+  const odd = [
+    { id: 'x', history: [{ date: '2026-10-06', status: 'Promise to Pay', mode: 'Phone call' }] },
+    { id: 'y', marka: 'OK', history: [{ date: 20261006, status: 'x' }, { date: new Date('2026-10-06T00:00:00Z'), mode: 'WhatsApp' }, null, { date: '2026-10-06', remark: 42 }] },
+    { id: 'z', marka: 'NOHIST' },
+    null
+  ];
+  const rows = A.collectActivity(odd, { from: '2026-10-01', to: '2026-10-31', ownerOf: m => (m && m.owner) || 'Unassigned', search: '' });
+  assert.ok(rows.length >= 2);
+  assert.ok(rows.every(r => typeof r.marka === 'string' && typeof r.date === 'string'));
+  assert.ok(rows.some(r => r.date === '2026-10-06' && r.kind === 'whatsapp'));
+  assert.doesNotThrow(() => A.summarize(rows));
+  assert.equal(A.collectActivity(odd, { from: '2026-10-01', to: '2026-10-31', search: '42', ownerOf: () => '' }).length, 1);
+});
