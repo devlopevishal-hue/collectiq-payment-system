@@ -14,7 +14,7 @@
   <title>CollectIQ - Payment Collection System</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="styles.css?v=6.19.2">
+  <link rel="stylesheet" href="styles.css?v=6.20.0">
   <script>
     function toggleMobileMenu(e) {
       if (e) {
@@ -379,6 +379,15 @@
         </div>
         <div class="panel activity-log-panel">
           <div class="activity-log-head"><b>Activity history</b><span id="activityCount"></span></div>
+          <div class="activity-filters">
+            <div class="activity-kinds" id="activityKinds"></div>
+            <div class="activity-filter-row">
+              <select id="activityMaster" onchange="setActivityFilter('master', this.value)" aria-label="Filter by master"><option value="">All masters</option></select>
+              <input id="activitySearch" type="search" placeholder="Search party, remark, person, ref…" oninput="setActivityFilter('search', this.value)" aria-label="Search activity history">
+              <span id="activityDoerChip"></span>
+            </div>
+            <div class="activity-totals" id="activityTotals"></div>
+          </div>
           <div id="activityLog"></div>
         </div>
       </div>
@@ -1529,18 +1538,18 @@ service cloud.firestore {
   <!-- Firebase Compatibility Libraries for Real-time Cloud DB -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-  <script src="latest-report-data.js?v=6.19.2"></script>
-  <script src="activity-log.js?v=6.19.2"></script>
-  <script src="followup-actions.js?v=6.19.2"></script>
-  <script src="ticket-actions.js?v=6.19.2"></script>
-  <script src="app.js?v=6.19.2"></script>
-  <script src="ai-tools.js?v=6.19.2"></script>
-  <script src="ai-chat.js?v=6.19.2"></script>
+  <script src="latest-report-data.js?v=6.20.0"></script>
+  <script src="activity-log.js?v=6.20.0"></script>
+  <script src="followup-actions.js?v=6.20.0"></script>
+  <script src="ticket-actions.js?v=6.20.0"></script>
+  <script src="app.js?v=6.20.0"></script>
+  <script src="ai-tools.js?v=6.20.0"></script>
+  <script src="ai-chat.js?v=6.20.0"></script>
   <!-- Progressive Web App Service Worker Registration -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
-        navigator.serviceWorker.register('sw.js?v=6.19.2').then(function(reg) {
+        navigator.serviceWorker.register('sw.js?v=6.20.0').then(function(reg) {
           console.log('[PWA] Service Worker registered with scope:', reg.scope);
         }).catch(function(err) {
           console.warn('[PWA] Service Worker registration failed:', err);

@@ -96,7 +96,48 @@
     return Object.values(map).sort((a, b) => b.total - a.total || a.doer.localeCompare(b.doer));
   }
 
-  const api = { classify, collectActivity, summarize };
+  // Filter buttons on the activity history. PTP is a flag (a PTP can be a
+  // call, visit or WhatsApp), the rest are kinds from classify().
+  const KINDS = ['payment', 'ptp', 'call', 'whatsapp', 'visit', 'email', 'complaint', 'help', 'fms', 'other'];
+
+  function matchesKind(r, kind) {
+    if (!kind || kind === 'all') return true;
+    return kind === 'ptp' ? !!r.ptp : r.kind === kind;
+  }
+
+  function filterActivity(rows, { kind = 'all', master = '', doer = '', search = '' } = {}) {
+    const m = norm(master);
+    const who = norm(doer);
+    const q = norm(search);
+    return (rows || []).filter(r =>
+      matchesKind(r, kind) &&
+      (!m || norm(r.master) === m) &&
+      (!who || norm(r.doer) === who) &&
+      (!q || [r.marka, r.master, r.remark, r.contact, r.doer, r.status, r.ref].some(x => norm(x).includes(q))));
+  }
+
+  function kindCounts(rows) {
+    const counts = { all: 0 };
+    KINDS.forEach(k => { counts[k] = 0; });
+    (rows || []).forEach(r => {
+      counts.all++;
+      if (r.kind in counts) counts[r.kind]++;
+      if (r.ptp) counts.ptp++;
+    });
+    return counts;
+  }
+
+  // Money in the rows on screen: payments collected and PTP amounts promised.
+  function totals(rows) {
+    const t = { collected: 0, payments: 0, expected: 0, ptps: 0 };
+    (rows || []).forEach(r => {
+      if (r.kind === 'payment') { t.payments++; t.collected += r.amount; }
+      if (r.ptp) { t.ptps++; t.expected += r.expected; }
+    });
+    return t;
+  }
+
+  const api = { classify, collectActivity, summarize, KINDS, filterActivity, kindCounts, totals };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ActivityLog = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -77,3 +77,26 @@ test('collectActivity survives odd old data: missing names, numeric or Date date
   assert.doesNotThrow(() => A.summarize(rows));
   assert.equal(A.collectActivity(odd, { from: '2026-10-01', to: '2026-10-31', search: '42', ownerOf: () => '' }).length, 1);
 });
+test('filterActivity: by kind (PTP is a flag), master, doer and search', () => {
+  const rows = A.collectActivity(markas, { from: '2026-09-01', to: '2026-10-31', ownerOf });
+  assert.equal(A.filterActivity(rows, {}).length, 6);
+  assert.equal(A.filterActivity(rows, { kind: 'all' }).length, 6);
+  assert.deepEqual(A.filterActivity(rows, { kind: 'payment' }).map(r => r.marka), ['ACT']);
+  assert.equal(A.filterActivity(rows, { kind: 'ptp' }).length, 2);
+  assert.equal(A.filterActivity(rows, { kind: 'call' }).length, 1);
+  assert.equal(A.filterActivity(rows, { master: 'bablu shera master' }).length, 6);
+  assert.equal(A.filterActivity(rows, { master: 'RAJESH MASTER' }).length, 0);
+  assert.equal(A.filterActivity(rows, { doer: 'Mahavir' }).length, 4);
+  assert.equal(A.filterActivity(rows, { doer: 'Mahavir', kind: 'ptp' }).length, 1);
+  assert.equal(A.filterActivity(rows, { search: 'cheque' }).length, 1);
+  assert.equal(A.filterActivity(rows, { search: 'promise' }).length, 2);
+  assert.equal(A.filterActivity(rows, { search: 'jgg', kind: 'fms' }).length, 1);
+});
+
+test('kindCounts and totals for the filter buttons', () => {
+  const rows = A.collectActivity(markas, { from: '2026-09-01', to: '2026-10-31', ownerOf });
+  assert.deepEqual(A.kindCounts(rows), { all: 6, payment: 1, ptp: 2, call: 1, whatsapp: 0, visit: 0, email: 1, complaint: 1, help: 1, fms: 1, other: 0 });
+  assert.deepEqual(A.totals(rows), { collected: 30000, payments: 1, expected: 50000, ptps: 2 });
+  assert.deepEqual(A.kindCounts([]).all, 0);
+  assert.deepEqual(A.totals(null), { collected: 0, payments: 0, expected: 0, ptps: 0 });
+});

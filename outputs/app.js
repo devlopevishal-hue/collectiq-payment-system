@@ -3754,15 +3754,34 @@ window.setActivityRange = setActivityRange;
 
 const ACTIVITY_ICONS = { call: '📞', whatsapp: '💬', email: '✉️', visit: '🚶', payment: '💰', complaint: '⚠️', help: '🎫', fms: '✅', other: '📝' };
 const ACTIVITY_LIMIT = 300;
+const ACTIVITY_KIND_LABELS = { payment: 'Payment', ptp: 'PTP', call: 'Call', whatsapp: 'WhatsApp', visit: 'Visit', email: 'Email', complaint: 'Complaint', help: 'Help ticket', fms: 'FMS', other: 'Other' };
+// Filters inside the activity history (type buttons, master, search, doer click).
+const AF = { kind: 'all', master: '', search: '', doer: '' };
+let lastActivityArgs = null;
+
+function setActivityFilter(key, value) {
+  if (key === 'doer' && AF.doer === value) value = '';
+  if (key === 'clear') { AF.kind = 'all'; AF.master = ''; AF.search = ''; AF.doer = ''; }
+  else AF[key] = value || (key === 'kind' ? 'all' : '');
+  const sumTbody = document.getElementById('dailySummaryTable');
+  if (sumTbody && lastActivityArgs) renderActivitySummary(sumTbody, lastActivityArgs);
+}
+window.setActivityFilter = setActivityFilter;
 
 function renderActivitySummary(sumTbody, { isUserRole, curDoer, todayIso }) {
+  lastActivityArgs = { isUserRole, curDoer, todayIso };
   // No dates chosen = the last 7 days; one date chosen = open range on the other side.
   const weekAgo = iso(new Date(today.getTime() - 6 * 86400000));
   const from = F.visitFrom || (F.visitTo ? '' : weekAgo);
   const to = F.visitTo || (F.visitFrom ? '' : todayIso);
   const doer = isUserRole ? (currentUser.followperName || '') : (curDoer === 'all' ? '' : curDoer);
-  const rows = ActivityLog.collectActivity(markas, { from, to, doer, search: F.visitSearch || '', ownerOf });
-  const summary = ActivityLog.summarize(rows);
+  const allRows = ActivityLog.collectActivity(markas, { from, to, doer, search: F.visitSearch || '', ownerOf });
+  // Master + search narrow everything; doer click + type buttons narrow the history.
+  const scoped = ActivityLog.filterActivity(allRows, { master: AF.master, search: AF.search });
+  const byDoer = ActivityLog.filterActivity(scoped, { doer: AF.doer });
+  const rows = ActivityLog.filterActivity(byDoer, { kind: AF.kind });
+  const summary = ActivityLog.summarize(scoped);
+  renderActivityFilters(allRows, byDoer, rows);
 
   const label = document.getElementById('activityRangeLabel');
   if (label) {
@@ -3773,7 +3792,7 @@ function renderActivitySummary(sumTbody, { isUserRole, curDoer, todayIso }) {
 
   const n = v => `<td style="text-align:center;${v ? 'font-weight:700;color:#087454;' : 'color:#9ab0a6;'}">${v}</td>`;
   sumTbody.innerHTML = summary.map(s => `
-    <tr>
+    <tr class="activity-doer-row${AF.doer && AF.doer.toLowerCase() === s.doer.toLowerCase() ? ' active' : ''}" data-doer="${escapeHtml(s.doer)}" onclick="setActivityFilter('doer', this.dataset.doer)" title="Show only ${escapeHtml(s.doer)}'s entries below">
       <td><b style="color:#087454;">${escapeHtml(s.doer)}</b></td>
       ${n(s.calls)}${n(s.whatsapp)}${n(s.visits)}${n(s.ptp)}
       <td style="text-align:center;${s.payments ? 'font-weight:700;color:#087454;' : 'color:#9ab0a6;'}">${s.payments ? `${s.payments} · ${money(s.paymentAmount)}` : 0}</td>
@@ -3782,11 +3801,14 @@ function renderActivitySummary(sumTbody, { isUserRole, curDoer, todayIso }) {
     </tr>`).join('') || '<tr><td colspan="9" style="text-align:center;color:#788882;padding:24px;">No activity logged for this period.</td></tr>';
 
   const countEl = document.getElementById('activityCount');
-  if (countEl) countEl.textContent = rows.length ? `${rows.length.toLocaleString('en-IN')} ${rows.length === 1 ? 'entry' : 'entries'}` : '';
+  const plural = n => `${n.toLocaleString('en-IN')} ${n === 1 ? 'entry' : 'entries'}`;
+  if (countEl) countEl.textContent = rows.length === allRows.length ? (rows.length ? plural(rows.length) : '') : `${rows.length.toLocaleString('en-IN')} of ${plural(allRows.length)}`;
   const logEl = document.getElementById('activityLog');
   if (!logEl) return;
   if (!rows.length) {
-    logEl.innerHTML = '<p class="activity-empty">No follow-up history for this period. Pick other dates in From / To above.</p>';
+    logEl.innerHTML = allRows.length
+      ? '<p class="activity-empty">No entries match these filters. <button type="button" class="filter-quick" onclick="setActivityFilter(&quot;clear&quot;)">Clear filters</button></p>'
+      : '<p class="activity-empty">No follow-up history for this period. Pick other dates in From / To above.</p>';
     return;
   }
   const shown = rows.slice(0, ACTIVITY_LIMIT);
@@ -3817,6 +3839,46 @@ function renderActivitySummary(sumTbody, { isUserRole, curDoer, todayIso }) {
     </div>`).join('') + (rows.length > ACTIVITY_LIMIT ? `<p class="activity-empty">Showing the latest ${ACTIVITY_LIMIT} of ${rows.length.toLocaleString('en-IN')} entries. Narrow the dates to see the rest.</p>` : '');
 }
 window.visitsView = visitsView;
+
+// Type buttons with counts, master list, doer chip and money totals.
+function renderActivityFilters(allRows, byDoer, rows) {
+  const counts = ActivityLog.kindCounts(byDoer);
+  const kindsEl = document.getElementById('activityKinds');
+  if (kindsEl) {
+    const btn = (k, label, icon) => `<button type="button" class="activity-kind${AF.kind === k ? ' active' : ''}" onclick="setActivityFilter('kind', '${k}')">${icon ? icon + ' ' : ''}${label} <span>${counts[k].toLocaleString('en-IN')}</span></button>`;
+    kindsEl.innerHTML = btn('all', 'All') + ActivityLog.KINDS
+      .filter(k => counts[k] || AF.kind === k)
+      .map(k => btn(k, ACTIVITY_KIND_LABELS[k], k === 'ptp' ? '🤝' : ACTIVITY_ICONS[k])).join('');
+  }
+
+  const masterEl = document.getElementById('activityMaster');
+  if (masterEl) {
+    const masters = [...new Set(allRows.map(r => r.master).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    if (AF.master && !masters.some(m => m.toLowerCase() === AF.master.toLowerCase())) masters.unshift(AF.master);
+    masterEl.innerHTML = '<option value="">All masters</option>' + masters.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
+    masterEl.value = AF.master;
+  }
+
+  const searchEl = document.getElementById('activitySearch');
+  if (searchEl && searchEl.value !== AF.search) searchEl.value = AF.search;
+
+  const doerEl = document.getElementById('activityDoerChip');
+  if (doerEl) {
+    const filtered = AF.kind !== 'all' || AF.master || AF.search || AF.doer;
+    doerEl.innerHTML = (AF.doer ? `<button type="button" class="filter-chip" onclick="setActivityFilter('doer', '')" title="Show everyone">Doer: ${escapeHtml(AF.doer)} ✕</button>` : '')
+      + (filtered ? '<button type="button" class="filter-quick" onclick="setActivityFilter(&quot;clear&quot;)">Clear filters</button>' : '');
+  }
+
+  const totalsEl = document.getElementById('activityTotals');
+  if (totalsEl) {
+    const t = ActivityLog.totals(rows);
+    const parts = [];
+    if (t.payments) parts.push(`💰 ${t.payments} ${t.payments === 1 ? 'payment' : 'payments'} · <b>${money(t.collected)}</b> collected`);
+    if (t.ptps) parts.push(`🤝 ${t.ptps} ${t.ptps === 1 ? 'promise' : 'promises'}${t.expected ? ` · <b>${money(t.expected)}</b> expected` : ''}`);
+    totalsEl.innerHTML = parts.join('<span class="activity-totals-sep">|</span>');
+    totalsEl.style.display = parts.length ? '' : 'none';
+  }
+}
 
 function exportVisitsExcel() {
   const activeMarkaList = filtered(activeMarkas());

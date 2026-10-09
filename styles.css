@@ -2510,3 +2510,28 @@ body:has(#aiAssistant.active) .mobile-fab-container { display: none !important; 
   .activity-side .row-action { min-height: 34px; }
 }
 .activity-quick { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.activity-filters { padding: 10px 14px; border-bottom: 1px solid #edf1ef; display: flex; flex-direction: column; gap: 8px; }
+.activity-kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+.activity-kind { border: 1px solid #d0dfd8; background: #fff; color: #12322b; font: 700 11.5px Manrope, sans-serif; padding: 5px 10px; border-radius: 999px; cursor: pointer; transition: background .15s, border-color .15s; }
+.activity-kind span { margin-left: 3px; font-weight: 800; color: #6d827a; }
+.activity-kind:hover { background: #f0f7f3; }
+.activity-kind.active { background: #087454; border-color: #087454; color: #fff; }
+.activity-kind.active span { color: #d7f3e6; }
+.activity-filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.activity-filter-row select, .activity-filter-row input { border: 1px solid #d0dfd8; border-radius: 8px; padding: 6px 9px; font: 600 12px Manrope, sans-serif; color: #12322b; background: #fff; }
+.activity-filter-row input { flex: 1 1 220px; min-width: 0; }
+.activity-filter-row select { max-width: 240px; }
+#activityDoerChip { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.activity-totals { font: 600 12px Manrope, sans-serif; color: #12322b; background: #f6faf8; border-radius: 8px; padding: 7px 10px; }
+.activity-totals b { color: #087454; }
+.activity-totals-sep { margin: 0 8px; color: #b9cbc3; }
+.activity-doer-row { cursor: pointer; }
+.activity-doer-row:hover td { background: #f6faf8; }
+.activity-doer-row.active td { background: #e8f4ef; }
+@media (max-width: 768px) {
+  .activity-filters { padding: 10px; }
+  .activity-kinds { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .activity-kinds::-webkit-scrollbar { display: none; }
+  .activity-kind { flex: 0 0 auto; min-height: 34px; }
+  .activity-filter-row select, .activity-filter-row input { flex: 1 1 100%; max-width: none; min-height: 38px; font-size: 14px; }
+}
