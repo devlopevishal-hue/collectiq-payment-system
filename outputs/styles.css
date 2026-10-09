@@ -2398,3 +2398,77 @@ body:has(#aiAssistant.active) .mobile-fab-container { display: none !important; 
 .ai-voice-select[hidden] { display: none; }
 .ai-voice-select option { color: #1f1b4d; background: #fff; }
 @media (max-width: 768px) { .ai-voice-select { max-width: 96px; } }
+
+/* ==========================================
+   MOBILE POLISH (v6.18.0) — phones only, desktop untouched
+   ========================================== */
+@media (max-width: 768px) {
+  /* Nothing wider than the screen */
+  main { padding-left: 12px !important; padding-right: 12px !important; overflow-x: hidden; }
+  .view .panel, .view .table-panel { margin-left: 0 !important; margin-right: 0 !important; max-width: 100%; box-sizing: border-box; }
+  .grid.main-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .grid.main-grid > * { min-width: 0; max-width: 100%; }
+  #userManagement form { grid-template-columns: minmax(0, 1fr) !important; max-width: 100%; }
+  #userManagement form input, #userManagement form select, #userManagement .password-input-wrap { max-width: 100%; min-width: 0; box-sizing: border-box; }
+
+  /* Compact page header: the + button (bottom right) already has these actions */
+  header { flex-direction: row !important; align-items: center !important; gap: 10px !important; margin-bottom: 10px !important; padding-bottom: 8px !important; }
+  header h1 { font-size: 17px !important; line-height: 1.2; }
+  header .eyebrow { font-size: 9.5px !important; margin: 0 0 2px !important; }
+  .header-actions .header-primary-btns { display: none !important; }
+  .header-actions { width: auto !important; }
+
+  /* Filters: search + "More filters"; everything else opens on tap */
+  .filterbar:not(.adv-open) .filter-primary-row,
+  .filterbar:not(.adv-open) .filter-quick-row { display: none !important; }
+  .filterbar .filter-adv-toggle-btn { display: inline-flex !important; }
+  .filterbar.adv-open .filter-quick-row { display: flex !important; flex-wrap: wrap; }
+  .filter-chips { gap: 6px !important; }
+
+  /* Swipeable tab rows instead of cut-off tabs */
+  .tabs { display: flex !important; flex-wrap: nowrap !important; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; gap: 6px; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs > * { flex: 0 0 auto; white-space: nowrap; }
+
+  /* Small number cards two per row */
+  .metrics.mini { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 8px !important; }
+  .metrics.mini .metric { padding: 10px !important; min-width: 0; }
+  .metrics.mini .metric strong { font-size: 17px !important; }
+
+  /* Wide tables scroll sideways inside their box, readable size, first column pinned */
+  #fms .table-panel, #analysis .table-panel, #doerLeaderboardContainer,
+  #crmEscalations .table-panel, #helpTickets .table-panel, #visits .table-panel, #userManagement .table-panel {
+    overflow-x: auto !important; -webkit-overflow-scrolling: touch;
+  }
+  #fms table, #analysis table, #crmEscalations table, #helpTickets table, #visits table, #userManagement table { font-size: 12px !important; }
+  #fms table th, #fms table td, #analysis table th, #analysis table td,
+  #crmEscalations table th, #crmEscalations table td, #helpTickets table th, #helpTickets table td,
+  #visits table th, #visits table td { font-size: 12px !important; line-height: 1.35; }
+  #fms table th:nth-child(2), #fms table td:nth-child(2) { position: sticky; left: 0; z-index: 2; background: #fff; box-shadow: 1px 0 0 #e6ece9; }
+  #analysis table th:first-child, #analysis table td:first-child,
+  #crmEscalations table th:first-child, #crmEscalations table td:first-child,
+  #helpTickets table th:first-child, #helpTickets table td:first-child { position: sticky; left: 0; z-index: 2; background: #fff; box-shadow: 1px 0 0 #e6ece9; }
+
+  /* Finger-sized buttons */
+  .row-action, .tiny-btn, .tab, .filter-quick, .filter-chip { min-height: 36px; }
+  .btn { min-height: 40px; }
+
+  /* The + button must not cover popups */
+  body.modal-open .mobile-fab-container { display: none !important; }
+
+  /* AI page: keep the header on one line */
+  .ai-header { padding: 8px 10px !important; gap: 6px !important; }
+  .ai-title { gap: 8px !important; min-width: 0; }
+  .ai-title { flex: 1 1 auto; overflow: hidden; }
+  .ai-title > div { min-width: 0; overflow: hidden; }
+  .ai-title b { font-size: 13.5px !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ai-logo { width: 34px !important; height: 34px !important; border-radius: 11px !important; flex: none; }
+  .ai-logo .ai-bot { width: 24px; height: 24px; }
+  .ai-list-toggle { width: 32px !important; height: 32px !important; flex: none; }
+  .ai-header-actions { gap: 5px !important; flex: none; }
+  .ai-status { font-size: 0 !important; padding: 6px !important; gap: 0 !important; }
+  .ai-theme-btn { width: 32px !important; height: 32px !important; font-size: 14px !important; }
+  .ai-summary-btn { width: 32px; height: 32px; padding: 0 !important; display: inline-grid; place-items: center; border-radius: 50% !important; }
+  .ai-voice-select { max-width: 76px !important; height: 32px !important; }
+  #aiAssistant { height: calc(100vh - 150px) !important; }
+}
