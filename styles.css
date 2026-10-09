@@ -2392,3 +2392,9 @@ body:has(#aiAssistant.active) .mobile-fab-container { display: none !important; 
 /* AI message box: no scroll arrows; grows with the text (v6.17.2) */
 .ai-input textarea { overflow-y: hidden; line-height: 1.45; min-height: 44px; box-sizing: border-box; scrollbar-width: none; }
 .ai-input textarea::-webkit-scrollbar { display: none; }
+
+/* AI voice chooser next to the speaker button (v6.17.4) */
+.ai-voice-select { max-width: 170px; height: 36px; border-radius: 999px; border: 1px solid rgba(255,255,255,.35); background: rgba(255,255,255,.12); color: #fff; font: 700 11px Manrope, sans-serif; padding: 0 10px; cursor: pointer; }
+.ai-voice-select[hidden] { display: none; }
+.ai-voice-select option { color: #1f1b4d; background: #fff; }
+@media (max-width: 768px) { .ai-voice-select { max-width: 96px; } }

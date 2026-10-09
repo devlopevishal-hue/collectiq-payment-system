@@ -216,13 +216,31 @@
     return out;
   }
 
+  // Voices best for our users first: Hindi (natural/online voices before
+  // basic ones), then Indian English, then other English, then the rest.
+  // A voice the user picked always comes first.
+  function rankVoices(voices, savedName) {
+    const score = v => {
+      if (savedName && v.name === savedName) return 0;
+      const lang = String(v.lang || '').toLowerCase();
+      const name = v.name || '';
+      const nice = /natural|online/i.test(name) ? 0 : /google/i.test(name) ? 1 : 2;
+      if (lang.startsWith('hi')) return 1 + nice;
+      if (lang === 'en-in') return 4 + nice;
+      if (lang.startsWith('en')) return 7 + nice;
+      return 10;
+    };
+    return (voices || []).map((v, i) => ({ v, i, s: score(v) }))
+      .sort((a, b) => a.s - b.s || a.i - b.i).map(x => x.v);
+  }
+
   function formatClock(seconds) {
     const s = Math.max(0, Math.floor(seconds));
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   }
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { renderMessageHtml, runAgentTurn, renderTicketCard, runCardAction, pickAudioType, speakableText, formatClock, speechChunks };
+    module.exports = { renderMessageHtml, runAgentTurn, renderTicketCard, runCardAction, pickAudioType, speakableText, formatClock, speechChunks, rankVoices };
     return;
   }
 
@@ -265,6 +283,7 @@
 
   const THEME_KEY = 'collectiq_ai_theme';
   const SPEAK_KEY = 'collectiq_ai_speak';
+  const VOICE_KEY = 'collectiq_ai_voice';
   const MAX_RECORD_SECONDS = 60;
   const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -406,6 +425,7 @@
             <div class="ai-header-actions">
               <span id="aiStatus" class="ai-status"></span>
               <button type="button" class="ai-theme-btn ai-speak-btn${state.speak ? ' on' : ''}" data-speak-toggle title="Read replies aloud" aria-label="Read replies aloud" aria-pressed="${state.speak}">${state.speak ? '🔊' : '🔇'}</button>
+              <select class="ai-voice-select" id="aiVoice" data-voice-select title="Choose the voice" aria-label="Choose the voice"${state.speak ? '' : ' hidden'}></select>
               <button type="button" class="ai-theme-btn" data-theme-toggle title="Day / night look" aria-label="Switch day or night look">${state.theme === 'dark' ? '☀️' : '🌙'}</button>
               <button type="button" class="ai-summary-btn" data-summary>☀️ <span>Morning summary</span></button>
             </div>
@@ -1025,14 +1045,41 @@
     }
   }
 
+  function savedVoiceName() {
+    try { return localStorage.getItem(VOICE_KEY) || ''; } catch (e) { return ''; }
+  }
+
   function pickVoice() {
     const voices = (window.speechSynthesis && speechSynthesis.getVoices()) || [];
-    return voices.find(v => /en-IN/i.test(v.lang)) || voices.find(v => /hi-IN/i.test(v.lang)) || voices.find(v => /^en/i.test(v.lang)) || null;
+    return rankVoices(voices, savedVoiceName())[0] || null;
+  }
+
+  // Chrome lists its own voices first and adds "Google हिन्दी" a moment later.
+  // Wait (once, up to 1.5 s) until an Indian voice shows up or nothing changes.
+  function voicesReady() {
+    const voices = speechSynthesis.getVoices();
+    if (voices.some(v => /^(hi|en-in)/i.test(v.lang)) || state.voicesWaited) return Promise.resolve();
+    state.voicesWaited = true;
+    return new Promise(resolve => {
+      const done = () => { speechSynthesis.removeEventListener('voiceschanged', done); resolve(); };
+      speechSynthesis.addEventListener('voiceschanged', done);
+      setTimeout(done, 1500);
+    });
+  }
+
+  function fillVoiceSelect() {
+    const sel = document.getElementById('aiVoice');
+    if (!sel || !('speechSynthesis' in window)) return;
+    const saved = savedVoiceName();
+    const voices = rankVoices(speechSynthesis.getVoices());
+    const label = v => `${/^hi/i.test(v.lang) ? '🇮🇳 Hindi' : /en-in/i.test(v.lang) ? '🇮🇳 English' : v.lang} · ${v.name.replace(/^(Microsoft|Google)\s*/, '').replace(/\s*-\s*.*$/, '')}`;
+    sel.innerHTML = '<option value="">🗣 Auto (Hindi first)</option>' +
+      voices.map(v => `<option value="${escapeHtml(v.name)}"${v.name === saved ? ' selected' : ''}>${escapeHtml(label(v))}</option>`).join('');
   }
 
   // Reads text aloud sentence by sentence. Chrome can stay "paused" or drop
   // long utterances, so the queue is reset and resumed each time.
-  function speak(text, plain) {
+  async function speak(text, plain) {
     if (!('speechSynthesis' in window)) {
       toast('This browser cannot read replies aloud.');
       return;
@@ -1041,10 +1088,11 @@
     const parts = speechChunks(words);
     if (!parts.length) return;
     speechSynthesis.cancel();
+    await voicesReady();
     const v = pickVoice();
     parts.forEach(part => {
       const u = new SpeechSynthesisUtterance(part);
-      if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = 'en-IN'; }
+      if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = 'hi-IN'; }
       u.rate = 1;
       speechSynthesis.speak(u);
     });
@@ -1053,7 +1101,7 @@
 
   // Voices load late in Chrome; asking early fills the list.
   if ('speechSynthesis' in window) {
-    try { speechSynthesis.getVoices(); speechSynthesis.addEventListener('voiceschanged', () => speechSynthesis.getVoices()); } catch (e) { /* optional */ }
+    try { speechSynthesis.getVoices(); speechSynthesis.addEventListener('voiceschanged', () => fillVoiceSelect()); } catch (e) { /* optional */ }
   }
 
   function stopSpeaking() {
@@ -1132,6 +1180,8 @@
         t.textContent = state.speak ? '🔊' : '🔇';
         t.classList.toggle('on', state.speak);
         t.setAttribute('aria-pressed', String(state.speak));
+        const voiceSel = document.getElementById('aiVoice');
+        if (voiceSel) { voiceSel.hidden = !state.speak; fillVoiceSelect(); }
         if (!state.speak) stopSpeaking();
         else speak('Theek hai, ab main jawab bol ke sunaunga.', true);
         toast(state.speak ? 'Replies will be read aloud' : 'Reading aloud is off');
@@ -1164,6 +1214,11 @@
       }
     });
     container.addEventListener('change', e => {
+      if (e.target.matches && e.target.matches('[data-voice-select]')) {
+        try { localStorage.setItem(VOICE_KEY, e.target.value); } catch (err) { /* per-browser preference only */ }
+        speak('Namaste ji, main is awaaz me jawab sunaunga.', true);
+        return;
+      }
       const box = e.target.closest('[data-bill-pick]');
       if (!box) return;
       const ref = box.dataset.billPick;
@@ -1205,6 +1260,7 @@
     if (force || !container.querySelector('.ai-shell')) {
       container.innerHTML = shell();
       setStatus(state.status);
+      fillVoiceSelect();
     }
     renderAllAI();
   }

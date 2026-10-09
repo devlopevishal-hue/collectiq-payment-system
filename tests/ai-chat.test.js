@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { renderMessageHtml, runAgentTurn, renderTicketCard, runCardAction, pickAudioType, speakableText, formatClock, speechChunks } = require('../ai-chat.js');
+const { renderMessageHtml, runAgentTurn, renderTicketCard, runCardAction, pickAudioType, speakableText, formatClock, speechChunks, rankVoices } = require('../ai-chat.js');
 
 // Same implementation as escapeHtml in app.js.
 function escapeHtml(str) {
@@ -227,4 +227,22 @@ test('speechChunks: short sentences so Chrome does not cut the voice off', () =>
   assert.ok(long.length > 1);
   assert.ok(long.every(p => p.length <= 180));
   assert.deepEqual(speechChunks(''), []);
+});
+
+test('rankVoices: Hindi first, then Indian English, American last; a saved choice wins', () => {
+  const v = [
+    { name: 'Microsoft David - English (United States)', lang: 'en-US' },
+    { name: 'Google US English', lang: 'en-US' },
+    { name: 'Microsoft Heera - English (India)', lang: 'en-IN' },
+    { name: 'Google हिन्दी', lang: 'hi-IN' },
+    { name: 'Microsoft Swara Online (Natural) - Hindi (India)', lang: 'hi-IN' },
+    { name: 'Google Deutsch', lang: 'de-DE' }
+  ];
+  const names = list => list.map(x => x.name);
+  const ranked = names(rankVoices(v));
+  assert.deepEqual(ranked.slice(0, 3), ['Microsoft Swara Online (Natural) - Hindi (India)', 'Google हिन्दी', 'Microsoft Heera - English (India)']);
+  assert.ok(ranked.indexOf('Google US English') > ranked.indexOf('Microsoft Heera - English (India)'));
+  assert.equal(ranked.at(-1), 'Google Deutsch');
+  assert.equal(rankVoices(v, 'Google US English')[0].name, 'Google US English');
+  assert.deepEqual(rankVoices([]), []);
 });
