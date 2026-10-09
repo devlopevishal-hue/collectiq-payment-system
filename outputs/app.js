@@ -7603,10 +7603,12 @@ function toast(msg) {
   setTimeout(() => el.classList.remove('show'), 3500);
 }
 
-document.querySelectorAll('.toolbar .tab, .schedule-tabs .tab, [data-filter]').forEach(x => {
+// Only the Follow-up schedule tabs (All / Due today / Overdue / Upcoming).
+// Other toolbars (e.g. Field Visits) keep their own onclick handlers.
+document.querySelectorAll('.tab[data-filter]').forEach(x => {
   x.onclick = () => {
     if (!x.dataset.filter) return;
-    document.querySelectorAll('.toolbar .tab, [data-filter]').forEach(y => y.classList.remove('active'));
+    document.querySelectorAll('.tab[data-filter]').forEach(y => y.classList.remove('active'));
     x.classList.add('active');
     tab = x.dataset.filter;
     schedule();
