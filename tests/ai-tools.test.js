@@ -94,6 +94,17 @@ test('findParty: ambiguous partial name returns candidates', () => {
   assert.deepEqual(T.findParty(ctx(ADMIN), 'SA').candidates.sort(), ['SAN', 'SANK']);
 });
 
+test('findParty: the same party under two Masters asks which one', () => {
+  const c = ctx(ADMIN);
+  c.markas.push({ ...c.markas[0], id: 'a2', master: 'KUNAL MASTER', bills: [] });
+  const r = T.findParty(c, 'JGG');
+  assert.equal(r.marka, undefined);
+  assert.deepEqual(r.candidates, ['JGG (BABLU SHERA MASTER)', 'JGG (KUNAL MASTER)']);
+  assert.match(r.error, /more than one Master/);
+  assert.equal(T.findParty(c, 'JGG (KUNAL MASTER)').marka.id, 'a2');
+  assert.equal(T.findParty(c, 'jgg (bablu shera master)').marka.id, 'a');
+});
+
 test('findParty: a single partial match is only suggested, never picked (AKT is not SAKT)', () => {
   const r = T.findParty(ctx(ADMIN), 'ANK');
   assert.equal(r.marka, undefined);

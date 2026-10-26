@@ -128,7 +128,8 @@ def get_crr(master):
 
 markas_dict = {}
 for idx, r in enumerate(parsed_rows):
-    m_clean = r['marka'].strip().upper()
+    # Same party under a different master is a separate row
+    m_clean = (r['marka'].strip().upper(), (r['master'] or 'Unassigned Master').strip().upper())
     if m_clean not in markas_dict:
         owner = r['collectionPerson'] or get_followper(r['marka'], r['master'])
         crr = get_crr(r['master'])

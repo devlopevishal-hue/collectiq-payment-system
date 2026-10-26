@@ -228,12 +228,10 @@ function ensureSeedDataLoaded() {
     // Guarantee ALL parties/Markas have their complete bill list from the latest report
     if (window.latestReportCases && Array.isArray(window.latestReportCases)) {
       window.latestReportCases.forEach(fresh => {
-        const cleanKey = (fresh.marka || '').trim().toUpperCase();
-        const existing = markas.find(x => (x.marka || '').trim().toUpperCase() === cleanKey);
+        const existing = PartyKey.findPartyRow(markas, fresh.marka, fresh.master);
         if (existing) {
           if ((existing.bills || []).length < (fresh.bills || []).length) {
             existing.bills = JSON.parse(JSON.stringify(fresh.bills));
-            existing.master = fresh.master || existing.master;
           }
         } else {
           markas.push(JSON.parse(JSON.stringify(fresh)));
@@ -483,14 +481,16 @@ function save(skipRemoteSync = false) {
 function migrateV3(oldCases) {
   const markaMap = new Map();
   oldCases.forEach(c => {
-    if (!markaMap.has(c.marka)) {
-      markaMap.set(c.marka, { cases: [] });
+    const key = PartyKey.partyKey(c.marka, c.master);
+    if (!markaMap.has(key)) {
+      markaMap.set(key, { marka: c.marka, cases: [] });
     }
-    markaMap.get(c.marka).cases.push(c);
+    markaMap.get(key).cases.push(c);
   });
   
   const newMarkas = [];
-  markaMap.forEach((data, markaName) => {
+  markaMap.forEach((data) => {
+    const markaName = data.marka;
     const cases = data.cases;
     const first = cases[0];
     const masterName = first.master || 'Unassigned Master';
@@ -620,12 +620,10 @@ function load() {
     // Guarantee ALL parties/Markas have their complete bill list from the latest report
     if (window.latestReportCases && Array.isArray(window.latestReportCases)) {
       window.latestReportCases.forEach(fresh => {
-        const cleanKey = (fresh.marka || '').trim().toUpperCase();
-        const existing = markas.find(x => (x.marka || '').trim().toUpperCase() === cleanKey);
+        const existing = PartyKey.findPartyRow(markas, fresh.marka, fresh.master);
         if (existing) {
           if ((existing.bills || []).length < (fresh.bills || []).length) {
             existing.bills = JSON.parse(JSON.stringify(fresh.bills));
-            existing.master = fresh.master || existing.master;
           }
         } else {
           markas.push(JSON.parse(JSON.stringify(fresh)));
@@ -1769,7 +1767,7 @@ function schedule() {
             <div class="m-card-badge-mobile">${badge}</div>
           </div>
           ${(() => {
-            const openTicket = (helpTickets || []).find(t => (t.markaId === m.id || (t.markaName && m.marka && t.markaName.toUpperCase() === m.marka.toUpperCase())) && (t.status || 'Open').toLowerCase() !== 'resolved');
+            const openTicket = (helpTickets || []).find(t => PartyKey.ticketBelongsTo(t, m) && (t.status || 'Open').toLowerCase() !== 'resolved');
             if (!openTicket) return '';
             return `
               <div style="margin-top:4px;">
@@ -1988,14 +1986,14 @@ function rokad() {
   if (F.followper && F.followper !== 'all') {
     const fOwner = F.followper.toLowerCase().trim();
     filteredPayments = filteredPayments.filter(p => {
-      const m = markas.find(x => x.marka === p.marka);
+      const m = PartyKey.partyForPayment(markas, p);
       return m && (ownerOf(m) || '').toLowerCase().trim() === fOwner;
     });
   }
   if (F.master && F.master !== 'all') {
     const fMaster = F.master.toLowerCase().trim();
     filteredPayments = filteredPayments.filter(p => {
-      const m = markas.find(x => x.marka === p.marka);
+      const m = PartyKey.partyForPayment(markas, p);
       return m && (m.master || '').toLowerCase().trim() === fMaster;
     });
   }
@@ -2718,7 +2716,7 @@ function markaView() {
               <span class="status ${ownerOf(m) === 'Unassigned' ? 'overdue' : 'active'}">${escapeHtml(ownerOf(m))}</span>
             </div>
             ${(() => {
-              const openTicket = (helpTickets || []).find(t => (t.markaId === m.id || (t.markaName && m.marka && t.markaName.toUpperCase() === m.marka.toUpperCase())) && (t.status || 'Open').toLowerCase() !== 'resolved');
+              const openTicket = (helpTickets || []).find(t => PartyKey.ticketBelongsTo(t, m) && (t.status || 'Open').toLowerCase() !== 'resolved');
               if (!openTicket) return '';
               return `
                 <div style="margin-top:4px;">
@@ -2843,7 +2841,7 @@ function helpTicketsView() {
       matchUser(t.requestedBy) || 
       matchUser(t.assignedHelper) || 
       matchUser(t.resolvedBy) ||
-      markas.some(m => (m.id === t.markaId || (m.marka && t.markaName && m.marka.toUpperCase() === t.markaName.toUpperCase())) && matchUser(ownerOf(m)))
+      markas.some(m => PartyKey.ticketBelongsTo(t, m) && matchUser(ownerOf(m)))
     );
   }
 
@@ -3641,7 +3639,7 @@ function visitsView() {
   updateSortIcons('visits');
 
   const todayVisitsCount = filteredVisits.filter(v => v.date === todayIso).length;
-  const uniquePartiesVisited = new Set(filteredVisits.map(v => v.marka)).size;
+  const uniquePartiesVisited = new Set(filteredVisits.map(v => v.markaId)).size;
   const ptpsFromVisits = filteredVisits.filter(v => v.status === 'Promise to Pay').length;
 
   const metricsEl = document.getElementById('visitMetrics');
@@ -4344,7 +4342,7 @@ function renderHistoryTimeline(m) {
   
   // Ensure all payments from payments array belonging to this Marka are displayed in timeline
   (payments || []).forEach(p => {
-    if (p && (p.marka === m.marka || (m.bills || []).some(b => (p.allocations || []).some(a => String(a.billId) === String(b.id))))) {
+    if (PartyKey.paymentBelongsTo(p, m)) {
       const alreadyLogged = hist.some(h => (h.type === 'payment' || (h.amount && h.amount > 0)) && h.date === p.date && (+h.amount === +p.amount || (p.ref && p.ref !== 'N/A' && h.ref === p.ref)));
       if (!alreadyLogged) {
         hist.push({
@@ -4703,6 +4701,8 @@ async function saveFollowup(e) {
       mode: payMode,
       amount: payAmount,
       marka: m.marka,
+      markaId: m.id,
+      master: m.master,
       receiptImage: receiptImage,
       followper: followper || (currentUser ? currentUser.followperName : '') || ownerOf(m),
       allocations: allocations.map(a => ({
@@ -5233,6 +5233,8 @@ async function savePayment(e) {
     mode: payMode,
     amount: payAmount,
     marka: m.marka,
+    markaId: m.id,
+    master: m.master,
     receiptImage: receiptImage,
     allocations: allocations.map(a => {
       const b = m.bills.find(x => String(x.id) === String(a.billId));
@@ -5473,7 +5475,7 @@ function openPaymentHistory(markaId) {
   document.getElementById('payHistTitle').textContent = `Payment Ledger · ${escapeHtml(m.marka)} · ${escapeHtml(m.master)}`;
   
   // Combine payments from payments array and payment entries from m.history
-  const markaPayments = [...(payments || []).filter(p => p.marka === m.marka || (m.bills || []).some(b => (p.allocations || []).some(a => String(a.billId) === String(b.id))))];
+  const markaPayments = (payments || []).filter(p => PartyKey.paymentBelongsTo(p, m));
   
   (m.history || []).filter(h => h.type === 'payment' || (h.amount && h.amount > 0)).forEach(h => {
     const exists = markaPayments.some(p => p.date === h.date && (+p.amount === +h.amount || (h.ref && h.ref !== 'N/A' && p.ref === h.ref)));
@@ -5561,7 +5563,7 @@ function exportMarkaPaymentExcel() {
   const m = markas.find(x => x.id === mId);
   if (!m) return toast('No Marka selected.');
   
-  const markaPayments = payments.filter(p => p.marka === m.marka || (m.bills || []).some(b => (p.allocations || []).some(a => a.billId === b.id)));
+  const markaPayments = payments.filter(p => PartyKey.paymentBelongsTo(p, m));
   const rows = markaPayments.map(p => ({
     marka: m.marka,
     master: m.master,
@@ -6386,7 +6388,8 @@ function processImportedRows(rawInput, fileName = 'Imported File') {
 
     totalBillsCount++;
 
-    const cleanMarkaKey = markaName.toUpperCase();
+    // Same party under a different Master is a separate row
+    const cleanMarkaKey = PartyKey.partyKey(markaName, master);
     if (!markaMap.has(cleanMarkaKey)) {
       markaMap.set(cleanMarkaKey, { marka: markaName, master, own, bills: [] });
     }
@@ -6430,82 +6433,23 @@ function processImportedRows(rawInput, fileName = 'Imported File') {
   let updatedBills = 0;
   let clearedBills = 0;
 
-  markaMap.forEach((data, cleanMarkaKey) => {
+  // Every Master the file lists for each party name
+  const mastersByName = new Map();
+  markaMap.forEach(data => {
+    const name = data.marka.toUpperCase();
+    if (!mastersByName.has(name)) mastersByName.set(name, []);
+    mastersByName.get(name).push(data.master);
+  });
+
+  markaMap.forEach((data) => {
     const targetMarkaName = data.marka;
-    let m = markas.find(x => x.marka && x.marka.trim().toUpperCase() === cleanMarkaKey);
-    if (m) {
-      const matchedBillIds = new Set();
-      data.bills.forEach((newBill) => {
-        const existingBill = (m.bills || []).find(b => 
-          (newBill.billNos.length > 0 && (b.billNos || []).some(no => newBill.billNos.includes(no))) ||
-          (b.firstDate === newBill.firstDate && Math.abs((b.sourceAmount || b.balance) - newBill.sourceAmount) < 0.01)
-        );
-        if (existingBill) {
-          existingBill.balance = newBill.balance;
-          existingBill.sourceAmount = newBill.sourceAmount || existingBill.sourceAmount;
-          if (newBill.policyDate) existingBill.policyDate = newBill.policyDate;
-          if (newBill.policyName) existingBill.policyName = newBill.policyName;
-          if (newBill.billNos && newBill.billNos.length > 0) {
-            if (!existingBill.billNos) existingBill.billNos = [];
-            newBill.billNos.forEach(no => {
-              if (!existingBill.billNos.includes(no)) existingBill.billNos.push(no);
-            });
-          }
-          matchedBillIds.add(existingBill.id);
-          updatedBills++;
-        } else {
-          const newId = Date.now() + updated + addedBills++;
-          m.bills.push({
-            id: newId,
-            firstDate: newBill.firstDate,
-            balance: newBill.balance,
-            sourceAmount: newBill.sourceAmount,
-            billCount: newBill.billCount || 1,
-            billNos: newBill.billNos || [],
-            policyDate: newBill.policyDate,
-            policyName: newBill.policyName
-          });
-          matchedBillIds.add(newId);
-        }
-      });
-
-      // If in Sync mode: any bill in m.bills that was previously unpaid but not in the new report was settled in ERP
-      if (syncMode === 'sync') {
-        (m.bills || []).forEach(b => {
-          if (!matchedBillIds.has(b.id) && b.balance > 0) {
-            b.balance = 0; // Mark settled/cleared
-            clearedBills++;
-          }
-        });
-      }
-
-      m.master = data.master || m.master;
-      if (ownerOf(m) === 'Unassigned' && data.own) m.owner = data.own;
-      if (totalOutstanding(m) > 0 && !m.nextDate) {
-        m.nextDate = iso(new Date(today.getTime() + 86400000));
-      } else if (totalOutstanding(m) === 0) {
-        m.nextDate = '';
-      }
-    } else {
-      const existingOwner = markas.find(x => x.marka && x.marka.trim().toUpperCase() === cleanMarkaKey);
-      const bills = [];
-      data.bills.forEach((b) => {
-        bills.push({
-          id: Date.now() + updated + bills.length,
-          firstDate: b.firstDate,
-          balance: b.balance,
-          sourceAmount: b.sourceAmount,
-          billCount: b.billCount || 1,
-          billNos: b.billNos || [],
-          policyDate: b.policyDate,
-          policyName: b.policyName
-        });
-      });
-      markas.push({
+    let m = PartyKey.resolveImportTarget(markas, data.marka, data.master, mastersByName.get(data.marka.toUpperCase()));
+    if (!m) {
+      m = {
         id: uid(),
         marka: targetMarkaName,
         master: data.master,
-        owner: data.own || (existingOwner && ownerOf(existingOwner)) || getMasterFollowper(data.master) || 'Unassigned',
+        owner: data.own || getMasterFollowper(data.master) || 'Unassigned',
         nextDate: iso(new Date(today.getTime() + 86400000)),
         lastDate: '',
         lastStatus: '',
@@ -6513,9 +6457,64 @@ function processImportedRows(rawInput, fileName = 'Imported File') {
         ptp: '',
         expected: 0,
         history: [],
-        bills: bills,
+        bills: [],
         escalations: []
+      };
+      markas.push(m);
+    }
+    // Bills of this Master still sitting in an older merged row move here
+    PartyKey.moveBillsFromSiblings(markas, m, data.bills.flatMap(b => b.billNos || []));
+    const matchedBillIds = new Set();
+    data.bills.forEach((newBill) => {
+      const existingBill = (m.bills || []).find(b => 
+        (newBill.billNos.length > 0 && (b.billNos || []).some(no => newBill.billNos.includes(no))) ||
+        (b.firstDate === newBill.firstDate && Math.abs((b.sourceAmount || b.balance) - newBill.sourceAmount) < 0.01)
+      );
+      if (existingBill) {
+        existingBill.balance = newBill.balance;
+        existingBill.sourceAmount = newBill.sourceAmount || existingBill.sourceAmount;
+        if (newBill.policyDate) existingBill.policyDate = newBill.policyDate;
+        if (newBill.policyName) existingBill.policyName = newBill.policyName;
+        if (newBill.billNos && newBill.billNos.length > 0) {
+          if (!existingBill.billNos) existingBill.billNos = [];
+          newBill.billNos.forEach(no => {
+            if (!existingBill.billNos.includes(no)) existingBill.billNos.push(no);
+          });
+        }
+        matchedBillIds.add(existingBill.id);
+        updatedBills++;
+      } else {
+        const newId = Date.now() + updated + addedBills++;
+        m.bills.push({
+          id: newId,
+          firstDate: newBill.firstDate,
+          balance: newBill.balance,
+          sourceAmount: newBill.sourceAmount,
+          billCount: newBill.billCount || 1,
+          billNos: newBill.billNos || [],
+          policyDate: newBill.policyDate,
+          policyName: newBill.policyName
+        });
+        matchedBillIds.add(newId);
+      }
+    });
+
+    // If in Sync mode: any bill in m.bills that was previously unpaid but not in the new report was settled in ERP
+    if (syncMode === 'sync') {
+      (m.bills || []).forEach(b => {
+        if (!matchedBillIds.has(b.id) && b.balance > 0) {
+          b.balance = 0; // Mark settled/cleared
+          clearedBills++;
+        }
       });
+    }
+
+    m.master = data.master || m.master;
+    if (ownerOf(m) === 'Unassigned' && data.own) m.owner = data.own;
+    if (totalOutstanding(m) > 0 && !m.nextDate) {
+      m.nextDate = iso(new Date(today.getTime() + 86400000));
+    } else if (totalOutstanding(m) === 0) {
+      m.nextDate = '';
     }
     updated++;
   });
@@ -7955,18 +7954,17 @@ function initFirebase() {
 
         // Universal Protection for ALL Parties/Markas (ADT, SAN, ACT, etc.):
         // NEVER let a stale Firestore document with fewer bills overwrite our complete Excel dataset!
-        const cleanMarkaKey = (data.marka || '').trim().toUpperCase();
-        const freshCase = (window.latestReportCases || []).find(x => (x.marka || '').trim().toUpperCase() === cleanMarkaKey);
+        const freshCase = PartyKey.findPartyRow(window.latestReportCases, data.marka, data.master);
 
         if (freshCase && Array.isArray(freshCase.bills) && (data.bills || []).length < freshCase.bills.length) {
           data.bills = JSON.parse(JSON.stringify(freshCase.bills));
-          data.master = freshCase.master || data.master;
           if (typeof saveMarkaCloud === 'function') {
             saveMarkaCloud(data);
           }
         }
 
-        const idx = markas.findIndex(m => String(m.id) === String(data.id) || (m.marka && data.marka && m.marka.toUpperCase() === cleanMarkaKey));
+        let idx = markas.findIndex(m => String(m.id) === String(data.id));
+        if (idx === -1 && data.marka) idx = markas.findIndex(m => PartyKey.keyOf(m) === PartyKey.keyOf(data));
         if (change.type === 'removed') {
           if (idx !== -1) {
             markas.splice(idx, 1);

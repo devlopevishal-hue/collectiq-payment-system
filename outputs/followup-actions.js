@@ -220,6 +220,8 @@
       mode: payMode,
       amount: payAmount,
       marka: marka.marka,
+      markaId: marka.id,
+      master: marka.master,
       receiptImage,
       followper: followper || text(input.paymentFollowperFallback),
       allocations: allocations.map(a => ({ billId: a.billId, amount: a.amount, settled: !!a.settled, isAdvance: !!a.isAdvance }))
