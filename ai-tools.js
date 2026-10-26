@@ -8,6 +8,7 @@
 //         assignees: [names a help ticket can be assigned to] }
 (function (root) {
   const MAX_ROWS = 20;
+  const PK = (typeof module !== 'undefined' && module.exports) ? require('./party-key.js') : root.PartyKey;
 
   function norm(s) {
     return String(s || '').toLowerCase().trim();
@@ -56,13 +57,23 @@
     const q = norm(name);
     if (!q) return { error: 'No party name given.' };
     const all = ctx.markas || [];
-    const exact = all.find(m => norm(m.marka) === q);
-    if (exact) return { marka: exact };
+    const label = m => m.master ? `${m.marka} (${m.master})` : m.marka;
+    // "PARTY (MASTER)" picks one row when the party is under several Masters
+    const withMaster = String(name).match(/^(.*?)\s*\(([^()]+)\)\s*$/);
+    if (withMaster) {
+      const row = PK.findPartyRow(all, withMaster[1], withMaster[2]);
+      if (row) return { marka: row };
+    }
+    const exact = all.filter(m => norm(m.marka) === q);
+    if (exact.length === 1) return { marka: exact[0] };
+    if (exact.length > 1) {
+      return { error: `"${name}" is under more than one Master. Ask the user which one: ${exact.map(label).join(', ')}`, candidates: exact.map(label) };
+    }
     // Only an exact name is used. Similar names are offered back so the user
     // chooses (AKT must never silently become SAKT).
     const partial = all.filter(m => norm(m.marka).includes(q)).slice(0, 10);
     if (partial.length) {
-      const list = partial.map(m => m.master ? `${m.marka} (${m.master})` : m.marka).join(', ');
+      const list = partial.map(label).join(', ');
       return { error: `No party named "${name}". Ask the user if they mean: ${list}`, candidates: partial.map(m => m.marka) };
     }
     return { error: `No party named "${name}" was found.` };
@@ -123,7 +134,7 @@
         date: e.date, type: e.type, ref: e.claimNumber || e.waComplaintNo || '', escalatedTo: e.escalatedTo || '', remark: e.remark || ''
       }));
       const openHelpTickets = (ctx.helpTickets || []).filter(t =>
-        (t.markaId === m.id || norm(t.markaName) === norm(m.marka)) && norm(t.status || 'open') !== 'resolved'
+        PK.ticketBelongsTo(t, m) && norm(t.status || 'open') !== 'resolved'
       ).map(t => ({ date: t.date, subject: t.subject, assignedHelper: t.assignedHelper, status: t.status || 'Open', nextDate: t.nextDate || '' }));
       return {
         marka: m.marka,
@@ -172,17 +183,16 @@
   }
 
   function paymentDatesFor(ctx, m) {
-    const key = norm(m.marka);
-    const fromRokad = (ctx.payments || []).filter(p => norm(p.marka) === key).map(p => p.date);
+    const fromRokad = (ctx.payments || []).filter(p => PK.paymentBelongsTo(p, m)).map(p => p.date);
     const fromHistory = (m.history || []).filter(x => x.type === 'payment').map(x => x.date);
     return fromRokad.concat(fromHistory).filter(Boolean);
   }
 
   function paymentsInRange(ctx, from, to) {
-    const scoped = new Map(scopeMarkas(ctx, { includeSettled: true }).map(m => [norm(m.marka), m]));
+    const scoped = scopeMarkas(ctx, { includeSettled: true });
     const everything = seesEverything(ctx);
     return (ctx.payments || []).filter(p => p.date >= from && p.date <= to).map(p => {
-      const m = scoped.get(norm(p.marka));
+      const m = PK.partyForPayment(scoped, p);
       if (!m && !everything) return null;
       return { p, owner: m ? ctx.h.ownerOf(m) : 'Unassigned' };
     }).filter(Boolean);
@@ -441,7 +451,7 @@
     if (who.error) return who;
 
     const payRef = String(args.pay_ref || '').trim();
-    const mine = (ctx.payments || []).filter(p => norm(p.marka) === norm(m.marka));
+    const mine = (ctx.payments || []).filter(p => PK.paymentBelongsTo(p, m));
     const hasRef = payRef && norm(payRef) !== 'n/a';
     const dup = hasRef
       ? mine.find(p => norm(p.ref) === norm(payRef))
@@ -650,7 +660,7 @@
     const found = findParty(ctx, args.marka);
     if (!found.marka) return found;
     const m = found.marka;
-    const open = all.filter(t => (t.markaId === m.id || norm(t.markaName) === norm(m.marka)) && !isResolved(t)).sort(newestFirst);
+    const open = all.filter(t => PK.ticketBelongsTo(t, m) && !isResolved(t)).sort(newestFirst);
     if (!open.length) return { error: `${m.marka} has no open help ticket.` };
     if (open.length > 1) return { candidates: open.slice(0, 10).map(t => ({ id: t.id, subject: t.subject })) };
     return { ticket: open[0] };

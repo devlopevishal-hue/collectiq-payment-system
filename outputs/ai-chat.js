@@ -703,7 +703,7 @@
     if (action.op === 'payment') {
       const ref = String(p.payRef || '').trim().toLowerCase();
       const date = p.date || todayIso;
-      const dup = (payments || []).find(x => String(x.marka || '').toUpperCase() === String(m.marka).toUpperCase() &&
+      const dup = (payments || []).find(x => PartyKey.paymentBelongsTo(x, m) &&
         (ref && ref !== 'n/a' ? String(x.ref || '').toLowerCase() === ref : Number(x.amount) === Number(p.payRupees) && x.date === date));
       if (dup) return { error: `This payment is already recorded (${dup.date}).` };
       const r = FollowupActions.applyPaymentFollowup(m, payments, {
