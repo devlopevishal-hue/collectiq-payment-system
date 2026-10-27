@@ -31,8 +31,14 @@
 
   function markaFor(store, ticket) {
     const list = store.markas || [];
-    return list.find(m => m.id === ticket.markaId) ||
-      list.find(m => text(m.marka).toUpperCase() === text(ticket.markaName).toUpperCase() && text(ticket.markaName)) || null;
+    const byId = list.find(m => m.id === ticket.markaId);
+    if (byId) return byId;
+    // By name only when that name is one party (the same marka name under
+    // two masters is two parties, and we cannot tell which one is meant).
+    const key = v => text(v).toUpperCase().replace(/\s+/g, ' ').trim();
+    const name = key(ticket.markaName);
+    const hits = name ? list.filter(m => key(m.marka) === name) : [];
+    return hits.length && hits.every(m => key(m.master) === key(hits[0].master)) ? hits[0] : null;
   }
 
   function openTicket(store, ticketId, allowResolved) {

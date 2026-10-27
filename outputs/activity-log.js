@@ -137,7 +137,7 @@
     return t;
   }
 
-  const api = { classify, collectActivity, summarize, KINDS, filterActivity, kindCounts, totals };
+  const api = { classify, isoDate, collectActivity, summarize, KINDS, filterActivity, kindCounts, totals };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ActivityLog = api;
 })(typeof window !== 'undefined' ? window : globalThis);

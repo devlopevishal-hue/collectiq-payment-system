@@ -1,16 +1,18 @@
 // CollectIQ Progressive Web App Service Worker
-const CACHE_NAME = 'collectiq-v6.20.0';
+const CACHE_NAME = 'collectiq-v6.21.0';
 const CORE_ASSETS = [
   './',
   './index.html',
-  './styles.css?v=6.20.0',
-  './activity-log.js?v=6.20.0',
-  './followup-actions.js?v=6.20.0',
-  './ticket-actions.js?v=6.20.0',
-  './app.js?v=6.20.0',
-  './ai-tools.js?v=6.20.0',
-  './ai-chat.js?v=6.20.0',
-  './latest-report-data.js?v=6.20.0',
+  './styles.css?v=6.21.0',
+  './activity-log.js?v=6.21.0',
+  './party-check.js?v=6.21.0',
+  './list-filters.js?v=6.21.0',
+  './followup-actions.js?v=6.21.0',
+  './ticket-actions.js?v=6.21.0',
+  './app.js?v=6.21.0',
+  './ai-tools.js?v=6.21.0',
+  './ai-chat.js?v=6.21.0',
+  './latest-report-data.js?v=6.21.0',
   './manifest.json',
   './icons/icon.svg',
   './icons/icon-192.png',

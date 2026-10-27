@@ -161,7 +161,7 @@ test('applyPaymentFollowup: part payment clears oldest bills first', () => {
   );
   assert.deepEqual(payments, [r.payment]);
   assert.deepEqual(r.payment, {
-    id: 'id1', date: '2026-10-03', ref: '123456', mode: 'cheque', amount: 40000, marka: 'RKC', receiptImage: '', followper: 'Sajjan',
+    id: 'id1', date: '2026-10-03', ref: '123456', mode: 'cheque', amount: 40000, marka: 'RKC', markaId: 'p', master: 'KALPESH MASTER', receiptImage: '', followper: 'Sajjan',
     allocations: [{ billId: 1, amount: 30000, settled: true, isAdvance: false }, { billId: 2, amount: 10000, settled: false, isAdvance: false }]
   });
   assert.deepEqual({ next: m.nextDate, status: m.lastStatus, owner: m.owner, last: m.lastDate }, { next: '2026-10-05', status: 'Payment Received', owner: 'Sajjan', last: '2026-10-03' });

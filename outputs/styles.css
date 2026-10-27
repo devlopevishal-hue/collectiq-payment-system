@@ -2535,3 +2535,39 @@ body:has(#aiAssistant.active) .mobile-fab-container { display: none !important; 
   .activity-kind { flex: 0 0 auto; min-height: 34px; }
   .activity-filter-row select, .activity-filter-row input { flex: 1 1 100%; max-width: none; min-height: 38px; font-size: 14px; }
 }
+.dupe-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.dupe-card { background: #fff; border: 1px solid #e2ebe7; border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+.dupe-card span { font: 700 11px Manrope, sans-serif; color: #6d827a; text-transform: uppercase; letter-spacing: .3px; }
+.dupe-card b { font-size: 24px; color: #12322b; }
+.dupe-card small { font-size: 11px; color: #6d827a; }
+.dupe-card.warn { border-color: #f5c6cb; background: #fff8f7; }
+.dupe-card.warn b { color: #c44d48; }
+.dupe-card.info { border-color: #f3dca8; background: #fffbf1; }
+.dupe-card.info b { color: #a16207; }
+.dupe-card.ok b { color: #087454; }
+.dupe-section { margin-bottom: 14px; padding: 14px !important; overflow-x: auto; }
+.dupe-section h3 { margin: 0 0 4px; font-size: 15px; color: #12322b; }
+.dupe-note { margin: 0 0 12px; font-size: 12px; color: #6d827a; }
+.dupe-group { border: 1px solid #edf1ef; border-radius: 10px; margin-bottom: 12px; overflow-x: auto; }
+.dupe-group-head { display: flex; align-items: baseline; gap: 8px; padding: 9px 12px; background: #f6faf8; border-bottom: 1px solid #edf1ef; }
+.dupe-group-head b { font-size: 14px; color: #087454; }
+.dupe-group-head small { font-size: 11px; color: #6d827a; }
+.dupe-group-head span { margin-left: auto; font: 700 11px Manrope, sans-serif; color: #c44d48; background: #faeceb; padding: 2px 9px; border-radius: 999px; }
+.dupe-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.dupe-table th { text-align: left; font: 700 10.5px Manrope, sans-serif; color: #6d827a; padding: 7px 10px; border-bottom: 1px solid #edf1ef; white-space: nowrap; }
+.dupe-table td { padding: 7px 10px; border-bottom: 1px solid #f3f6f5; white-space: nowrap; }
+.dupe-table tr.dupe-first td { border-top: 2px solid #e2ebe7; }
+.dupe-id { font: 11px 'DM Mono', monospace; color: #4d625a; }
+.dupe-most { font: 700 10px Manrope, sans-serif; color: #087454; background: #e8f4ef; padding: 1px 6px; border-radius: 999px; }
+.dupe-badge { font: 700 10.5px Manrope, sans-serif; padding: 2px 8px; border-radius: 999px; }
+.dupe-badge.shown { background: #e8f4ef; color: #087454; }
+.dupe-badge.hidden { background: #faeceb; color: #c44d48; }
+.dupe-empty { margin: 0; padding: 12px; text-align: center; font-size: 13px; color: #087454; background: #f6faf8; border-radius: 8px; }
+@media (max-width: 768px) {
+  .dupe-cards { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .dupe-card b { font-size: 20px; }
+}
+.dash-filter-note { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 12px; padding: 8px 12px; background: #fffbf1; border: 1px solid #f3dca8; border-radius: 10px; font: 600 12px Manrope, sans-serif; color: #7a5b12; }
+.dash-filter-note .dash-filter-label { font-weight: 800; }
+.dash-filter-note .dash-filter-scope { margin-right: 6px; }
+#fmsFilterNote, #visitFilterNote { margin: 10px 0 0; }

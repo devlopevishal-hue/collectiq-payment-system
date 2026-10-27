@@ -184,6 +184,9 @@ let users = [];
 let currentUser = null;
 let tab = 'all';
 let markaSubtab = 'markas';
+// All party records as saved in the live database (filled by the Firestore listener).
+const cloudPartyDocs = new Map();
+let cloudPartyDocsLoaded = false;
 let F = { followper: 'all', master: 'all', marka: '', min: '', max: '', minCount: '', maxCount: '', from: '', to: '', dateField: 'next', year: '', status: 'all', minDue: '', maxDue: '' };
 
 // User Access Control & Auth State
@@ -228,14 +231,14 @@ function ensureSeedDataLoaded() {
     // Guarantee ALL parties/Markas have their complete bill list from the latest report
     if (window.latestReportCases && Array.isArray(window.latestReportCases)) {
       window.latestReportCases.forEach(fresh => {
-        const cleanKey = (fresh.marka || '').trim().toUpperCase();
-        const existing = markas.find(x => (x.marka || '').trim().toUpperCase() === cleanKey);
+        const freshKey = PartyCheck.partyKey(fresh.marka, fresh.master);
+        const existing = markas.find(x => PartyCheck.partyKey(x.marka, x.master) === freshKey);
         if (existing) {
           if ((existing.bills || []).length < (fresh.bills || []).length) {
             existing.bills = JSON.parse(JSON.stringify(fresh.bills));
-            existing.master = fresh.master || existing.master;
           }
-        } else {
+        } else if (!markas.some(x => String(x.id) === String(fresh.id) && PartyCheck.normKey(x.marka) === PartyCheck.normKey(fresh.marka))) {
+          // Not here yet (a party whose master was changed in the app keeps its record ID and is not re-added)
           markas.push(JSON.parse(JSON.stringify(fresh)));
         }
       });
@@ -620,14 +623,14 @@ function load() {
     // Guarantee ALL parties/Markas have their complete bill list from the latest report
     if (window.latestReportCases && Array.isArray(window.latestReportCases)) {
       window.latestReportCases.forEach(fresh => {
-        const cleanKey = (fresh.marka || '').trim().toUpperCase();
-        const existing = markas.find(x => (x.marka || '').trim().toUpperCase() === cleanKey);
+        const freshKey = PartyCheck.partyKey(fresh.marka, fresh.master);
+        const existing = markas.find(x => PartyCheck.partyKey(x.marka, x.master) === freshKey);
         if (existing) {
           if ((existing.bills || []).length < (fresh.bills || []).length) {
             existing.bills = JSON.parse(JSON.stringify(fresh.bills));
-            existing.master = fresh.master || existing.master;
           }
-        } else {
+        } else if (!markas.some(x => String(x.id) === String(fresh.id) && PartyCheck.normKey(x.marka) === PartyCheck.normKey(fresh.marka))) {
+          // Not here yet (a party whose master was changed in the app keeps its record ID and is not re-added)
           markas.push(JSON.parse(JSON.stringify(fresh)));
         }
       });
@@ -774,6 +777,24 @@ function followUpCount(m) {
 
 function activeMarkas() {
   return markas.filter(m => totalOutstanding(m) > 0);
+}
+
+// Marka names used under more than one master, cached until the next render.
+let sharedNamesCache = null;
+function sharedMarkaNames() {
+  if (!sharedNamesCache || sharedNamesCache.list !== markas || sharedNamesCache.size !== markas.length) {
+    sharedNamesCache = { list: markas, size: markas.length, names: PartyCheck.sharedNameSet(markas) };
+  }
+  return sharedNamesCache.names;
+}
+
+// A help ticket's party: its saved party ID, or its name when that name is one party
+// (the same marka under two masters is two parties, so a bare name cannot pick one).
+function ticketIsFor(t, m) {
+  if (!t || !m) return false;
+  if (t.markaId && String(t.markaId) === String(m.id)) return true;
+  const name = PartyCheck.normKey(t.markaName);
+  return !!name && name === PartyCheck.normKey(m.marka) && !sharedMarkaNames().has(name);
 }
 
 function ownerOf(m) {
@@ -1032,15 +1053,13 @@ function filterDateOf(m) {
   return m.nextDate || '';
 }
 
+// One status per party, the same one the STATUS column shows.
+function statusOf(m) {
+  return ListFilters.partyStatus({ locked: isLocked(m), nextDate: m.nextDate, daysPast: m.nextDate ? days(m.nextDate) : 0 });
+}
+
 function matchesStatus(m, status) {
-  if (status === 'locked') return isLocked(m);
-  if (status === 'closed') return !m.nextDate;
-  if (!m.nextDate) return false;
-  const d = days(m.nextDate);
-  if (status === 'overdue') return d > 0;
-  if (status === 'today') return d === 0;
-  if (status === 'upcoming') return d < 0;
-  return true;
+  return !status || status === 'all' || statusOf(m) === status;
 }
 
 function filtered(list = activeMarkas()) {
@@ -1068,19 +1087,11 @@ function filtered(list = activeMarkas()) {
     }
   }
   return list.filter(m => {
-    // 1. Followper filter
-    if (F.followper && F.followper !== 'all') {
-      const fName = (F.followper || '').toLowerCase().trim();
-      const mOwner = (ownerOf(m) || '').toLowerCase().trim();
-      if (mOwner !== fName && !(fName && mOwner && (mOwner.includes(fName) || fName.includes(mOwner)))) return false;
-    }
+    // 1. Followper filter (exact name: "Anil" is not "Anil Sharma")
+    if (F.followper && F.followper !== 'all' && !ListFilters.sameName(ownerOf(m), F.followper)) return false;
 
-    // 2. Master filter
-    if (F.master && F.master !== 'all') {
-      const mMaster = (m.master || '').toLowerCase().trim();
-      const fMaster = F.master.toLowerCase().trim();
-      if (mMaster !== fMaster && !(fMaster && mMaster && (mMaster.includes(fMaster) || fMaster.includes(mMaster)))) return false;
-    }
+    // 2. Master filter (exact name: master "1" is not master "11")
+    if (F.master && F.master !== 'all' && !ListFilters.sameName(m.master, F.master)) return false;
 
     // 3. Marka / Search text filter
     if (F.marka && F.marka.trim()) {
@@ -1143,6 +1154,7 @@ function filterChipsHtml() {
   if (F.minDue || F.maxDue) add(`Already due: ${F.minDue ? money(+F.minDue) : '0'} – ${F.maxDue ? money(+F.maxDue) : 'any'}`, 'minDue,maxDue');
   if (F.min || F.max) add(`Outstanding: ${F.min ? money(+F.min) : '0'} – ${F.max ? money(+F.max) : 'any'}`, 'min,max');
   if (F.minCount || F.maxCount) add(`Follow-ups: ${F.minCount || 0} – ${F.maxCount || 'any'}`, 'minCount,maxCount');
+  if (F.followper && F.followper !== 'all' && !(currentUser && currentUser.role === 'user')) add(`Followper: ${F.followper}`, 'followper');
   if (F.master && F.master !== 'all') add(`Master: ${F.master}`, 'master');
   if (F.marka) add(`Search: ${F.marka}`, 'marka');
   if (!chips.length) return '';
@@ -1159,9 +1171,26 @@ function filters(containerId) {
 
   const isUserRole = currentUser && currentUser.role === 'user';
 
+  // The chosen master / followper stays in its list even if no party has it now,
+  // so the dropdown always shows the filter that is really applied.
+  const withCurrent = (list, current) => (current && current !== 'all' && !list.includes(current) ? [current, ...list] : list);
+  const masters = withCurrent(allMasters(), F.master);
+  const followpers = withCurrent(allFollowpers(), F.followper);
+
   // If already rendered, do in-place value sync without destroying active input focus
   const existingInputs = container.querySelectorAll('.filter-input');
   if (existingInputs && existingInputs.length >= 8) {
+    // New masters / followpers (e.g. after the live data loads) are added to the lists.
+    const refreshOptions = (k, first, values) => {
+      const sel = container.querySelector(`select.filter-input[data-k="${k}"]`);
+      if (!sel || document.activeElement === sel) return;
+      const want = [first, ...values].join('\u0001');
+      if ([...sel.options].map(o => o.value).join('\u0001') === want) return;
+      sel.innerHTML = `<option value="${first}">${first === 'all' && k === 'master' ? 'All Masters' : 'All Followpers'}</option>` +
+        values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
+    };
+    refreshOptions('master', 'all', masters);
+    if (!isUserRole) refreshOptions('followper', 'all', followpers);
     existingInputs.forEach(el => {
       if (document.activeElement === el) return; // do not disturb current focused input
       const k = el.dataset.k;
@@ -1175,9 +1204,6 @@ function filters(containerId) {
     if (countEl) countEl.textContent = filterActiveCount() ? String(filterActiveCount()) : '';
     return;
   }
-
-  const masters = allMasters();
-  const followpers = allFollowpers();
 
   const followperOptions = isUserRole
     ? `<option value="${escapeHtml(currentUser.followperName)}" ${F.followper === currentUser.followperName ? 'selected' : ''}>My Markas (${escapeHtml(currentUser.followperName)})</option><option value="all" ${F.followper === 'all' ? 'selected' : ''}>All Team Markas</option>`
@@ -1304,10 +1330,10 @@ function colFilterBody(col) {
       </div>`;
   }
   if (col === 'marka') return `<label><span>Search</span><input type="text" data-k="marka" placeholder="Party, master or remark" value="${escapeHtml(F.marka || '')}" oninput="setF(this)"></label>`;
-  if (col === 'master') return `<label><span>Master</span><select data-k="master" onchange="setF(this)">${opt('all', 'All masters', F.master)}${allMasters().map(m => opt(m, m, F.master)).join('')}</select></label>`;
+  if (col === 'master') return `<label><span>Master</span><select data-k="master" onchange="setF(this)">${opt('all', 'All masters', F.master)}${[...new Set([...(F.master && F.master !== 'all' ? [F.master] : []), ...allMasters()])].map(m => opt(m, m, F.master)).join('')}</select></label>`;
   if (col === 'followper') {
     const locked = currentUser && currentUser.role === 'user';
-    return `<label><span>Followper</span><select data-k="followper" onchange="setF(this)" ${locked ? 'disabled' : ''}>${opt('all', 'All followpers', F.followper)}${allFollowpers().map(f => opt(f, f, F.followper)).join('')}</select></label>`;
+    return `<label><span>Followper</span><select data-k="followper" onchange="setF(this)" ${locked ? 'disabled' : ''}>${opt('all', 'All followpers', F.followper)}${[...new Set([...(F.followper && F.followper !== 'all' ? [F.followper] : []), ...allFollowpers()])].map(f => opt(f, f, F.followper)).join('')}</select></label>`;
   }
   if (col === 'status') return `<label><span>Status</span><select data-k="status" onchange="setF(this)">${opt('all', 'All statuses', F.status)}${Object.keys(FILTER_STATUSES).map(k => opt(k, FILTER_STATUSES[k], F.status)).join('')}</select></label>`;
   if (col === 'alreadyDue') return num('minDue', 'Min ₹') + num('maxDue', 'Max ₹');
@@ -1436,10 +1462,32 @@ function clearFilters() {
 // ==========================================
 // VIEWS
 // ==========================================
+// Pages without the full filter bar (Dashboard, FMS, Field Visits) still use the
+// shared filters; this line shows which ones are on, with ✕ to remove them, and
+// whose parties a user / CRR login is limited to.
+function renderFilterNote(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const chips = filterChipsHtml();
+  let scope = '';
+  if (currentUser && currentUser.role === 'user' && F.followper !== 'all') {
+    scope = `Showing only ${escapeHtml(currentUser.followperName || '')}'s parties (your login).`;
+  } else if (currentUser && currentUser.role === 'crr') {
+    const n = (currentUser.followperName || '').toLowerCase().trim();
+    const seesAll = n.includes('mahendra') || n === 'all' || (currentUser.email || '').toLowerCase().includes('mahendra');
+    if (!seesAll) scope = `Showing only parties where ${escapeHtml(currentUser.followperName || '')} is the CRR (your login).`;
+  }
+  el.innerHTML = (scope ? `<span class="dash-filter-scope">👤 ${scope}</span>` : '') +
+    (chips ? `<span class="dash-filter-label">Filters on:</span>${chips}` : '');
+  el.style.display = scope || chips ? '' : 'none';
+}
+window.renderFilterNote = renderFilterNote;
+
 function dashboard() {
   const dash = document.getElementById('dashboard');
   if (!dash) return;
-  
+  renderFilterNote('dashFilterNote');
+
   let active = filtered();
   const locks = active.filter(isLocked);
   const unassigned = active.filter(m => ownerOf(m) === 'Unassigned');
@@ -1687,10 +1735,13 @@ function schedule() {
   filters('filterBar');
   const active = filtered();
   
+  // Each party sits in exactly one tab, so Overdue + Due today + Upcoming = All.
+  const tabOf = new Map(active.map(m => [m, ListFilters.scheduleTab(statusOf(m))]));
+  const inTab = t => active.filter(m => tabOf.get(m) === t);
   const allCount = active.length;
-  const dueCount = active.filter(m => m.nextDate && days(m.nextDate) === 0).length;
-  const overdueCount = active.filter(m => (m.nextDate && days(m.nextDate) > 0) || isLocked(m)).length;
-  const upcomingCount = active.filter(m => !isLocked(m) && (!m.nextDate || days(m.nextDate) < 0)).length;
+  const dueCount = inTab('due').length;
+  const overdueCount = inTab('overdue').length;
+  const upcomingCount = inTab('upcoming').length;
   
   const tabAll = document.querySelector('.tab[data-filter="all"]');
   if (tabAll) tabAll.innerHTML = `All <span>${allCount}</span>`;
@@ -1702,9 +1753,7 @@ function schedule() {
   if (tabUpcoming) tabUpcoming.innerHTML = `Upcoming <span>${upcomingCount}</span>`;
   
   let list = active;
-  if (tab === 'due') list = active.filter(m => m.nextDate && days(m.nextDate) === 0);
-  else if (tab === 'overdue') list = active.filter(m => (m.nextDate && days(m.nextDate) > 0) || isLocked(m));
-  else if (tab === 'upcoming') list = active.filter(m => !isLocked(m) && (!m.nextDate || days(m.nextDate) < 0));
+  if (tab === 'due' || tab === 'overdue' || tab === 'upcoming') list = inTab(tab);
   
   const { col, dir } = SORTS.schedule;
   list.sort((a, b) => {
@@ -1769,7 +1818,7 @@ function schedule() {
             <div class="m-card-badge-mobile">${badge}</div>
           </div>
           ${(() => {
-            const openTicket = (helpTickets || []).find(t => (t.markaId === m.id || (t.markaName && m.marka && t.markaName.toUpperCase() === m.marka.toUpperCase())) && (t.status || 'Open').toLowerCase() !== 'resolved');
+            const openTicket = (helpTickets || []).find(t => ticketIsFor(t, m) && (t.status || 'Open').toLowerCase() !== 'resolved');
             if (!openTicket) return '';
             return `
               <div style="margin-top:4px;">
@@ -1988,14 +2037,14 @@ function rokad() {
   if (F.followper && F.followper !== 'all') {
     const fOwner = F.followper.toLowerCase().trim();
     filteredPayments = filteredPayments.filter(p => {
-      const m = markas.find(x => x.marka === p.marka);
+      const m = PartyCheck.partyOfPayment(p, markas);
       return m && (ownerOf(m) || '').toLowerCase().trim() === fOwner;
     });
   }
   if (F.master && F.master !== 'all') {
     const fMaster = F.master.toLowerCase().trim();
     filteredPayments = filteredPayments.filter(p => {
-      const m = markas.find(x => x.marka === p.marka);
+      const m = PartyCheck.partyOfPayment(p, markas);
       return m && (m.master || '').toLowerCase().trim() === fMaster;
     });
   }
@@ -2057,6 +2106,21 @@ function rokad() {
 }
 window.rokad = rokad;
 
+// Re-draws a filter row without throwing the cursor out of the box being typed in.
+function redrawKeepingFocus(el, html) {
+  if (!el) return;
+  const active = document.activeElement;
+  const fields = () => [...el.querySelectorAll('input, select, textarea')];
+  const idx = active && el.contains(active) ? fields().indexOf(active) : -1;
+  let start = null, end = null;
+  if (idx !== -1) { try { start = active.selectionStart; end = active.selectionEnd; } catch (e) { /* not a text box */ } }
+  el.innerHTML = html;
+  const again = idx !== -1 ? fields()[idx] : null;
+  if (!again) return;
+  again.focus();
+  try { if (start != null) again.setSelectionRange(start, end); } catch (e) { /* not a text box */ }
+}
+
 function fmsView() {
   const container = document.getElementById('fms');
   if (!container) return;
@@ -2065,7 +2129,7 @@ function fmsView() {
   const curStep = (F.fmsStep || 'all').trim();
   const curStatus = (F.fmsStatus || 'all').trim();
 
-  document.getElementById('fmsFilters').innerHTML = `
+  redrawKeepingFocus(document.getElementById('fmsFilters'), `
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
       <label style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;">Responsible Role:
         <select class="filter-input" onchange="F.fmsRole = this.value; fmsView();">
@@ -2097,7 +2161,9 @@ function fmsView() {
       </label>
       <button id="fmsBulkBtn" onclick="openBulkFmsModal()" class="btn primary" style="padding:6px 14px; font-size:12px; font-weight:700; display:none; margin-left:auto;">✓ Mark Selected Done (0)</button>
     </div>
-  `;
+    <div id="fmsFilterNote" class="dash-filter-note" style="display:none;"></div>
+  `);
+  renderFilterNote('fmsFilterNote');
 
   // Gather all FMS tasks across active markas
   const activeList = filtered(activeMarkas());
@@ -2114,12 +2180,13 @@ function fmsView() {
       if (curRole !== 'all' && t.role !== curRole) return;
       if (curStep !== 'all' && t.code !== curStep) return;
       if (curStatus === 'Pending' && t.isDone) return;
-      if (curStatus === 'DoneOnTime' && (!t.isDone || t.score !== 1.0)) return;
-      if (curStatus === 'DoneDelayed' && (!t.isDone || t.score !== 0.5)) return;
+      // Same rule as the counts below: full score = on time, anything less = delayed.
+      if (curStatus === 'DoneOnTime' && (!t.isDone || !(t.score >= 1))) return;
+      if (curStatus === 'DoneDelayed' && (!t.isDone || t.score >= 1)) return;
 
       totalTasksCount++;
       if (t.isDone) {
-        if (t.score === 1.0) onTimeCount++;
+        if (t.score >= 1) onTimeCount++;
         else delayedCount++;
       } else {
         pendingCount++;
@@ -2656,19 +2723,113 @@ function switchMarkaSubtab(subtab) {
   const btnMasters = document.getElementById('tabMasterView');
   const divMarkas = document.getElementById('markaSubtabMarkas');
   const divMasters = document.getElementById('markaSubtabMasters');
-  
+  const btnDupes = document.getElementById('tabDupeView');
+  const divDupes = document.getElementById('markaSubtabDupes');
+
   if (btnMarkas) btnMarkas.classList.toggle('active', subtab === 'markas');
   if (btnMasters) btnMasters.classList.toggle('active', subtab === 'masters');
+  if (btnDupes) btnDupes.classList.toggle('active', subtab === 'dupes');
   if (divMarkas) divMarkas.style.display = subtab === 'markas' ? '' : 'none';
   if (divMasters) divMasters.style.display = subtab === 'masters' ? '' : 'none';
-  
+  if (divDupes) divDupes.style.display = subtab === 'dupes' ? '' : 'none';
+
   markaView();
 }
+
+// Read-only report: a party is Master + Marka. Lists the same party saved more
+// than once and one marka name used under several masters. Changes nothing.
+function renderDuplicateParties() {
+  const box = document.getElementById('dupePartiesBody');
+  if (!box || typeof PartyCheck === 'undefined') return;
+  const fromCloud = cloudPartyDocsLoaded && cloudPartyDocs.size > 0;
+  const docs = fromCloud ? [...cloudPartyDocs.values()] : markas;
+  const shownIds = new Set(markas.map(m => String(m.id)));
+  const r = PartyCheck.checkParties(docs, { shownIds, payments });
+  const sharedIds = PartyCheck.findSharedIds(markas, window.latestReportCases || [], fromCloud ? docs : []);
+  const n = v => Number(v).toLocaleString('en-IN');
+  const when = d => (d ? fmt(d) : '—');
+  const seen = c => c.shown
+    ? '<span class="dupe-badge shown">Shown in app</span>'
+    : '<span class="dupe-badge hidden">Hidden</span>';
+
+  const cards = `
+    <div class="dupe-cards">
+      <div class="dupe-card"><span>Saved records</span><b>${n(r.records)}</b><small>${fromCloud ? 'Live database' : 'This browser only (live database not connected)'}</small></div>
+      <div class="dupe-card"><span>Unique parties (Master + Marka)</span><b>${n(r.parties)}</b><small>Each counted once</small></div>
+      <div class="dupe-card ${r.duplicates.length ? 'warn' : 'ok'}"><span>Same party saved twice or more</span><b>${n(r.duplicates.length)}</b><small>${n(r.extraCopies)} extra ${r.extraCopies === 1 ? 'copy' : 'copies'}</small></div>
+      <div class="dupe-card ${r.sharedNames.length ? 'info' : 'ok'}"><span>Same marka name, different masters</span><b>${n(r.sharedNames.length)}</b><small>Different parties with one name</small></div>
+      <div class="dupe-card ${sharedIds.length ? 'warn' : 'ok'}"><span>One record ID, two parties</span><b>${n(sharedIds.length)}</b><small>They overwrite each other when saved</small></div>
+    </div>`;
+
+  const idClash = sharedIds.length ? `
+    <table class="dupe-table">
+      <thead><tr><th>RECORD ID</th><th>PARTIES USING IT</th></tr></thead>
+      <tbody>${sharedIds.map(s => `
+        <tr><td class="dupe-id">${escapeHtml(s.id)}</td><td>${s.parties.map(p => `<b>${escapeHtml(p.marka)}</b> <small>${escapeHtml(p.master || '(no master)')}</small>`).join(' &nbsp;·&nbsp; ')}</td></tr>`).join('')}
+      </tbody>
+    </table>` : '<p class="dupe-empty">✓ Every party has its own record ID.</p>';
+
+  const dupes = r.duplicates.length ? r.duplicates.map(g => `
+    <div class="dupe-group">
+      <div class="dupe-group-head"><b>${escapeHtml(g.marka)}</b> <small>${escapeHtml(g.master || '(no master)')}</small><span>${g.copies.length} copies</span></div>
+      <table class="dupe-table">
+        <thead><tr><th>COPY</th><th>RECORD ID</th><th>FOLLOWPER</th><th>BILLS</th><th>OUTSTANDING</th><th>HISTORY ENTRIES</th><th>LAST ENTRY</th><th>PAYMENTS</th><th>IN APP</th></tr></thead>
+        <tbody>${g.copies.map((c, i) => `
+          <tr>
+            <td><b>#${i + 1}</b>${i === 0 ? ' <small class="dupe-most">most data</small>' : ''}</td>
+            <td class="dupe-id">${escapeHtml(c.id)}</td>
+            <td>${escapeHtml(c.owner || '—')}</td>
+            <td>${n(c.bills)}</td>
+            <td class="money">${money(c.outstanding)}</td>
+            <td>${n(c.history)}</td>
+            <td>${when(c.lastEntry)}</td>
+            <td>${n(c.payments)}</td>
+            <td>${seen(c)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`).join('') : '<p class="dupe-empty">✓ No party is saved twice. Every Master + Marka appears once.</p>';
+
+  const shared = r.sharedNames.length ? `
+    <table class="dupe-table">
+      <thead><tr><th>MARKA</th><th>MASTER</th><th>OUTSTANDING</th><th>LAST ENTRY</th><th>IN APP</th></tr></thead>
+      <tbody>${r.sharedNames.map(s => s.parties.map((p, i) => `
+        <tr${i === 0 ? ' class="dupe-first"' : ''}>
+          <td>${i === 0 ? `<b>${escapeHtml(s.marka)}</b>` : ''}</td>
+          <td>${escapeHtml(p.master || '(no master)')}${p.copies > 1 ? ` <small>(${p.copies} copies)</small>` : ''}</td>
+          <td class="money">${money(p.outstanding)}</td>
+          <td>${when(p.lastEntry)}</td>
+          <td>${seen(p)}</td>
+        </tr>`).join('')).join('')}
+      </tbody>
+    </table>` : '<p class="dupe-empty">✓ No marka name is used under two masters.</p>';
+
+  box.innerHTML = `${cards}
+    ${sharedIds.length ? `<div class="panel dupe-section">
+      <h3>One record ID used by two parties</h3>
+      <p class="dupe-note">The live database saves each party under its record ID. These parties share one ID, so saving one can overwrite the other's bills and history.</p>
+      ${idClash}
+    </div>` : ''}
+    <div class="panel dupe-section">
+      <h3>Same party saved twice or more</h3>
+      <p class="dupe-note">Same Master and same Marka, saved as separate records. Copy #1 has the most data. "Hidden" means the app shows another copy instead of this one.</p>
+      ${dupes}
+    </div>
+    <div class="panel dupe-section">
+      <h3>Same marka name under different masters</h3>
+      <p class="dupe-note">These are different parties that share a name. Today the app matches parties by name only, so it may show just one of them ("Hidden" = not shown).</p>
+      ${shared}
+    </div>`;
+}
+window.renderDuplicateParties = renderDuplicateParties;
 
 function markaView() {
   const container = document.getElementById('markas');
   if (!container) return;
-  
+  if (markaSubtab === 'dupes') {
+    try { renderDuplicateParties(); } catch (err) { console.error('Duplicate parties check failed:', err); }
+  }
+
   filters('markaFilters');
   const list = filtered();
   
@@ -2718,7 +2879,7 @@ function markaView() {
               <span class="status ${ownerOf(m) === 'Unassigned' ? 'overdue' : 'active'}">${escapeHtml(ownerOf(m))}</span>
             </div>
             ${(() => {
-              const openTicket = (helpTickets || []).find(t => (t.markaId === m.id || (t.markaName && m.marka && t.markaName.toUpperCase() === m.marka.toUpperCase())) && (t.status || 'Open').toLowerCase() !== 'resolved');
+              const openTicket = (helpTickets || []).find(t => ticketIsFor(t, m) && (t.status || 'Open').toLowerCase() !== 'resolved');
               if (!openTicket) return '';
               return `
                 <div style="margin-top:4px;">
@@ -2790,7 +2951,7 @@ function helpTicketsView() {
   
   const filterEl = document.getElementById('helpTicketFilters');
   if (filterEl) {
-    filterEl.innerHTML = `
+    redrawKeepingFocus(filterEl, `
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
         <label style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;">View Scope:
           <select class="filter-input" onchange="F.htScope = this.value; helpTicketsView();">
@@ -2819,7 +2980,7 @@ function helpTicketsView() {
         </label>
         <button onclick="openHelpTicketModal()" class="btn primary" style="padding:6px 12px; font-size:12px; font-weight:700;">+ Create Help Ticket</button>
       </div>
-    `;
+    `);
   }
 
   // Filter out any corrupted duplicate tickets safely
@@ -2843,7 +3004,7 @@ function helpTicketsView() {
       matchUser(t.requestedBy) || 
       matchUser(t.assignedHelper) || 
       matchUser(t.resolvedBy) ||
-      markas.some(m => (m.id === t.markaId || (m.marka && t.markaName && m.marka.toUpperCase() === t.markaName.toUpperCase())) && matchUser(ownerOf(m)))
+      markas.some(m => ticketIsFor(t, m) && matchUser(ownerOf(m)))
     );
   }
 
@@ -3273,7 +3434,7 @@ function crmEscalationsView() {
 
   const filterEl = document.getElementById('crmEscFilters');
   if (filterEl) {
-    filterEl.innerHTML = `
+    redrawKeepingFocus(filterEl, `
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
         <label style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;">Status:
           <select class="filter-input" onchange="F.crmStatus = this.value; crmEscalationsView();">
@@ -3294,74 +3455,11 @@ function crmEscalationsView() {
           <input type="text" class="filter-input" placeholder="e.g. ABT..." value="${escapeHtml(F.crmSearch || '')}" oninput="F.crmSearch = this.value; crmEscalationsView();" style="width:140px;">
         </label>
       </div>
-    `;
+    `);
   }
 
-  let allEscs = [];
-  const seenEscKeys = new Set();
-
-  markas.forEach(m => {
-    (m.escalations || []).forEach(e => {
-      if (e.type === 'Help Ticket' || e.type === 'Help') return;
-      const key = (e.id || '') + '_' + m.id + '_' + e.date + '_' + e.type;
-      if (!seenEscKeys.has(key)) {
-        seenEscKeys.add(key);
-        allEscs.push({
-          id: e.id || uid(),
-          markaName: m.marka,
-          markaId: m.id,
-          date: e.date,
-          type: e.type || 'Claim Matter',
-          claimNumber: e.claimNumber,
-          waComplaintNo: e.waComplaintNo,
-          escalatedTo: e.escalatedTo,
-          followper: e.followper || ownerOf(m),
-          status: e.status || 'Open',
-          remark: e.remark,
-          resolvedDate: e.resolvedDate,
-          resolutionType: e.resolutionType,
-          settledAmount: e.settledAmount,
-          resolutionNote: e.resolutionNote,
-          resolvedBy: e.resolvedBy,
-          billIds: e.billIds || [],
-          billsList: m.bills || []
-        });
-      }
-    });
-
-    (m.history || []).forEach((h, hIdx) => {
-      const isClaimOrComplaint = h.status && (
-        h.status.includes('Claim') || 
-        h.status.includes('Complaint') || 
-        h.status.includes('Escalat')
-      );
-      if (isClaimOrComplaint) {
-        const histKey = m.id + '_' + h.date + '_' + h.status;
-        if (!seenEscKeys.has(histKey)) {
-          seenEscKeys.add(histKey);
-          let escType = 'Claim Matter';
-          if (h.status.includes('WhatsApp') || h.status.includes('Complaint')) escType = 'WhatsApp Complaint';
-          else if (h.status.includes('Escalat')) escType = 'Escalated';
-
-          allEscs.push({
-            id: 'h_crm_' + m.id + '_' + hIdx,
-            markaName: m.marka,
-            markaId: m.id,
-            date: h.date,
-            type: escType,
-            claimNumber: h.claimNumber || '',
-            waComplaintNo: h.waComplaintNo || '',
-            escalatedTo: h.escalatedTo || 'CRM',
-            followper: h.followper || ownerOf(m),
-            status: 'Open',
-            remark: h.remark || '',
-            billIds: h.billIds || [],
-            billsList: m.bills || []
-          });
-        }
-      }
-    });
-  });
+  // Each complaint once, with the status of its saved escalation (see list-filters.js).
+  let allEscs = ListFilters.crmItems(markas, ownerOf);
 
   // Strict User Data Security: Two-Way Visibility for who created it, who is assigned to solve it, who resolved it, or party owner
   if (isUserRole) {
@@ -3568,7 +3666,7 @@ function visitsView() {
 
   const filterEl = document.getElementById('visitFilters');
   if (filterEl) {
-    filterEl.innerHTML = `
+    redrawKeepingFocus(filterEl, `
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
         <label style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;">Doer / Visitor:
           <select class="filter-input" onchange="F.visitDoer = this.value; visitsView();" ${isUserRole ? 'disabled' : ''}>
@@ -3586,7 +3684,9 @@ function visitsView() {
         </label>
         <button onclick="F.visitDoer='all'; F.visitFrom=''; F.visitTo=''; F.visitSearch=''; visitsView();" class="tiny-btn" style="margin:0;">Clear</button>
       </div>
-    `;
+      <div id="visitFilterNote" class="dash-filter-note" style="display:none;"></div>
+    `);
+    renderFilterNote('visitFilterNote');
   }
 
   const activeMarkaList = filtered(activeMarkas());
@@ -3603,7 +3703,7 @@ function visitsView() {
           marka: m.marka,
           master: m.master,
           owner: m.owner || ownerOf(m),
-          date: h.date,
+          date: ActivityLog.isoDate(h.date) || String(h.date || ''),
           followper: h.followper || ownerOf(m),
           contact: h.contact || h.visitPersonMet || 'Party In-charge',
           purpose: h.visitPurpose || (h.status === 'Promise to Pay' ? 'Payment Follow-up' : h.status === 'Payment Received' ? 'Payment Collection' : 'Field Discussion'),
@@ -3625,10 +3725,10 @@ function visitsView() {
 
   const q = (F.visitSearch || '').toLowerCase().trim();
   let filteredVisits = allVisits.filter(v => {
-    const doerMatch = (curDoer === 'all' || v.followper === curDoer);
+    const doerMatch = (curDoer === 'all' || ListFilters.sameName(v.followper, curDoer));
     const fromMatch = !F.visitFrom || v.date >= F.visitFrom;
     const toMatch = !F.visitTo || v.date <= F.visitTo;
-    const searchMatch = !q || v.marka.toLowerCase().includes(q) || v.master.toLowerCase().includes(q) || v.contact.toLowerCase().includes(q) || (v.notes || '').toLowerCase().includes(q);
+    const searchMatch = !q || [v.marka, v.master, v.contact, v.notes].some(x => String(x || '').toLowerCase().includes(q));
     return doerMatch && fromMatch && toMatch && searchMatch;
   });
 
@@ -3690,10 +3790,13 @@ function visitsView() {
     }).join('') : '<tr><td colspan="9" style="text-align:center;color:#788882;padding:24px;">No field visits logged for the selected period.</td></tr>';
   }
 
-  // Subtab 2: Party-wise (Marka-wise) Matrix
+  // Subtab 2: Party-wise (Marka-wise) Matrix — the Doer and Search boxes above apply here too
   const matrixTbody = document.getElementById('partyMatrixTable');
   if (matrixTbody) {
-    matrixTbody.innerHTML = activeMarkaList.map(m => {
+    const matrixList = activeMarkaList.filter(m =>
+      (curDoer === 'all' || ListFilters.sameName(ownerOf(m), curDoer)) &&
+      (!q || [m.marka, m.master].some(x => String(x || '').toLowerCase().includes(q))));
+    matrixTbody.innerHTML = matrixList.map(m => {
       const hist = m.history || [];
       const visits = hist.filter(h => h.mode && (h.mode.toLowerCase().includes('person') || h.mode.toLowerCase().includes('visit')));
       const calls = hist.filter(h => h.mode && h.mode.toLowerCase().includes('phone'));
@@ -4344,7 +4447,7 @@ function renderHistoryTimeline(m) {
   
   // Ensure all payments from payments array belonging to this Marka are displayed in timeline
   (payments || []).forEach(p => {
-    if (p && (p.marka === m.marka || (m.bills || []).some(b => (p.allocations || []).some(a => String(a.billId) === String(b.id))))) {
+    if (p && PartyCheck.paymentBelongs(p, m, markas)) {
       const alreadyLogged = hist.some(h => (h.type === 'payment' || (h.amount && h.amount > 0)) && h.date === p.date && (+h.amount === +p.amount || (p.ref && p.ref !== 'N/A' && h.ref === p.ref)));
       if (!alreadyLogged) {
         hist.push({
@@ -4703,6 +4806,8 @@ async function saveFollowup(e) {
       mode: payMode,
       amount: payAmount,
       marka: m.marka,
+      markaId: m.id,
+      master: m.master || '',
       receiptImage: receiptImage,
       followper: followper || (currentUser ? currentUser.followperName : '') || ownerOf(m),
       allocations: allocations.map(a => ({
@@ -5233,6 +5338,8 @@ async function savePayment(e) {
     mode: payMode,
     amount: payAmount,
     marka: m.marka,
+    markaId: m.id,
+    master: m.master || '',
     receiptImage: receiptImage,
     allocations: allocations.map(a => {
       const b = m.bills.find(x => String(x.id) === String(a.billId));
@@ -5473,7 +5580,7 @@ function openPaymentHistory(markaId) {
   document.getElementById('payHistTitle').textContent = `Payment Ledger · ${escapeHtml(m.marka)} · ${escapeHtml(m.master)}`;
   
   // Combine payments from payments array and payment entries from m.history
-  const markaPayments = [...(payments || []).filter(p => p.marka === m.marka || (m.bills || []).some(b => (p.allocations || []).some(a => String(a.billId) === String(b.id))))];
+  const markaPayments = [...(payments || []).filter(p => PartyCheck.paymentBelongs(p, m, markas))];
   
   (m.history || []).filter(h => h.type === 'payment' || (h.amount && h.amount > 0)).forEach(h => {
     const exists = markaPayments.some(p => p.date === h.date && (+p.amount === +h.amount || (h.ref && h.ref !== 'N/A' && p.ref === h.ref)));
@@ -5561,7 +5668,7 @@ function exportMarkaPaymentExcel() {
   const m = markas.find(x => x.id === mId);
   if (!m) return toast('No Marka selected.');
   
-  const markaPayments = payments.filter(p => p.marka === m.marka || (m.bills || []).some(b => (p.allocations || []).some(a => a.billId === b.id)));
+  const markaPayments = payments.filter(p => PartyCheck.paymentBelongs(p, m, markas));
   const rows = markaPayments.map(p => ({
     marka: m.marka,
     master: m.master,
@@ -7472,6 +7579,7 @@ window.closeMobileFab = closeMobileFab;
 
 let renderPending = false;
 function renderAll() {
+  sharedNamesCache = null;
   if (renderPending) return;
   renderPending = true;
   requestAnimationFrame(() => {
@@ -7757,6 +7865,73 @@ function getCloudConfig() {
 }
 
 // Granular Ultra-Fast Cloud Database Helpers (<100ms writes)
+// One record from the live database (added / modified / removed) into the party list.
+// Returns true when the list changed.
+function applyCloudPartyChange(type, docId, data) {
+  let changed = false;
+  // Every saved record, duplicates included, for the Duplicate Parties check.
+  if (type === 'removed') cloudPartyDocs.delete(docId);
+  else if (data) cloudPartyDocs.set(docId, data);
+  if (!data || !data.id) return false;
+
+  if (!data.escalations) data.escalations = [];
+  if (!data.history) data.history = [];
+  if (!data.bills) data.bills = [];
+  if (!data.fmsTasks) data.fmsTasks = [];
+  if (!data.owner || data.owner === 'Unassigned') {
+    const defaultOwner = getMasterFollowper(data.master);
+    if (defaultOwner && defaultOwner !== 'Unassigned') data.owner = defaultOwner;
+  }
+  if (!data.crr || data.crr === 'Unassigned') {
+    const defaultCrr = getMasterCrr(data.master);
+    if (defaultCrr && defaultCrr !== 'Unassigned') data.crr = defaultCrr;
+  }
+
+  // A party is Master + Marka: the same marka name under another master is
+  // a different party, so records are matched on both, never on the name alone.
+  const dataKey = PartyCheck.partyKey(data.marka, data.master);
+  const sameParty = m => m && PartyCheck.partyKey(m.marka, m.master) === dataKey;
+
+  if (type === 'removed') {
+    const idx = markas.findIndex(m => String(m.id) === String(data.id) && sameParty(m));
+    if (idx !== -1) {
+      // If another saved copy of this party exists, show that one instead.
+      const copies = [...cloudPartyDocs.values()].filter(d => d && d.id && sameParty(d));
+      let next = null;
+      copies.forEach(d => { if (!next || PartyCheck.placeCloudDoc([next], d).replace) next = d; });
+      if (next) markas[idx] = next; else markas.splice(idx, 1);
+      changed = true;
+    }
+    return changed;
+  }
+
+  // Universal Protection for ALL Parties/Markas (ADT, SAN, ACT, etc.):
+  // NEVER let a stale Firestore document with fewer bills overwrite our complete Excel dataset!
+  const freshCase = (window.latestReportCases || []).find(sameParty);
+
+  if (freshCase && Array.isArray(freshCase.bills) && (data.bills || []).length < freshCase.bills.length) {
+    data.bills = JSON.parse(JSON.stringify(freshCase.bills));
+    if (typeof saveMarkaCloud === 'function') {
+      saveMarkaCloud(data);
+    }
+  }
+
+  const place = PartyCheck.placeCloudDoc(markas, data);
+  if (place.index === -1) {
+    markas.push(data);
+    changed = true;
+  } else if (place.replace) {
+    // Preserve the richer bills list if this party already has more bills than incoming
+    const existing = markas[place.index];
+    if (sameParty(existing) && (existing.bills || []).length > (data.bills || []).length) {
+      data.bills = existing.bills;
+    }
+    markas[place.index] = data;
+    changed = true;
+  }
+  return changed;
+}
+
 async function saveMarkaCloud(m) {
   if (!firestoreDb || !m || !m.id) return;
   try {
@@ -7925,7 +8100,9 @@ function initFirebase() {
     // 1. Real-time Live Listener for Markas (Updates within <1-2s across all devices)
     firestoreDb.collection('collectiq_markas').onSnapshot(snapshot => {
       hasLoadedCloudData = true;
+      cloudPartyDocsLoaded = true;
       if (snapshot.empty) {
+        cloudPartyDocs.clear();
         if (markas.length > 0) {
           markas = [];
           localStorage.removeItem('collectiq_markas_v4');
@@ -7937,55 +8114,7 @@ function initFirebase() {
       
       let hasChanges = false;
       snapshot.docChanges().forEach(change => {
-        const data = change.doc.data();
-        if (!data || !data.id) return;
-
-        if (!data.escalations) data.escalations = [];
-        if (!data.history) data.history = [];
-        if (!data.bills) data.bills = [];
-        if (!data.fmsTasks) data.fmsTasks = [];
-        if (!data.owner || data.owner === 'Unassigned') {
-          const defaultOwner = getMasterFollowper(data.master);
-          if (defaultOwner && defaultOwner !== 'Unassigned') data.owner = defaultOwner;
-        }
-        if (!data.crr || data.crr === 'Unassigned') {
-          const defaultCrr = getMasterCrr(data.master);
-          if (defaultCrr && defaultCrr !== 'Unassigned') data.crr = defaultCrr;
-        }
-
-        // Universal Protection for ALL Parties/Markas (ADT, SAN, ACT, etc.):
-        // NEVER let a stale Firestore document with fewer bills overwrite our complete Excel dataset!
-        const cleanMarkaKey = (data.marka || '').trim().toUpperCase();
-        const freshCase = (window.latestReportCases || []).find(x => (x.marka || '').trim().toUpperCase() === cleanMarkaKey);
-
-        if (freshCase && Array.isArray(freshCase.bills) && (data.bills || []).length < freshCase.bills.length) {
-          data.bills = JSON.parse(JSON.stringify(freshCase.bills));
-          data.master = freshCase.master || data.master;
-          if (typeof saveMarkaCloud === 'function') {
-            saveMarkaCloud(data);
-          }
-        }
-
-        const idx = markas.findIndex(m => String(m.id) === String(data.id) || (m.marka && data.marka && m.marka.toUpperCase() === cleanMarkaKey));
-        if (change.type === 'removed') {
-          if (idx !== -1) {
-            markas.splice(idx, 1);
-            hasChanges = true;
-          }
-        } else {
-          if (idx !== -1) {
-            // Preserve the richer bills list if existing has more bills than incoming
-            const existingBillsCount = (markas[idx].bills || []).length;
-            const incomingBillsCount = (data.bills || []).length;
-            if (existingBillsCount > incomingBillsCount) {
-              data.bills = markas[idx].bills;
-            }
-            markas[idx] = data;
-          } else {
-            markas.push(data);
-          }
-          hasChanges = true;
-        }
+        if (applyCloudPartyChange(change.type, change.doc.id, change.doc.data())) hasChanges = true;
       });
 
       if (hasChanges) {

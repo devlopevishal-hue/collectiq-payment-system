@@ -139,3 +139,22 @@ test('the form may still re-edit a resolved ticket with allowResolved', () => {
   assert.equal(reopened.ticket.status, 'In Progress');
   assert.ok(TA.reassignTicket(store(), 'ht_done', { newHelper: 'X', note: '', by: 'A', date: '2026-10-03', allowResolved: true }).error);
 });
+
+test('a ticket without a party ID finds its party by name only when the name is one party', () => {
+  const s = {
+    markas: [
+      { id: 'r', marka: 'JVDT', master: 'RIPTESH MASTER', history: [] },
+      { id: 'k', marka: 'JVDT', master: 'KALPESH MASTER', history: [] },
+      { id: 'q', marka: 'SKT', master: 'KAMLESH MASTER', history: [] }
+    ],
+    helpTickets: [
+      { id: 't1', markaId: '', markaName: 'JVDT', date: '2026-10-01', requestedBy: 'A', assignedHelper: 'B', priority: 'Normal', subject: 'X', remark: '', status: 'Open', history: [] },
+      { id: 't2', markaId: '', markaName: 'skt', date: '2026-10-01', requestedBy: 'A', assignedHelper: 'B', priority: 'Normal', subject: 'Y', remark: '', status: 'Open', history: [] }
+    ]
+  };
+  const r1 = TA.progressTicket(s, 't1', { date: '2026-10-03', by: 'A', note: 'n', nextDate: '2026-10-10' });
+  assert.equal(r1.marka, null);
+  assert.deepEqual(s.markas.map(m => m.history.length), [0, 0, 0]);
+  const r2 = TA.progressTicket(s, 't2', { date: '2026-10-03', by: 'A', note: 'n', nextDate: '2026-10-10' });
+  assert.equal(r2.marka.id, 'q');
+});
