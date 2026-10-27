@@ -1567,6 +1567,7 @@ function dashboard() {
   const dash = document.getElementById('dashboard');
   if (!dash) return;
   renderFilterNote('dashFilterNote');
+  renderPaymentTicketsPanel();
 
   let active = filtered();
   const locks = active.filter(isLocked);
@@ -3141,6 +3142,42 @@ function markaView() {
 // ==========================================
 // HELP TICKETS (INTERNAL TEAM ASSISTANCE)
 // ==========================================
+// An open help ticket whose party has paid since it was raised.
+function paymentWaitingOn(t) {
+  return !!(t && t.paymentReceived && (t.status || 'Open').toLowerCase() !== 'resolved');
+}
+
+// Tickets the logged-in person raised or must work on (admin: all).
+function isMyTicket(t) {
+  if (!currentUser) return false;
+  if (currentUser.role === 'admin' || currentUser.role === 'superuser') return true;
+  const me = currentUser.followperName;
+  return ListFilters.sameName(t.requestedBy, me) || ListFilters.sameName(t.assignedHelper, me);
+}
+
+// Dashboard: "payment received - check these help tickets", for the person who
+// raised each ticket and its helper.
+function renderPaymentTicketsPanel() {
+  const el = document.getElementById('dashPaymentTickets');
+  if (!el) return;
+  const list = (helpTickets || []).filter(t => paymentWaitingOn(t) && isMyTicket(t))
+    .sort((a, b) => String(b.paymentReceived.date || '').localeCompare(String(a.paymentReceived.date || '')));
+  if (!list.length) { el.innerHTML = ''; el.style.display = 'none'; return; }
+  const shown = list.slice(0, 8);
+  el.style.display = '';
+  el.innerHTML = `
+    <div class="pay-ticket-head"><b>💰 Payment received: check these help tickets</b><span>${list.length}</span></div>
+    ${shown.map(t => `
+      <div class="pay-ticket-row">
+        <div class="pay-ticket-main">
+          <b>${escapeHtml(t.markaName || 'General')}</b> <small>${escapeHtml(t.subject || 'Help ticket')}</small>
+          <div class="pay-ticket-meta">${money(t.paymentReceived.amount)} on ${fmt(t.paymentReceived.date)} · raised by ${escapeHtml(t.requestedBy || '—')} · helper ${escapeHtml(t.assignedHelper || '—')}</div>
+        </div>
+        <button type="button" class="row-action" data-id="${escapeHtml(String(t.id))}" onclick="openResolveTicketModal(this.dataset.id)">Open ticket</button>
+      </div>`).join('')}
+    ${list.length > shown.length ? `<div class="pay-ticket-more">and ${list.length - shown.length} more in Help Tickets</div>` : ''}`;
+}
+
 function helpTicketsView() {
   const container = document.getElementById('helpTickets');
   if (!container) return;
@@ -3236,6 +3273,8 @@ function helpTicketsView() {
     if (col === 'marka') { va = a.markaName; vb = b.markaName; }
     return compareVal(va, vb, dir);
   });
+  // Open tickets whose party has paid come first, so they are checked and closed.
+  list = [...list.filter(paymentWaitingOn), ...list.filter(t => !paymentWaitingOn(t))];
   updateSortIcons('helpTickets');
 
   let openCount = 0, assignedToMe = 0, highCount = 0, resolvedCount = 0;
@@ -3292,7 +3331,7 @@ function helpTicketsView() {
       return `
         <tr>
           <td>${fmt(t.date)}</td>
-          <td><span class="case-name">${escapeHtml(t.markaName || 'General')}</span></td>
+          <td><span class="case-name">${escapeHtml(t.markaName || 'General')}</span>${paymentWaitingOn(t) ? `<div class="ht-pay-badge">💰 Payment received ${money(t.paymentReceived.amount)} · ${fmt(t.paymentReceived.date)}</div>` : ''}</td>
           <td>
             <span style="background:${priBg}; color:${priColor}; font-weight:700; font-size:11px; padding:2px 8px; border-radius:4px; border:1px solid ${priColor}44;">
               ${escapeHtml(t.priority || 'Normal')}
@@ -4830,7 +4869,17 @@ function enforcePtpDate() {
 async function savePartyWithPayment(m, payment) {
   const ok = await saveMarkaCloud(m);
   if (ok) {
-    if (payment) savePaymentCloud(payment);
+    if (payment) {
+      savePaymentCloud(payment);
+      // Open help tickets of this party show "payment received" to the person
+      // who raised them and the helper, with a line in the ticket history.
+      const touched = TicketActions.notePaymentOnTickets({ markas, helpTickets }, m, payment, { money });
+      if (touched.length) {
+        touched.forEach(t => saveHelpTicketCloud(t));
+        save(true);
+        renderAll();
+      }
+    }
     return true;
   }
   const seen = cloudBase.get(String(m.id));

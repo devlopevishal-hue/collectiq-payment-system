@@ -2575,3 +2575,14 @@ body:has(#aiAssistant.active) .mobile-fab-container { display: none !important; 
 .dupe-action { border: 1px solid #c44d48; background: #fff; color: #c44d48; font: 700 11px Manrope, sans-serif; padding: 4px 10px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
 .dupe-action:hover { background: #faeceb; }
 .dupe-group-head .dupe-action { margin-left: 8px; }
+.ht-pay-badge { display: inline-block; margin-top: 4px; font: 800 10.5px Manrope, sans-serif; color: #087454; background: #e3f6ec; border: 1px solid #a7e0c4; padding: 2px 8px; border-radius: 999px; }
+.pay-ticket-panel { margin: 0 0 14px; background: #f0faf5; border: 1px solid #a7e0c4; border-radius: 12px; padding: 10px 14px; }
+.pay-ticket-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.pay-ticket-head b { font-size: 13.5px; color: #0b5a40; }
+.pay-ticket-head span { font: 800 11px Manrope, sans-serif; color: #fff; background: #087454; padding: 2px 9px; border-radius: 999px; }
+.pay-ticket-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; border-top: 1px solid #d3eee1; }
+.pay-ticket-main b { color: #087454; font-size: 13px; }
+.pay-ticket-main small { color: #4d625a; font-size: 11.5px; }
+.pay-ticket-meta { font-size: 11.5px; color: #2a453b; margin-top: 2px; }
+.pay-ticket-more { font-size: 11.5px; color: #4d625a; padding-top: 6px; }
+@media (max-width: 768px) { .pay-ticket-row { flex-direction: column; align-items: flex-start; } }

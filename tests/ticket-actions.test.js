@@ -158,3 +158,39 @@ test('a ticket without a party ID finds its party by name only when the name is 
   const r2 = TA.progressTicket(s, 't2', { date: '2026-10-03', by: 'A', note: 'n', nextDate: '2026-10-10' });
   assert.equal(r2.marka.id, 'q');
 });
+
+test('notePaymentOnTickets: a payment marks the open help tickets of that party and logs it', () => {
+  const s = store();
+  s.helpTickets.push({ id: 'ht_other', markaId: 'a', markaName: 'JGG', status: 'In Progress', history: [] });
+  const pay = { id: 'pay1', date: '2026-10-27', amount: 40000, ref: 'UTR9', mode: 'NEFT', markaId: 'b', marka: 'ASY', followper: 'Surendra' };
+  const money = n => '₹' + n;
+  const changed = TA.notePaymentOnTickets(s, s.markas[1], pay, { money });
+  assert.deepEqual(changed.map(t => t.id), ['ht_open']);
+  const t = s.helpTickets.find(x => x.id === 'ht_open');
+  assert.deepEqual(t.paymentReceived, { paymentId: 'pay1', amount: 40000, date: '2026-10-27', ref: 'UTR9', mode: 'NEFT' });
+  assert.equal(t.status, 'Open');
+  assert.deepEqual(t.history.at(-1), { date: '2026-10-27', followper: 'Surendra', actionType: 'Payment Received', note: 'Payment ₹40000 received on 27-Oct-2026 (NEFT, ref UTR9). Check and close the ticket if the work is done.', status: 'Open' });
+  // resolved tickets and other parties are untouched
+  assert.equal(s.helpTickets.find(x => x.id === 'ht_done').paymentReceived, undefined);
+  assert.equal(s.helpTickets.find(x => x.id === 'ht_other').paymentReceived, undefined);
+});
+
+test('notePaymentOnTickets: the same payment is logged once; a newer payment updates the badge', () => {
+  const s = store();
+  const money = n => '₹' + n;
+  TA.notePaymentOnTickets(s, s.markas[1], { id: 'p1', date: '2026-10-20', amount: 100 }, { money });
+  assert.equal(TA.notePaymentOnTickets(s, s.markas[1], { id: 'p1', date: '2026-10-20', amount: 100 }, { money }).length, 0);
+  TA.notePaymentOnTickets(s, s.markas[1], { id: 'p2', date: '2026-10-27', amount: 250 }, { money });
+  const t = s.helpTickets.find(x => x.id === 'ht_open');
+  assert.equal(t.paymentReceived.paymentId, 'p2');
+  assert.equal(t.history.filter(h => h.actionType === 'Payment Received').length, 2);
+  assert.equal(t.history.at(-1).note, 'Payment ₹250 received on 27-Oct-2026. Check and close the ticket if the work is done.');
+  assert.deepEqual(TA.notePaymentOnTickets(s, null, { id: 'p3' }, { money }), []);
+});
+
+test('notePaymentOnTickets: a ticket saved with only the party name is found when the name is one party', () => {
+  const s = store();
+  s.helpTickets = [{ id: 't9', markaId: '', markaName: 'asy', status: 'Open', history: [] }];
+  const changed = TA.notePaymentOnTickets(s, s.markas[1], { id: 'p1', date: '2026-10-27', amount: 5 }, { money: n => String(n) });
+  assert.deepEqual(changed.map(t => t.id), ['t9']);
+});

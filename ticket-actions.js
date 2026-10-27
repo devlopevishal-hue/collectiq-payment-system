@@ -54,6 +54,36 @@
     marka.history.push(entry);
   }
 
+  // A payment for a party that has open help tickets: each open ticket gets a
+  // "payment received" mark (shown to the person who raised it and the helper)
+  // and a history line. The ticket stays open; the doer closes it. The same
+  // payment is noted once. Returns the tickets that changed (to be saved).
+  function notePaymentOnTickets(store, marka, payment, { money } = {}) {
+    if (!marka || !payment) return [];
+    const show = money || (n => String(n));
+    const changed = [];
+    (store.helpTickets || []).forEach(t => {
+      if (!t || text(t.status).toLowerCase() === 'resolved') return;
+      if (markaFor(store, t) !== marka) return;
+      if (t.paymentReceived && String(t.paymentReceived.paymentId) === String(payment.id)) return;
+      const amount = Number(payment.amount) || 0;
+      const ref = text(payment.ref) === 'N/A' ? '' : text(payment.ref);
+      const mode = text(payment.mode);
+      t.paymentReceived = { paymentId: payment.id, amount, date: text(payment.date), ref, mode };
+      const how = [mode, ref ? `ref ${ref}` : ''].filter(Boolean).join(', ');
+      if (!t.history) t.history = [];
+      t.history.push({
+        date: text(payment.date),
+        followper: text(payment.followper) || 'Auto',
+        actionType: 'Payment Received',
+        note: `Payment ${show(amount)} received on ${fmtDate(text(payment.date))}${how ? ` (${how})` : ''}. Check and close the ticket if the work is done.`,
+        status: t.status || 'Open'
+      });
+      changed.push(t);
+    });
+    return changed;
+  }
+
   function createTicket(store, input) {
     const subject = text(input.subject);
     const helper = text(input.assignedHelper);
@@ -176,7 +206,7 @@
     return user.role === 'admin' || user.role === 'superuser' || user.email === 'devlope.vishal@gmail.com';
   }
 
-  const api = { createTicket, progressTicket, completeTicket, reassignTicket, canReassign, PRIORITIES, RESOLUTION_TYPES };
+  const api = { createTicket, progressTicket, completeTicket, reassignTicket, canReassign, notePaymentOnTickets, PRIORITIES, RESOLUTION_TYPES };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.TicketActions = api;
 })(typeof window !== 'undefined' ? window : globalThis);
