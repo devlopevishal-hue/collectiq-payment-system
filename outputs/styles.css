@@ -2571,3 +2571,7 @@ body:has(#aiAssistant.active) .mobile-fab-container { display: none !important; 
 .dash-filter-note .dash-filter-label { font-weight: 800; }
 .dash-filter-note .dash-filter-scope { margin-right: 6px; }
 #fmsFilterNote, #visitFilterNote { margin: 10px 0 0; }
+#toast.toast-error { background: #9f2d29; font-size: 12.5px; font-weight: 700; max-width: min(460px, calc(100vw - 32px)); line-height: 1.45; }
+.dupe-action { border: 1px solid #c44d48; background: #fff; color: #c44d48; font: 700 11px Manrope, sans-serif; padding: 4px 10px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
+.dupe-action:hover { background: #faeceb; }
+.dupe-group-head .dupe-action { margin-left: 8px; }

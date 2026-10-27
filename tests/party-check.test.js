@@ -146,3 +146,44 @@ test('placeCloudDoc: master changed on another PC updates that party instead of 
   ];
   assert.deepEqual(P.placeCloudDoc(list, { id: 'm_23', marka: 'JVDT', master: 'KALPESH MASTER' }), { index: 0, replace: true });
 });
+
+test('fewerBillsThanFile: live parties holding fewer bills than the old Excel file', () => {
+  const live = [
+    { id: '1', marka: 'ADT', master: 'BABLU SHERA MASTER', bills: [{ id: 1 }, { id: 2 }] },
+    { id: '2', marka: 'JGG', master: 'BABLU SHERA MASTER', bills: [{ id: 1 }, { id: 2 }, { id: 3 }] },
+    { id: '3', marka: 'NEW', master: 'X', bills: [] },
+    null
+  ];
+  const file = [
+    { id: '1', marka: 'adt', master: 'Bablu Shera Master', bills: [{ id: 1 }, { id: 2 }, { id: 3 }] },
+    { id: '2', marka: 'JGG', master: 'BABLU SHERA MASTER', bills: [{ id: 1 }] },
+    { id: '9', marka: 'ONLYFILE', master: 'X', bills: [{ id: 1 }] }
+  ];
+  assert.deepEqual(P.fewerBillsThanFile(live, file), [{ marka: 'ADT', master: 'BABLU SHERA MASTER', live: 2, file: 3 }]);
+  assert.deepEqual(P.fewerBillsThanFile(null, file), []);
+});
+
+test('placeCloudDoc: a party whose record ID is shared with another party takes its own record from the live database', () => {
+  const list = [
+    { id: 'm_229', marka: 'SAN', master: 'KALPESH MASTER', history: [{}, {}], bills: [{}] },
+    { id: 'm_229', marka: 'SNK', master: 'KALPESH MASTER', history: [{}, {}, {}], bills: [{}] }
+  ];
+  // after the split, SNK's own record arrives with less history than the old local copy
+  assert.deepEqual(P.placeCloudDoc(list, { id: 'm_229~SNK', marka: 'SNK', master: 'KALPESH MASTER', history: [{}], bills: [] }), { index: 1, replace: true });
+});
+
+test('planIdSplit: the party already in the live record keeps it, the other gets its own record', () => {
+  const parties = [
+    { id: 'm_229', marka: 'SAN', master: 'KALPESH MASTER' },
+    { id: 'm_229', marka: 'SNK', master: 'KALPESH MASTER' }
+  ];
+  const p1 = P.planIdSplit('m_229', parties, { id: 'm_229', marka: 'SNK', master: 'KALPESH MASTER' });
+  assert.equal(p1.keeper.marka, 'SNK');
+  assert.deepEqual(p1.moves.map(x => [x.party.marka, x.newId]), [['SAN', 'm_229~SAN']]);
+  const p2 = P.planIdSplit('m_229', parties, null);
+  assert.equal(p2.keeper.marka, 'SAN');
+  assert.deepEqual(p2.moves.map(x => x.newId), ['m_229~SNK']);
+  const odd = P.planIdSplit('m_7', [{ id: 'm_7', marka: 'Z/B C', master: 'X' }, { id: 'm_7', marka: 'AAA', master: 'X' }], null);
+  assert.equal(odd.keeper.marka, 'AAA');
+  assert.deepEqual(odd.moves.map(x => x.newId), ['m_7~Z-B-C']);
+});

@@ -13,6 +13,15 @@
     return !!x && x === norm(b);
   }
 
+  // Followper filter: exact name. A user login is already limited to its own
+  // parties (that check allows small spelling differences like "Mahavir Ji"),
+  // so its own name never hides one of those parties again.
+  function followperMatches(owner, filterName, user) {
+    if (!filterName || filterName === 'all') return true;
+    if (user && user.role === 'user' && sameName(filterName, user.followperName)) return true;
+    return sameName(owner, filterName);
+  }
+
   // One status per party: GP lock wins, then no next date (closed), then the
   // next date against today. daysPast > 0 = passed, 0 = today, < 0 = future.
   function partyStatus({ locked, nextDate, daysPast }) {
@@ -50,7 +59,12 @@
       const owner = () => (ownerOf ? ownerOf(m) : '');
       const escs = (Array.isArray(m.escalations) ? m.escalations : []).filter(e => e && !isHelp(e.type));
       const escDates = new Set(escs.map(e => String(e.date || '')));
+      const seen = new Set();
       escs.forEach((e, i) => {
+        // The same escalation saved twice (an old double save) is listed once.
+        const key = `e|${e.id || ''}|${e.date || ''}|${e.type || ''}`;
+        if (seen.has(key)) return;
+        seen.add(key);
         rows.push({
           id: e.id || `esc_${m.id}_${i}`,
           markaName: m.marka,
@@ -77,6 +91,9 @@
         const status = String(h.status || '');
         if (!isComplaint(status) || /resolved/i.test(status)) return;
         if (escDates.has(String(h.date || ''))) return;
+        const key = `h|${h.date || ''}|${status}`;
+        if (seen.has(key)) return;
+        seen.add(key);
         rows.push({
           id: `h_crm_${m.id}_${i}`,
           markaName: m.marka,
@@ -97,7 +114,7 @@
     return rows;
   }
 
-  const api = { sameName, partyStatus, scheduleTab, crmItems };
+  const api = { sameName, followperMatches, partyStatus, scheduleTab, crmItems };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ListFilters = api;
 })(typeof window !== 'undefined' ? window : globalThis);

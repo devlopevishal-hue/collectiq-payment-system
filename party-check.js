@@ -118,7 +118,13 @@
     let index = items.findIndex(m => m && String(m.id) === id && keyOf(m) === key);
     if (index !== -1) return { index, replace: true };
     index = items.findIndex(m => m && keyOf(m) === key);
-    if (index !== -1) return { index, replace: hasMoreData(doc, items[index]) > 0 };
+    if (index !== -1) {
+      // A local copy whose record ID is shared with another party cannot be
+      // trusted to be its own record: the party's own live record wins.
+      const mine = items[index];
+      const idShared = items.some(m => m && m !== mine && String(m.id) === String(mine.id) && keyOf(m) !== key);
+      return { index, replace: idShared || hasMoreData(doc, mine) > 0 };
+    }
     const sameId = items.filter(m => m && String(m.id) === id);
     if (sameId.length === 1) return { index: items.indexOf(sameId[0]), replace: true };
     return { index: -1, replace: false };
@@ -174,7 +180,37 @@
     return names && names.has(normKey(marka)) ? `${marka} · ${normKey(m.master) || 'NO MASTER'}` : marka;
   }
 
-  const api = { normKey, partyKey, checkParties, findSharedIds, placeCloudDoc, sharedNameSet, findParty, partyOfPayment, paymentBelongs, partyLabel };
+  // Parties whose live record has fewer bills than the old Excel file built into
+  // the app (which no longer fills them in), so the admin can check them.
+  function fewerBillsThanFile(live, file) {
+    const fileByKey = new Map();
+    (file || []).forEach(f => { if (f && normKey(f.marka)) fileByKey.set(keyOf(f), f); });
+    const out = [];
+    (live || []).forEach(m => {
+      if (!m || !normKey(m.marka)) return;
+      const f = fileByKey.get(keyOf(m));
+      if (f && size(m.bills) < size(f.bills)) out.push({ marka: normKey(m.marka), master: normKey(m.master), live: size(m.bills), file: size(f.bills) });
+    });
+    return out.sort((a, b) => a.marka.localeCompare(b.marka));
+  }
+
+  // Two parties using one record ID: the party the live record holds now keeps
+  // the ID (else the first by name); every other party gets "<id>~<MARKA>".
+  function planIdSplit(id, parties, liveDoc) {
+    const distinct = [];
+    (parties || []).forEach(p => {
+      if (p && normKey(p.marka) && !distinct.some(d => keyOf(d) === keyOf(p))) distinct.push(p);
+    });
+    distinct.sort((a, b) => keyOf(a).localeCompare(keyOf(b)));
+    const keeper = (liveDoc && distinct.find(p => keyOf(p) === keyOf(liveDoc))) || distinct[0] || null;
+    const moves = distinct.filter(p => p !== keeper).map(party => ({
+      party,
+      newId: `${id}~${normKey(party.marka).replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`
+    }));
+    return { keeper, moves };
+  }
+
+  const api = { normKey, partyKey, checkParties, findSharedIds, placeCloudDoc, fewerBillsThanFile, planIdSplit, sharedNameSet, findParty, partyOfPayment, paymentBelongs, partyLabel };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.PartyCheck = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -69,3 +69,21 @@ test('crmItems: escalation without a status counts as Open; history type follows
     ['WhatsApp Complaint', 'Open', 'Mahavir']
   ]);
 });
+
+test('crmItems: the same complaint saved twice (old double save) shows once', () => {
+  const e = { id: 'e1', date: '2026-10-01', type: 'Claim Matter', status: 'Open' };
+  assert.equal(L.crmItems([{ id: 'x', marka: 'X', escalations: [e, { ...e }], history: [] }], () => '').length, 1);
+  const h = { date: '2026-10-02', status: 'Claim Matter' };
+  assert.equal(L.crmItems([{ id: 'y', marka: 'Y', escalations: [], history: [h, { ...h }] }], () => '').length, 1);
+  // two different complaints on one day stay two
+  assert.equal(L.crmItems([{ id: 'z', marka: 'Z', escalations: [{ id: 'a', date: '2026-10-03', type: 'Claim Matter' }, { id: 'b', date: '2026-10-03', type: 'WhatsApp Complaint' }], history: [] }], () => '').length, 2);
+});
+
+test('followperMatches: exact name, but a user always sees the parties the login already limited to them', () => {
+  assert.equal(L.followperMatches('Anil Sharma', 'Anil', null), false);
+  assert.equal(L.followperMatches('anil  sharma', 'Anil Sharma', null), true);
+  assert.equal(L.followperMatches('Mahavir Ji', 'Mahavir', { role: 'user', followperName: 'Mahavir' }), true);
+  assert.equal(L.followperMatches('Mahavir Ji', 'Mahavir', { role: 'admin', followperName: 'all' }), false);
+  assert.equal(L.followperMatches('Surendra', 'all', null), true);
+  assert.equal(L.followperMatches('Surendra', '', null), true);
+});

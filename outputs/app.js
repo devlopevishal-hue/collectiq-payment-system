@@ -187,6 +187,10 @@ let markaSubtab = 'markas';
 // All party records as saved in the live database (filled by the Firestore listener).
 const cloudPartyDocs = new Map();
 let cloudPartyDocsLoaded = false;
+// The party as the live database last sent it, per record ID (see party-sync.js).
+const cloudBase = new Map();
+// Saves of one party run one after another, each on top of the one before.
+const partySaveQueue = new Map();
 let F = { followper: 'all', master: 'all', marka: '', min: '', max: '', minCount: '', maxCount: '', from: '', to: '', dateField: 'next', year: '', status: 'all', minDue: '', maxDue: '' };
 
 // User Access Control & Auth State
@@ -242,7 +246,7 @@ function ensureSeedDataLoaded() {
           markas.push(JSON.parse(JSON.stringify(fresh)));
         }
       });
-      localStorage.setItem('collectiq_markas_v4', JSON.stringify(markas));
+      localSet('collectiq_markas_v4', JSON.stringify(markas));
     }
 
     markas.forEach(m => {
@@ -263,7 +267,7 @@ function ensureSeedDataLoaded() {
         }
       }
     });
-    localStorage.setItem('collectiq_markas_v4', JSON.stringify(markas));
+    localSet('collectiq_markas_v4', JSON.stringify(markas));
   }
 }
 
@@ -357,7 +361,7 @@ async function handleLoginSubmit(e) {
   let currentDeviceId = localStorage.getItem('collectiq_device_id');
   if (!currentDeviceId) {
     currentDeviceId = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 6);
-    localStorage.setItem('collectiq_device_id', currentDeviceId);
+    localSet('collectiq_device_id', currentDeviceId);
   }
 
   // 1. Try local SQLite Backend if available
@@ -372,7 +376,7 @@ async function handleLoginSubmit(e) {
         const data = await response.json();
         currentUser = { ...data.user, deviceId: currentDeviceId };
         window.currentUser = currentUser;
-        localStorage.setItem('collectiq_current_user', JSON.stringify(currentUser));
+        localSet('collectiq_current_user', JSON.stringify(currentUser));
         checkAuth();
         await syncWithDatabase();
         renderAll();
@@ -441,7 +445,7 @@ async function handleLoginSubmit(e) {
     deviceId: currentDeviceId
   };
   window.currentUser = currentUser;
-  localStorage.setItem('collectiq_current_user', JSON.stringify(currentUser));
+  localSet('collectiq_current_user', JSON.stringify(currentUser));
   
   checkAuth();
   await syncWithDatabase();
@@ -466,16 +470,92 @@ function logout() {
 window.handleLoginSubmit = handleLoginSubmit;
 window.logout = logout;
 
+// Admin: downloads every collection of the live database as one file. Only
+// reads; nothing is changed. Take one before any big change to the data.
+async function downloadBackup() {
+  const isAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superuser');
+  if (!isAdmin) return toast('❌ Only an admin can download the backup.', 6000);
+  const btn = document.getElementById('backupBtn');
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Preparing backup…'; }
+  try {
+    let collections;
+    let source;
+    if (firestoreDb) {
+      collections = {};
+      for (const name of ['collectiq_markas', 'collectiq_payments', 'collectiq_help_tickets', 'collectiq_config']) {
+        // Straight from the server, never this PC's cached copy.
+        const snap = await firestoreDb.collection(name).get({ source: 'server' });
+        collections[name] = snap.docs.map(d => ({ _docId: d.id, ...d.data() }));
+      }
+      source = 'live database';
+    } else {
+      collections = {
+        collectiq_markas: markas,
+        collectiq_payments: payments,
+        collectiq_help_tickets: helpTickets,
+        collectiq_config: [{ masterFollowpers, masterCrrs, users }]
+      };
+      source = 'this browser only (live database not connected)';
+    }
+    const now = new Date();
+    const appScript = document.querySelector('script[src*="app.js"]');
+    const appVersion = appScript ? (appScript.getAttribute('src').match(/v=([\d.]+)/) || [])[1] || '' : '';
+    const payload = SaveGuard.backupPayload(collections, { source, now, appVersion });
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload)], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = SaveGuard.backupFileName(now);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    if (firestoreDb) backupTakenAt = Date.now();
+    const c = payload.counts;
+    toast(`✓ Backup downloaded (${source}): ${c.collectiq_markas} party records, ${c.collectiq_payments} payments, ${c.collectiq_help_tickets} help tickets.`, 9000);
+  } catch (err) {
+    console.warn('Backup failed:', err);
+    toast(`❌ Backup failed (${String((err && err.message) || err).slice(0, 80)}). Check the internet and try again.`, 10000);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+  }
+}
+window.downloadBackup = downloadBackup;
+
+// This PC's browser copy of the data. If the browser storage is full, say so
+// once and carry on, so the change still goes to the live database.
+let storageFullWarned = false;
+function localSet(key, value) {
+  const r = SaveGuard.safeSet(window.localStorage, key, value);
+  if (!r.ok && r.full && !storageFullWarned) {
+    storageFullWarned = true;
+    toast("⚠️ This PC's browser storage is full. Changes still go to the live database, but this PC's offline copy may be old.", 9000);
+  }
+  return r.ok;
+}
+
+// A save the live database did not take is shown on screen, not only in the console.
+let lastCloudErrorAt = 0;
+function reportCloudSaveError(err, label) {
+  console.warn('Live database save error:', label, err);
+  if (err && (err.code === 'permission-denied' || String(err).includes('permission'))) {
+    updateDbStatusBadge('firebase_permission_denied');
+  }
+  if (Date.now() - lastCloudErrorAt < 4000) return;
+  lastCloudErrorAt = Date.now();
+  toast(SaveGuard.cloudErrorText(err, label), 10000);
+}
+
 function save(skipRemoteSync = false) {
   window.markas = markas;
   window.helpTickets = helpTickets;
   window.users = users;
-  localStorage.setItem('collectiq_markas_v4', JSON.stringify(markas));
-  localStorage.setItem('collectiq_rokad_v4', JSON.stringify(payments));
-  localStorage.setItem('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
-  localStorage.setItem('collectiq_master_followpers_v4', JSON.stringify(masterFollowpers));
-  localStorage.setItem('collectiq_master_crrs_v4', JSON.stringify(masterCrrs));
-  localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
+  localSet('collectiq_markas_v4', JSON.stringify(markas));
+  localSet('collectiq_rokad_v4', JSON.stringify(payments));
+  localSet('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
+  localSet('collectiq_master_followpers_v4', JSON.stringify(masterFollowpers));
+  localSet('collectiq_master_crrs_v4', JSON.stringify(masterCrrs));
+  localSet('collectiq_users_v4', JSON.stringify(users));
   
   if (!skipRemoteSync) {
     saveCloud();
@@ -579,7 +659,7 @@ function load() {
     if (currentStoredVer !== APP_STORAGE_VERSION) {
       localStorage.removeItem('collectiq_markas_v4');
       localStorage.removeItem('collectiq_admin_cleared');
-      localStorage.setItem('collectiq_storage_version', APP_STORAGE_VERSION);
+      localSet('collectiq_storage_version', APP_STORAGE_VERSION);
       if (window.latestReportCases && Array.isArray(window.latestReportCases) && window.latestReportCases.length > 0) {
         markas = JSON.parse(JSON.stringify(window.latestReportCases));
         save(true);
@@ -634,7 +714,7 @@ function load() {
           markas.push(JSON.parse(JSON.stringify(fresh)));
         }
       });
-      localStorage.setItem('collectiq_markas_v4', JSON.stringify(markas));
+      localSet('collectiq_markas_v4', JSON.stringify(markas));
     }
 
     markas.forEach(m => {
@@ -680,7 +760,7 @@ function load() {
     } else {
       helpTickets = [];
     }
-    localStorage.setItem('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
+    localSet('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
     window.helpTickets = helpTickets;
 
     const storedUsers = localStorage.getItem('collectiq_users_v4');
@@ -714,7 +794,7 @@ function load() {
     });
 
     users = Array.from(userMap.values());
-    localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
+    localSet('collectiq_users_v4', JSON.stringify(users));
     window.users = users;
     checkAuth();
   } catch (e) {
@@ -1088,7 +1168,7 @@ function filtered(list = activeMarkas()) {
   }
   return list.filter(m => {
     // 1. Followper filter (exact name: "Anil" is not "Anil Sharma")
-    if (F.followper && F.followper !== 'all' && !ListFilters.sameName(ownerOf(m), F.followper)) return false;
+    if (!ListFilters.followperMatches(ownerOf(m), F.followper, currentUser)) return false;
 
     // 2. Master filter (exact name: master "1" is not master "11")
     if (F.master && F.master !== 'all' && !ListFilters.sameName(m.master, F.master)) return false;
@@ -2746,6 +2826,9 @@ function renderDuplicateParties() {
   const shownIds = new Set(markas.map(m => String(m.id)));
   const r = PartyCheck.checkParties(docs, { shownIds, payments });
   const sharedIds = PartyCheck.findSharedIds(markas, window.latestReportCases || [], fromCloud ? docs : []);
+  const fewerBills = fromCloud ? PartyCheck.fewerBillsThanFile(docs, window.latestReportCases || []) : [];
+  // Fix buttons only for an admin on the live database (each asks before changing anything).
+  const canFix = fromCloud && isAdminUser();
   const n = v => Number(v).toLocaleString('en-IN');
   const when = d => (d ? fmt(d) : '—');
   const seen = c => c.shown
@@ -2763,15 +2846,15 @@ function renderDuplicateParties() {
 
   const idClash = sharedIds.length ? `
     <table class="dupe-table">
-      <thead><tr><th>RECORD ID</th><th>PARTIES USING IT</th></tr></thead>
+      <thead><tr><th>RECORD ID</th><th>PARTIES USING IT</th>${canFix ? '<th>FIX</th>' : ''}</tr></thead>
       <tbody>${sharedIds.map(s => `
-        <tr><td class="dupe-id">${escapeHtml(s.id)}</td><td>${s.parties.map(p => `<b>${escapeHtml(p.marka)}</b> <small>${escapeHtml(p.master || '(no master)')}</small>`).join(' &nbsp;·&nbsp; ')}</td></tr>`).join('')}
+        <tr><td class="dupe-id">${escapeHtml(s.id)}</td><td>${s.parties.map(p => `<b>${escapeHtml(p.marka)}</b> <small>${escapeHtml(p.master || '(no master)')}</small>`).join(' &nbsp;·&nbsp; ')}</td>${canFix ? `<td><button type="button" class="dupe-action" data-id="${escapeHtml(s.id)}" onclick="splitSharedRecord(this.dataset.id)">Give each its own record</button></td>` : ''}</tr>`).join('')}
       </tbody>
     </table>` : '<p class="dupe-empty">✓ Every party has its own record ID.</p>';
 
   const dupes = r.duplicates.length ? r.duplicates.map(g => `
     <div class="dupe-group">
-      <div class="dupe-group-head"><b>${escapeHtml(g.marka)}</b> <small>${escapeHtml(g.master || '(no master)')}</small><span>${g.copies.length} copies</span></div>
+      <div class="dupe-group-head"><b>${escapeHtml(g.marka)}</b> <small>${escapeHtml(g.master || '(no master)')}</small><span>${g.copies.length} copies</span>${canFix ? `<button type="button" class="dupe-action" data-key="${escapeHtml(PartyCheck.partyKey(g.marka, g.master))}" onclick="mergeDuplicateParty(this.dataset.key)">Merge into copy #1</button>` : ''}</div>
       <table class="dupe-table">
         <thead><tr><th>COPY</th><th>RECORD ID</th><th>FOLLOWPER</th><th>BILLS</th><th>OUTSTANDING</th><th>HISTORY ENTRIES</th><th>LAST ENTRY</th><th>PAYMENTS</th><th>IN APP</th></tr></thead>
         <tbody>${g.copies.map((c, i) => `
@@ -2817,15 +2900,135 @@ function renderDuplicateParties() {
     </div>
     <div class="panel dupe-section">
       <h3>Same marka name under different masters</h3>
-      <p class="dupe-note">These are different parties that share a name. Today the app matches parties by name only, so it may show just one of them ("Hidden" = not shown).</p>
+      <p class="dupe-note">These are different parties that share a name. The app keeps them separate (Master + Marka). "Hidden" = not shown in the app.</p>
       ${shared}
-    </div>`;
+    </div>
+    ${fromCloud ? `<div class="panel dupe-section">
+      <h3>Fewer bills than the old Excel file</h3>
+      <p class="dupe-note">The app now shows bills exactly as saved in the live database. These parties have fewer bills there than in the old Excel file built into the app. Check them; a new Sync Outstanding upload brings in the latest bills.</p>
+      ${fewerBills.length ? `<table class="dupe-table">
+        <thead><tr><th>MARKA</th><th>MASTER</th><th>BILLS IN LIVE DATABASE</th><th>BILLS IN OLD FILE</th></tr></thead>
+        <tbody>${fewerBills.map(f => `<tr><td><b>${escapeHtml(f.marka)}</b></td><td>${escapeHtml(f.master || '(no master)')}</td><td>${n(f.live)}</td><td>${n(f.file)}</td></tr>`).join('')}</tbody>
+      </table>` : '<p class="dupe-empty">✓ Every party has at least as many bills as the old file.</p>'}
+    </div>` : ''}`;
 }
 window.renderDuplicateParties = renderDuplicateParties;
+
+// ---------- Tools that change live data (admin, fresh backup, confirm) ----------
+let backupTakenAt = 0;
+
+function isAdminUser() {
+  return !!(currentUser && (currentUser.role === 'admin' || currentUser.role === 'superuser'));
+}
+
+// Live-data tools run only for an admin, with the live database connected and a
+// backup of the live database downloaded in the last hour.
+function liveToolAllowed(what) {
+  if (!isAdminUser()) { toast(`❌ Only an admin can ${what}.`, 6000); return false; }
+  if (!firestoreDb) { toast('❌ The live database is not connected.', 6000); return false; }
+  if (Date.now() - backupTakenAt > 60 * 60 * 1000) {
+    toast('⚠️ First download a backup (⬇ Backup all data, top of this page), then try again.', 10000);
+    return false;
+  }
+  return true;
+}
+
+// Payments and help tickets of a record that moved now point to its new record.
+function repointRecords(fromId, toId, markaName) {
+  const sameName = n => !markaName || PartyCheck.normKey(n) === PartyCheck.normKey(markaName);
+  (payments || []).forEach(p => {
+    if (p && String(p.markaId) === String(fromId) && sameName(p.marka)) { p.markaId = toId; savePaymentCloud(p); }
+  });
+  (helpTickets || []).forEach(t => {
+    if (t && String(t.markaId) === String(fromId) && sameName(t.markaName)) { t.markaId = toId; saveHelpTicketCloud(t); }
+  });
+}
+
+// One party saved as several records: everything goes into the copy with the
+// most data, then the extra copies are deleted. All in one database transaction.
+async function mergeDuplicateParty(groupKey) {
+  if (!liveToolAllowed('merge parties')) return;
+  const col = firestoreDb.collection('collectiq_markas');
+  const ids = [...cloudPartyDocs.entries()]
+    .filter(([, d]) => d && PartyCheck.partyKey(d.marka, d.master) === groupKey).map(([id]) => id);
+  if (ids.length < 2) return toast('Nothing to merge: this party has one record.');
+  try {
+    const snaps = await Promise.all(ids.map(id => col.doc(id).get({ source: 'server' })));
+    const size = v => (Array.isArray(v) ? v.length : 0);
+    const copies = snaps.filter(s => s.exists).map(s => ({ ...s.data(), _docId: s.id }))
+      .sort((a, b) => size(b.history) - size(a.history) || size(b.bills) - size(a.bills) || a._docId.localeCompare(b._docId));
+    if (copies.length < 2) return toast('Nothing to merge: only one record is left.');
+    const keepId = copies[0]._docId;
+    const { summary } = PartySync.mergeCopies(copies);
+    const ok = confirm(`Merge ${copies[0].marka} · ${copies[0].master}?\n\n` +
+      `Keep record ${keepId} and add from the other ${copies.length - 1} cop${copies.length === 2 ? 'y' : 'ies'}:\n` +
+      `• ${summary.historyAdded} follow-up lines\n• ${summary.billsAdded} bills\n• ${summary.escalationsAdded} complaints\n• ${summary.fmsAdded} FMS tasks\n` +
+      (summary.billConflicts ? `• ${summary.billConflicts} bills exist in both with different amounts: record ${keepId}'s amount is kept\n` : '') +
+      `\nThen delete: ${copies.slice(1).map(c => c._docId).join(', ')}.\nThis cannot be undone (your backup is the safety copy). Continue?`);
+    if (!ok) return;
+    let removed = [];
+    await firestoreDb.runTransaction(async tx => {
+      const fresh = [];
+      for (const c of copies) {
+        const s = await tx.get(col.doc(c._docId));
+        if (s.exists) fresh.push({ ...s.data(), _docId: s.id });
+      }
+      if (!fresh.length || fresh[0]._docId !== keepId) throw new Error('The record to keep changed; please try again.');
+      const { merged } = PartySync.mergeCopies(fresh);
+      delete merged._docId;
+      merged.id = keepId;
+      tx.set(col.doc(keepId), merged);
+      removed = fresh.slice(1).map(c => c._docId);
+      removed.forEach(id => tx.delete(col.doc(id)));
+    });
+    removed.forEach(id => repointRecords(id, keepId));
+    toast(`✓ Merged into ${keepId}: ${summary.historyAdded} follow-ups, ${summary.billsAdded} bills added; ${removed.length} extra cop${removed.length === 1 ? 'y' : 'ies'} deleted.`, 10000);
+  } catch (err) {
+    reportCloudSaveError(err, 'Merge');
+  }
+}
+window.mergeDuplicateParty = mergeDuplicateParty;
+
+// Two parties sharing one record ID: the party in the live record keeps it, the
+// other gets its own record "<id>~<MARKA>" with this PC's copy of it.
+async function splitSharedRecord(id) {
+  if (!liveToolAllowed('split records')) return;
+  const col = firestoreDb.collection('collectiq_markas');
+  try {
+    const snap = await col.doc(String(id)).get({ source: 'server' });
+    const liveDoc = snap.exists ? snap.data() : null;
+    // This PC's copies first, then the old file, for parties not on this PC.
+    const parties = [...markas, ...(window.latestReportCases || [])].filter(p => p && String(p.id) === String(id));
+    const { keeper, moves } = PartyCheck.planIdSplit(String(id), parties, liveDoc);
+    if (!keeper || !moves.length) return toast('Nothing to split: this record belongs to one party.');
+    const size = v => (Array.isArray(v) ? v.length : 0);
+    const ok = confirm(`Record ${id} is shared.\n\n• ${keeper.marka} · ${keeper.master} keeps record ${id}` +
+      (liveDoc ? ' (as saved in the live database).' : ' (this PC\'s copy).') + '\n' +
+      moves.map(mv => `• ${mv.party.marka} · ${mv.party.master} gets its own record ${mv.newId} with this PC's copy (${size(mv.party.history)} follow-ups, ${size(mv.party.bills)} bills).`).join('\n') +
+      `\n\nIts payments and help tickets will point to the new record. Continue?`);
+    if (!ok) return;
+    if (!liveDoc) await col.doc(String(id)).set({ ...PartySync.clone(keeper), id: String(id) });
+    for (const mv of moves) {
+      const exists = (await col.doc(mv.newId).get({ source: 'server' })).exists;
+      if (!exists) await col.doc(mv.newId).set({ ...PartySync.clone(mv.party), id: mv.newId });
+      markas.filter(m => String(m.id) === String(id) && PartyCheck.partyKey(m.marka, m.master) === PartyCheck.partyKey(mv.party.marka, mv.party.master))
+        .forEach(m => { m.id = mv.newId; });
+      repointRecords(id, mv.newId, mv.party.marka);
+    }
+    save(true);
+    renderAll();
+    toast(`✓ Record ${id} split: ${moves.map(mv => `${mv.party.marka} → ${mv.newId}`).join(', ')}.`, 10000);
+  } catch (err) {
+    reportCloudSaveError(err, 'Split');
+  }
+}
+window.splitSharedRecord = splitSharedRecord;
 
 function markaView() {
   const container = document.getElementById('markas');
   if (!container) return;
+  const backupBtn = document.getElementById('backupBtn');
+  if (backupBtn) backupBtn.style.display = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superuser') ? '' : 'none';
   if (markaSubtab === 'dupes') {
     try { renderDuplicateParties(); } catch (err) { console.error('Duplicate parties check failed:', err); }
   }
@@ -4430,14 +4633,46 @@ function previewReceiptImage(input, previewContainerId) {
 }
 window.previewReceiptImage = previewReceiptImage;
 
-function openReceiptViewer(title, imgSrc) {
+// Receipt photos are saved in their own records (collectiq_receipts), not inside
+// the party, so a party never grows past the live database's 1 MB limit. The
+// party and the payment keep only a short reference "receipt:<id>".
+const receiptCache = new Map();
+function stashReceipt(dataUrl) {
+  if (!dataUrl || !String(dataUrl).startsWith('data:image/') || !firestoreDb) return dataUrl || '';
+  const id = 'rc_' + uid();
+  receiptCache.set(id, dataUrl);
+  firestoreDb.collection('collectiq_receipts').doc(id).set({
+    id, image: dataUrl, createdAt: new Date().toISOString(),
+    by: currentUser ? (currentUser.followperName || currentUser.email || '') : ''
+  }).catch(err => reportCloudSaveError(err, 'Receipt photo'));
+  return 'receipt:' + id;
+}
+
+// A receipt reference (or an old photo saved inside the party) as an image source.
+async function receiptSrc(ref) {
+  const r = String(ref || '');
+  if (!r.startsWith('receipt:')) return r;
+  const id = r.slice('receipt:'.length);
+  if (receiptCache.has(id)) return receiptCache.get(id);
+  if (!firestoreDb) return '';
+  const snap = await firestoreDb.collection('collectiq_receipts').doc(id).get();
+  const img = snap.exists ? (snap.data().image || '') : '';
+  if (img) receiptCache.set(id, img);
+  return img;
+}
+
+async function openReceiptViewer(title, imgSrc) {
   const tEl = document.getElementById('receiptViewTitle');
   const bEl = document.getElementById('receiptViewBody');
   if (tEl) tEl.textContent = title || 'Transaction Receipt';
-  if (bEl) {
-    bEl.innerHTML = `<img src="${imgSrc}" style="max-width:100%; max-height:440px; object-fit:contain; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.15);" alt="Receipt">`;
-  }
+  if (bEl) bEl.innerHTML = '<p class="modal-copy">Loading photo…</p>';
   openModal('receiptViewModal');
+  let src = '';
+  try { src = await receiptSrc(imgSrc); } catch (err) { console.warn('Receipt load failed:', err); }
+  if (!bEl) return;
+  bEl.innerHTML = /^data:image\//.test(src)
+    ? `<img src="${src}" style="max-width:100%; max-height:440px; object-fit:contain; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.15);" alt="Receipt">`
+    : '<p class="modal-copy">Photo not found (check the internet and try again).</p>';
 }
 window.openReceiptViewer = openReceiptViewer;
 
@@ -4588,10 +4823,35 @@ function enforcePtpDate() {
 
 // Saves a follow-up or FMS change made by a form or by the AI Assistant.
 // Resolves to the message the forms show.
+// A payment changes the party's bills, so the payment record is saved only after
+// the party (with its reduced bills) is safely in the live database. If the
+// database refuses, this PC goes back to the saved party, so the screen and the
+// database agree, and staff are told to enter the payment again.
+async function savePartyWithPayment(m, payment) {
+  const ok = await saveMarkaCloud(m);
+  if (ok) {
+    if (payment) savePaymentCloud(payment);
+    return true;
+  }
+  const seen = cloudBase.get(String(m.id));
+  if (seen) {
+    const i = markas.indexOf(m);
+    if (i !== -1) markas[i] = PartySync.clone(seen);
+    if (payment) payments = payments.filter(p => p !== payment && String(p.id) !== String(payment.id));
+    save(true);
+    renderAll();
+  }
+  toast(`❌ Payment for ${m.marka} was NOT saved in the live database. Please check the internet and enter it again.`, 12000);
+  return false;
+}
+
 async function persistFollowupChange({ marka, payload, payment }) {
   save();
-  saveMarkaCloud(marka);
-  if (payment) savePaymentCloud(payment);
+  if (payment) {
+    if (!(await savePartyWithPayment(marka, payment))) return '❌ Payment NOT saved. Please enter it again.';
+  } else {
+    saveMarkaCloud(marka);
+  }
   if (!payload) return '✓ Saved.';
   if (isLocalServer()) {
     try {
@@ -4700,6 +4960,12 @@ async function saveFollowup(e) {
       newId: uid, money, now: Date.now(), visit
     });
     if (r.error) return toast(r.error);
+    // The photo goes to its own record; the payment and the history line keep a reference.
+    if (r.payment && r.payment.receiptImage) {
+      const ref = stashReceipt(r.payment.receiptImage);
+      r.payment.receiptImage = ref;
+      if (r.entry) r.entry.receiptImage = ref;
+    }
     const saving = persistFollowupChange({ marka: m, payload: r.payload, payment: r.payment });
     closeModal('followupModal');
     renderAll();
@@ -4788,7 +5054,7 @@ async function saveFollowup(e) {
     }
   }
 
-  const receiptImage = document.getElementById('followPayReceiptPreview')?.dataset?.base64 || '';
+  const receiptImage = stashReceipt(document.getElementById('followPayReceiptPreview')?.dataset?.base64 || '');
   // Apply updates locally and save to localStorage immediately
   let newPaymentRecord = null;
   if (isPayment) {
@@ -4914,7 +5180,7 @@ async function saveFollowup(e) {
     };
     if (!helpTickets) helpTickets = [];
     helpTickets.unshift(ticketObj);
-    localStorage.setItem('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
+    localSet('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
     window.helpTickets = helpTickets;
     m.activeHelpTicketId = ticketObj.id;
     if (isOnlineMode()) {
@@ -4946,10 +5212,8 @@ async function saveFollowup(e) {
   }
 
   save();
-  saveMarkaCloud(m);
-  if (isPayment && newPaymentRecord) {
-    savePaymentCloud(newPaymentRecord);
-  }
+  if (isPayment && newPaymentRecord) savePartyWithPayment(m, newPaymentRecord);
+  else saveMarkaCloud(m);
   if (isHelp && ticketObj) {
     saveHelpTicketCloud(ticketObj);
   }
@@ -5223,7 +5487,7 @@ async function savePayment(e) {
   const payMode = document.getElementById('payMode').value;
   const payRef = (document.getElementById('payRef').value || '').trim() || 'N/A';
   const payAmount = +document.getElementById('payAmount').value || 0;
-  const receiptImage = document.getElementById('payReceiptPreview')?.dataset?.base64 || '';
+  const receiptImage = stashReceipt(document.getElementById('payReceiptPreview')?.dataset?.base64 || '');
   
   if (!payAmount || payAmount <= 0) return toast('Enter a valid payment amount.');
   
@@ -5348,9 +5612,7 @@ async function savePayment(e) {
   });
   
   save();
-  saveMarkaCloud(m);
-  const latestPay = payments[payments.length - 1];
-  if (latestPay) savePaymentCloud(latestPay);
+  savePartyWithPayment(m, payments[payments.length - 1]);
   closeModal('paymentModal');
   renderAll();
 
@@ -5630,7 +5892,7 @@ function openPaymentHistory(markaId) {
         <td><span class="status active">${escapeHtml(p.mode || 'Bank transfer')}</span></td>
         <td class="money" style="font-weight:700;color:#087454;">${money(p.amount)}</td>
         <td>${allocDetails || '<small>Direct receipt</small>'}</td>
-        <td><span class="status closed">RECORDED</span></td>
+        <td><span class="status closed">RECORDED</span>${p.receiptImage ? ` <button type="button" class="row-action" data-receipt="${escapeHtml(String(p.receiptImage))}" onclick="openReceiptViewer('Receipt', this.dataset.receipt)">🖼️ Receipt</button>` : ''}</td>
       </tr>
     `;
   }).join('') : '<tr><td colspan="6" style="text-align:center;color:#788882;padding:24px;">No payments recorded yet for this Marka in Daily Rokad.</td></tr>';
@@ -6355,7 +6617,7 @@ function processImportedRows(rawInput, fileName = 'Imported File') {
   }
   window._explicitAdminReset = false;
   localStorage.removeItem('collectiq_admin_cleared');
-  localStorage.setItem('collectiq_live_mode', 'true');
+  localSet('collectiq_live_mode', 'true');
 
   let rowsToProcess = [];
 
@@ -6653,7 +6915,7 @@ async function clearAllData() {
   }
 
   window._explicitAdminReset = true;
-  localStorage.setItem('collectiq_admin_cleared', 'true');
+  localSet('collectiq_admin_cleared', 'true');
   markas = [];
   payments = [];
   helpTickets = [];
@@ -6694,7 +6956,7 @@ async function clearAllData() {
       await pBatch.commit();
 
       const clearTimestamp = new Date().toISOString();
-      localStorage.setItem('collectiq_last_cleared_at', clearTimestamp);
+      localSet('collectiq_last_cleared_at', clearTimestamp);
       await firestoreDb.collection('collectiq_config').doc('settings').set({
         masterFollowpers,
         masterCrrs,
@@ -7269,14 +7531,14 @@ async function handleSaveEditUser(e) {
     followperName: linkedDoer
   };
 
-  localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
+  localSet('collectiq_users_v4', JSON.stringify(users));
 
   if (currentUser && currentUser.email.toLowerCase() === origEmail) {
     currentUser.email = email;
     currentUser.role = role;
     currentUser.followperName = linkedDoer;
     currentUser.password = password;
-    localStorage.setItem('collectiq_current_user', JSON.stringify(currentUser));
+    localSet('collectiq_current_user', JSON.stringify(currentUser));
   }
 
   if (isOnlineMode()) {
@@ -7374,11 +7636,11 @@ async function handleChangePasswordSubmit(e) {
   }
 
   userObj.password = newPassword;
-  localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
+  localSet('collectiq_users_v4', JSON.stringify(users));
 
   if (currentUser && currentUser.email.toLowerCase() === targetEmail.toLowerCase()) {
     currentUser.password = newPassword;
-    localStorage.setItem('collectiq_current_user', JSON.stringify(currentUser));
+    localSet('collectiq_current_user', JSON.stringify(currentUser));
   }
 
   if (isOnlineMode()) {
@@ -7765,12 +8027,15 @@ function closeModal(id) {
   }
 }
 
-function toast(msg) {
+let toastTimer = null;
+function toast(msg, ms = 3500) {
   const el = document.getElementById('toast');
   if (!el) return;
   el.textContent = msg;
+  el.classList.toggle('toast-error', /^[❌⚠]/.test(String(msg)));
   el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 3500);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), ms);
 }
 
 // Only the Follow-up schedule tabs (All / Due today / Overdue / Upcoming).
@@ -7870,7 +8135,7 @@ function getCloudConfig() {
 function applyCloudPartyChange(type, docId, data) {
   let changed = false;
   // Every saved record, duplicates included, for the Duplicate Parties check.
-  if (type === 'removed') cloudPartyDocs.delete(docId);
+  if (type === 'removed') { cloudPartyDocs.delete(docId); cloudBase.delete(docId); }
   else if (data) cloudPartyDocs.set(docId, data);
   if (!data || !data.id) return false;
 
@@ -7905,43 +8170,82 @@ function applyCloudPartyChange(type, docId, data) {
     return changed;
   }
 
-  // Universal Protection for ALL Parties/Markas (ADT, SAN, ACT, etc.):
-  // NEVER let a stale Firestore document with fewer bills overwrite our complete Excel dataset!
-  const freshCase = (window.latestReportCases || []).find(sameParty);
-
-  if (freshCase && Array.isArray(freshCase.bills) && (data.bills || []).length < freshCase.bills.length) {
-    data.bills = JSON.parse(JSON.stringify(freshCase.bills));
-    if (typeof saveMarkaCloud === 'function') {
-      saveMarkaCloud(data);
-    }
-  }
+  // The live database is the truth: its bills are shown as saved. (Bills from
+  // the old Excel file in the code, or from this PC's copy, no longer replace
+  // them or get written back.)
+  // Remember the party exactly as the database sent it, so a save can send only what changed.
+  cloudBase.set(docId, PartySync.clone(data));
 
   const place = PartyCheck.placeCloudDoc(markas, data);
   if (place.index === -1) {
     markas.push(data);
     changed = true;
   } else if (place.replace) {
-    // Preserve the richer bills list if this party already has more bills than incoming
-    const existing = markas[place.index];
-    if (sameParty(existing) && (existing.bills || []).length > (data.bills || []).length) {
-      data.bills = existing.bills;
-    }
     markas[place.index] = data;
     changed = true;
   }
   return changed;
 }
 
-async function saveMarkaCloud(m) {
-  if (!firestoreDb || !m || !m.id) return;
+// Saves a party by sending only what this PC changed, so two people working on
+// the same party at the same time keep each other's entries and payments.
+// Resolves true when the live database has the change (or will send it when the
+// internet is back), false when it refused it (the reason is shown on screen).
+function saveMarkaCloud(m) {
+  if (!firestoreDb || !m || !m.id) return Promise.resolve(true);
+  const id = String(m.id);
+  const run = (partySaveQueue.get(id) || Promise.resolve()).catch(() => {}).then(() => saveMarkaNow(m));
+  partySaveQueue.set(id, run);
+  return run;
+}
+
+function cloudUpdateFor(plan, m) {
+  const FV = firebase.firestore.FieldValue;
+  const upd = {};
+  Object.keys(plan.fields).forEach(k => { upd[k] = plan.fields[k] === undefined ? FV.delete() : plan.fields[k]; });
+  if (plan.history.removed.length) upd.history = PartySync.clone(m.history || []);
+  else if (plan.history.added.length) upd.history = FV.arrayUnion(...plan.history.added);
+  return upd;
+}
+
+async function saveMarkaNow(m) {
+  const id = String(m.id);
+  const ref = firestoreDb.collection('collectiq_markas').doc(id);
+  const seen = cloudBase.get(id);
+  const known = seen && PartyCheck.partyKey(seen.marka, seen.master) === PartyCheck.partyKey(m.marka, m.master);
   try {
-    await firestoreDb.collection('collectiq_markas').doc(String(m.id)).set(m);
-    updateDbStatusBadge('firebase');
-  } catch (err) {
-    console.warn('saveMarkaCloud error:', err);
-    if (err && (err.code === 'permission-denied' || String(err).includes('permission'))) {
-      updateDbStatusBadge('firebase_permission_denied');
+    if (!known) {
+      // Not in the live database yet: saved whole, as before.
+      await ref.set(m);
+    } else {
+      PartySync.tagNewHistory(seen, m, uid);
+      const plan = PartySync.diffParty(seen, m);
+      if (plan.empty) return true;
+      if (plan.simple) {
+        // Only new follow-up lines and changed fields: added to the saved party
+        // without reading it first, so it also works without internet (sent later).
+        cloudBase.set(id, PartySync.applyPlan(seen, plan));
+        ref.update(cloudUpdateFor(plan, m)).catch(err => {
+          if (err && err.code === 'not-found') return ref.set(m).catch(e => reportCloudSaveError(e, m.marka));
+          reportCloudSaveError(err, m.marka);
+        });
+      } else {
+        // Bills, complaints or FMS changed: read the latest saved party and put
+        // this change on top of it (payments add up instead of replacing).
+        let merged = null;
+        await firestoreDb.runTransaction(async tx => {
+          const snap = await tx.get(ref);
+          merged = snap.exists ? PartySync.applyPlan(snap.data(), plan) : PartySync.clone(m);
+          tx.set(ref, merged);
+        });
+        cloudBase.set(id, PartySync.clone(merged));
+      }
     }
+    updateDbStatusBadge('firebase');
+    return true;
+  } catch (err) {
+    reportCloudSaveError(err, m.marka);
+    return false;
   }
 }
 
@@ -7951,7 +8255,7 @@ async function saveHelpTicketCloud(t) {
     await firestoreDb.collection('collectiq_help_tickets').doc(String(t.id)).set(t);
     updateDbStatusBadge('firebase');
   } catch (err) {
-    console.warn('saveHelpTicketCloud error:', err);
+    reportCloudSaveError(err, 'Help ticket' + (t.markaName ? ' ' + t.markaName : ''));
   }
 }
 
@@ -7961,7 +8265,7 @@ async function savePaymentCloud(p) {
     await firestoreDb.collection('collectiq_payments').doc(String(p.id)).set(p);
     updateDbStatusBadge('firebase');
   } catch (err) {
-    console.warn('savePaymentCloud error:', err);
+    reportCloudSaveError(err, 'Payment' + (p.marka ? ' ' + p.marka : ''));
   }
 }
 
@@ -7977,29 +8281,55 @@ async function saveConfigCloud() {
     });
     updateDbStatusBadge('firebase');
   } catch (err) {
-    console.warn('saveConfigCloud error:', err);
+    reportCloudSaveError(err, 'Settings');
   }
 }
 
+// Many parties at once (Excel upload, first upload of the data). Parties already
+// in the live database get only what changed: bills and fields are updated and
+// new follow-up lines added; history saved by others is never overwritten.
+// Unchanged parties are skipped.
 async function saveAllMarkasCloud(list) {
   if (!firestoreDb || !Array.isArray(list) || list.length === 0) return;
-  try {
-    const CHUNK_SIZE = 400;
-    for (let i = 0; i < list.length; i += CHUNK_SIZE) {
-      const batch = firestoreDb.batch();
-      const chunk = list.slice(i, i + CHUNK_SIZE);
-      chunk.forEach(m => {
-        if (m && m.id) {
-          const docRef = firestoreDb.collection('collectiq_markas').doc(String(m.id));
-          batch.set(docRef, m);
-        }
-      });
-      await batch.commit();
+  const writes = [];
+  list.forEach(m => {
+    if (!m || !m.id) return;
+    const id = String(m.id);
+    const seen = cloudBase.get(id);
+    if (!seen || PartyCheck.partyKey(seen.marka, seen.master) !== PartyCheck.partyKey(m.marka, m.master)) {
+      writes.push({ id, m, kind: 'set' });
+      return;
     }
-    updateDbStatusBadge('firebase');
-  } catch (err) {
-    console.warn('saveAllMarkasCloud error:', err);
+    PartySync.tagNewHistory(seen, m, uid);
+    const plan = PartySync.diffParty(seen, m);
+    if (plan.empty) return;
+    const upd = cloudUpdateFor(plan, m);
+    const changedList = p => p.added.length + p.removed.length + (p.changed ? p.changed.length : 0);
+    if (changedList(plan.bills)) upd.bills = PartySync.clone(m.bills || []);
+    if (changedList(plan.escalations)) upd.escalations = PartySync.clone(m.escalations || []);
+    if (changedList(plan.fmsTasks)) upd.fmsTasks = PartySync.clone(m.fmsTasks || []);
+    writes.push({ id, m, kind: 'update', upd, expected: PartySync.applyPlan(seen, plan) });
+  });
+  const CHUNK_SIZE = 400;
+  let failed = 0;
+  for (let i = 0; i < writes.length; i += CHUNK_SIZE) {
+    const chunk = writes.slice(i, i + CHUNK_SIZE);
+    const batch = firestoreDb.batch();
+    chunk.forEach(w => {
+      const ref = firestoreDb.collection('collectiq_markas').doc(w.id);
+      if (w.kind === 'set') batch.set(ref, w.m); else batch.update(ref, w.upd);
+    });
+    try {
+      await batch.commit();
+      chunk.forEach(w => { if (w.kind === 'update') cloudBase.set(w.id, w.expected); });
+    } catch (err) {
+      // One bad party fails the whole batch: save this chunk one by one instead.
+      console.warn('Bulk save batch failed, saving one by one:', err);
+      for (const w of chunk) { if (!(await saveMarkaCloud(w.m))) failed++; }
+    }
   }
+  if (failed) toast(`❌ ${failed} ${failed === 1 ? 'party was' : 'parties were'} NOT saved in the live database. Please upload again.`, 12000);
+  else updateDbStatusBadge('firebase');
 }
 
 async function saveCloud(options = {}) {
@@ -8118,7 +8448,7 @@ function initFirebase() {
       });
 
       if (hasChanges) {
-        localStorage.setItem('collectiq_markas_v4', JSON.stringify(markas));
+        localSet('collectiq_markas_v4', JSON.stringify(markas));
         renderAll();
       }
       updateDbStatusBadge('firebase');
@@ -8158,7 +8488,7 @@ function initFirebase() {
         }
       });
       if (hasChanges) {
-        localStorage.setItem('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
+        localSet('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
         window.helpTickets = helpTickets;
         renderAll();
       }
@@ -8195,7 +8525,7 @@ function initFirebase() {
         }
       });
       if (hasChanges) {
-        localStorage.setItem('collectiq_rokad_v4', JSON.stringify(payments));
+        localSet('collectiq_rokad_v4', JSON.stringify(payments));
         renderAll();
       }
     }, err => {
@@ -8211,7 +8541,7 @@ function initFirebase() {
           if (d.lastClearedAt) {
             const localClearedAt = localStorage.getItem('collectiq_last_cleared_at');
             if (!localClearedAt || new Date(d.lastClearedAt) > new Date(localClearedAt)) {
-              localStorage.setItem('collectiq_last_cleared_at', d.lastClearedAt);
+              localSet('collectiq_last_cleared_at', d.lastClearedAt);
               if (markas.length > 0) {
                 markas = [];
                 payments = [];
@@ -8225,16 +8555,16 @@ function initFirebase() {
           }
           if (d.masterFollowpers) {
             masterFollowpers = { ...DEFAULT_MASTER_FOLLOWPERS, ...d.masterFollowpers };
-            localStorage.setItem('collectiq_master_followpers_v4', JSON.stringify(masterFollowpers));
+            localSet('collectiq_master_followpers_v4', JSON.stringify(masterFollowpers));
           }
           if (d.masterCrrs) {
             masterCrrs = { ...DEFAULT_MASTER_CRR, ...d.masterCrrs };
-            localStorage.setItem('collectiq_master_crrs_v4', JSON.stringify(masterCrrs));
+            localSet('collectiq_master_crrs_v4', JSON.stringify(masterCrrs));
           }
           if (Array.isArray(d.users) && d.users.length > 0) {
             users = d.users;
             window.users = users;
-            localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
+            localSet('collectiq_users_v4', JSON.stringify(users));
           }
           renderAll();
         }
@@ -8305,7 +8635,7 @@ async function saveCloudConfig(e) {
   const urlVal = (inputEl ? inputEl.value : '').trim().replace(/\/+$/, '');
 
   if (urlVal) {
-    localStorage.setItem('collectiq_custom_backend_url', urlVal);
+    localSet('collectiq_custom_backend_url', urlVal);
     toast('Testing connection to: ' + urlVal + ' ...');
     try {
       const res = await fetch(`${urlVal}/api/data`);
@@ -8368,12 +8698,12 @@ async function syncWithDatabase() {
           masterCrrs = { ...DEFAULT_MASTER_CRR, ...(data.masterCrrs || {}) };
           if (Array.isArray(data.helpTickets)) {
             helpTickets = data.helpTickets;
-            localStorage.setItem('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
+            localSet('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
           }
           if (Array.isArray(data.users)) {
             users = data.users;
             window.users = users;
-            localStorage.setItem('collectiq_users_v4', JSON.stringify(users));
+            localSet('collectiq_users_v4', JSON.stringify(users));
           }
           isServerConnected = true;
           window.isServerConnected = true;
