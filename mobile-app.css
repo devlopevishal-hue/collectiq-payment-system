@@ -1,5 +1,5 @@
 /* ==========================================
-   CollectIQ mobile app shell (v6.26.0)
+   CollectIQ mobile app shell (v6.27.0)
    Loaded after styles.css. Phone-only: makes the web page look and
    behave like an installed app. Desktop layout is not affected.
    ========================================== */
@@ -202,6 +202,7 @@
   .m-quick-icon.pay { background: #087454; }
   .m-quick-icon.fu { background: #2f6fd6; }
   .m-quick-icon.help { background: #c96a1b; }
+  .m-quick-icon.upload { background: #6b4fd8; }
 
   .m-more-user { display: flex; align-items: center; gap: 12px; padding: 4px 4px 16px 4px; border-bottom: 1px solid #edf2f0; margin-bottom: 14px; }
   .m-more-avatar { width: 44px; height: 44px; border-radius: 50%; background: var(--m-bar); color: var(--m-accent); display: grid; place-items: center; font-weight: 800; font-size: 15px; flex: none; }

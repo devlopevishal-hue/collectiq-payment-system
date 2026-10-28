@@ -1,4 +1,4 @@
-// CollectIQ mobile app shell (v6.26.0)
+// CollectIQ mobile app shell (v6.27.0)
 // On phones the page behaves like an installed app: a 5-tab bottom bar, a centre
 // quick-action button, and a "More" sheet that lists every other section.
 // Desktop is untouched; everything here is gated on the phone breakpoint.
@@ -170,6 +170,7 @@
         case 'close': closeSheets(); break;
         case 'followup': closeSheets(); if (window.openFollowup) window.openFollowup(); break;
         case 'payment': closeSheets(); if (window.openPayment) window.openPayment(); break;
+        case 'upload': closeSheets(); if (window.openPaymentUpload) window.openPaymentUpload(); break;
         case 'ticket': closeSheets(); if (window.openHelpTicketModal) window.openHelpTicketModal(); break;
         case 'export': closeSheets(); if (window.exportExcel) window.exportExcel(); break;
         case 'install': closeSheets(); if (window.triggerInstallPrompt) window.triggerInstallPrompt(); break;
