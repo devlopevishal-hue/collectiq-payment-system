@@ -149,7 +149,7 @@
   // Settle one planned row on its party (oldest bill first) and return the
   // payment record. Paid amount is the money received; deductions (disc, RD,
   // claim, TDS) also clear the bills. Anything above the dues is advance.
-  function apply(item, { mode = 'RTGS', ref = '', today = '', uid, money = n => String(n), fileName = '' } = {}) {
+  function apply(item, { mode = 'RTGS', ref = '', today = '', uid, money = n => String(n), fileName = '', nextDateFor = null } = {}) {
     const m = item.party;
     const row = item.row;
     const date = item.date;
@@ -204,11 +204,15 @@
     const stillDue = m.bills.reduce((s, b) => s + (b.balance || 0), 0);
     const dedText = row.deductions > 0 ? ` (+ ${money(row.deductions)} deductions)` : '';
     if (stillDue > 0) {
-      const next = new Date((today || date) + 'T00:00:00');
-      next.setDate(next.getDate() + 2);
-      const p = n => String(n).padStart(2, '0');
-      m.nextDate = `${next.getFullYear()}-${p(next.getMonth() + 1)}-${p(next.getDate())}`;
-      m.remark = `Payment ${money(row.paid)}${dedText} received; ${money(stillDue)} still due. Follow-up in 2 days.`;
+      // Same next date as Record Payment (the app passes its due-date rule); +2 days otherwise.
+      if (nextDateFor) m.nextDate = nextDateFor(m);
+      else {
+        const next = new Date((today || date) + 'T00:00:00');
+        next.setDate(next.getDate() + 2);
+        const p = n => String(n).padStart(2, '0');
+        m.nextDate = `${next.getFullYear()}-${p(next.getMonth() + 1)}-${p(next.getDate())}`;
+      }
+      m.remark = `Payment ${money(row.paid)}${dedText} received; ${money(stillDue)} still due. Next follow-up ${m.nextDate}.`;
       m.lastStatus = 'Payment Received';
     } else if (stillDue < 0) {
       m.nextDate = '';

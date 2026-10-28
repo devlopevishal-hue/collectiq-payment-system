@@ -238,3 +238,10 @@ test('applyComplaintFollowup: needs a claim number or a remark', () => {
   assert.equal(FA.applyComplaintFollowup(billedParty(), complaint({ claimNumber: '', remark: '' })).error, undefined);
   assert.deepEqual(m, before);
 });
+
+test('autoNextDate plans the follow-up 5 days before the due date', () => {
+  assert.equal(FA.autoNextDate('2026-11-20', '2026-10-28', 1), '2026-11-15');
+  assert.equal(FA.autoNextDate('2026-11-01', '2026-10-28', 2), '2026-10-30'); // 5 days before is already past
+  assert.equal(FA.autoNextDate('2026-10-01', '2026-10-28', 1), '2026-10-29'); // overdue
+  assert.equal(FA.autoNextDate('', '2026-10-28', 2), '2026-10-30'); // no due date
+});
