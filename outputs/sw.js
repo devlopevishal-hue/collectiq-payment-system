@@ -1,20 +1,22 @@
 // CollectIQ Progressive Web App Service Worker
-const CACHE_NAME = 'collectiq-v6.23.1';
+const CACHE_NAME = 'collectiq-v6.24.0';
 const CORE_ASSETS = [
   './',
   './index.html',
-  './styles.css?v=6.23.1',
-  './activity-log.js?v=6.23.1',
-  './party-check.js?v=6.23.1',
-  './list-filters.js?v=6.23.1',
-  './save-guard.js?v=6.23.1',
-  './party-sync.js?v=6.23.1',
-  './followup-actions.js?v=6.23.1',
-  './ticket-actions.js?v=6.23.1',
-  './app.js?v=6.23.1',
-  './ai-tools.js?v=6.23.1',
-  './ai-chat.js?v=6.23.1',
-  './latest-report-data.js?v=6.23.1',
+  './styles.css?v=6.24.0',
+  './activity-log.js?v=6.24.0',
+  './party-check.js?v=6.24.0',
+  './list-filters.js?v=6.24.0',
+  './save-guard.js?v=6.24.0',
+  './db-config.js?v=6.24.0',
+  './supabase-store.js?v=6.24.0',
+  './party-sync.js?v=6.24.0',
+  './followup-actions.js?v=6.24.0',
+  './ticket-actions.js?v=6.24.0',
+  './app.js?v=6.24.0',
+  './ai-tools.js?v=6.24.0',
+  './ai-chat.js?v=6.24.0',
+  './latest-report-data.js?v=6.24.0',
   './manifest.json',
   './icons/icon.svg',
   './icons/icon-192.png',
@@ -55,8 +57,8 @@ self.addEventListener('fetch', event => {
 
   const url = new URL(req.url);
 
-  // Skip Firebase Firestore API and dynamic database calls
-  if (url.hostname.includes('firestore.googleapis.com') || url.hostname.includes('firebase') || url.pathname.includes('/api/')) {
+  // Skip Firebase Firestore / Supabase APIs and dynamic database calls
+  if (url.hostname.includes('firestore.googleapis.com') || url.hostname.includes('firebase') || url.hostname.endsWith('.supabase.co') || url.pathname.includes('/api/')) {
     return;
   }
 
