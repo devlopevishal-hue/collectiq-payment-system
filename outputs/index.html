@@ -14,7 +14,7 @@
   <title>CollectIQ - Payment Collection System</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="styles.css?v=6.26.0">
+  <link rel="stylesheet" href="styles.css?v=6.27.0">
   <script>
     function toggleMobileMenu(e) {
       if (e) {
@@ -140,6 +140,7 @@
       <div class="header-actions">
         <div class="header-primary-btns">
           <button class="btn primary" onclick="openPayment()">+ Record Payment</button>
+          <button class="btn secondary" onclick="openPaymentUpload()">⇪ Upload Daily Payments</button>
           <button class="btn primary" onclick="openFollowup()">+ Update follow-up</button>
         </div>
         <div class="header-secondary-btns">
@@ -857,6 +858,41 @@
     </form>
   </div>
 
+  <div class="modal-backdrop" id="paymentUploadModal">
+    <div class="modal wide pay-upload-modal">
+      <button type="button" class="close" onclick="closeModal('paymentUploadModal')">×</button>
+      <p class="eyebrow">DAILY PAYMENTS RECEIVED</p>
+      <h2>Bulk Upload Payments</h2>
+      <p class="pay-upload-help">Upload the <b>Sales Payment Performance Report</b> (Party, Party Marka, Policy, Bill Amount, Disc / RD / Claim / TDS Amount, Paid Amount, Days, Master). Each row is matched by <b>Party Marka + Master</b> and settles that party's oldest bills first. Paid + deductions clear the bills; the paid amount is saved as the payment.</p>
+      <div class="form-grid">
+        <label>Received date<input id="puDate" type="date" required onchange="refreshPaymentUploadPlan()"></label>
+        <label>Mode
+          <select id="puMode">
+            <option value="RTGS">RTGS</option>
+            <option value="NEFT">NEFT</option>
+            <option value="cheque">cheque</option>
+            <option value="cash">cash</option>
+            <option value="UPI">UPI</option>
+          </select>
+        </label>
+        <label>Reference (optional)<input id="puRef" placeholder="e.g. bank statement 28-Oct"></label>
+      </div>
+      <div class="pay-upload-actions">
+        <label class="btn secondary pay-upload-file">⇧ Choose Excel / CSV
+          <input id="puFile" type="file" accept=".xlsx,.xls,.csv" onchange="onPaymentUploadFile(event)">
+        </label>
+        <button type="button" class="btn secondary" onclick="downloadPaymentUploadTemplate()">⇩ Download format</button>
+        <span id="puFileName" class="table-note"></span>
+      </div>
+      <div id="puSummary" class="pay-upload-summary" style="display:none;"></div>
+      <div id="puPreview" class="pay-upload-preview"></div>
+      <div class="modal-footer pay-upload-footer">
+        <button type="button" class="btn secondary" onclick="closeModal('paymentUploadModal')">Cancel</button>
+        <button type="button" id="puSaveBtn" class="btn primary" onclick="savePaymentUpload()" disabled>Save payments</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-backdrop" id="billModal">
     <div class="modal wide">
       <button type="button" class="close" onclick="closeModal('billModal')">×</button>
@@ -1491,6 +1527,9 @@ service cloud.firestore {
       <button class="fab-action" onclick="openPayment(); closeMobileFab();">
         <i><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></i> <span>Record Payment</span>
       </button>
+      <button class="fab-action" onclick="openPaymentUpload(); closeMobileFab();">
+        <i><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg></i> <span>Upload Payments</span>
+      </button>
       <button class="fab-action" onclick="openHelpTicketModal(); closeMobileFab();">
         <i><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></i> <span>Help Ticket</span>
       </button>
@@ -1546,24 +1585,25 @@ service cloud.firestore {
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <!-- Firebase Compatibility Libraries for Real-time Cloud DB -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-  <script src="latest-report-data.js?v=6.26.0"></script>
-  <script src="activity-log.js?v=6.26.0"></script>
-  <script src="party-check.js?v=6.26.0"></script>
-  <script src="list-filters.js?v=6.26.0"></script>
-  <script src="save-guard.js?v=6.26.0"></script>
-  <script src="db-config.js?v=6.26.0"></script>
-  <script src="supabase-store.js?v=6.26.0"></script>
-  <script src="party-sync.js?v=6.26.0"></script>
-  <script src="followup-actions.js?v=6.26.0"></script>
-  <script src="ticket-actions.js?v=6.26.0"></script>
-  <script src="app.js?v=6.26.0"></script>
-  <script src="ai-tools.js?v=6.26.0"></script>
-  <script src="ai-chat.js?v=6.26.0"></script>
+  <script src="latest-report-data.js?v=6.27.0"></script>
+  <script src="activity-log.js?v=6.27.0"></script>
+  <script src="party-check.js?v=6.27.0"></script>
+  <script src="list-filters.js?v=6.27.0"></script>
+  <script src="save-guard.js?v=6.27.0"></script>
+  <script src="db-config.js?v=6.27.0"></script>
+  <script src="supabase-store.js?v=6.27.0"></script>
+  <script src="party-sync.js?v=6.27.0"></script>
+  <script src="followup-actions.js?v=6.27.0"></script>
+  <script src="ticket-actions.js?v=6.27.0"></script>
+  <script src="payment-upload.js?v=6.27.0"></script>
+  <script src="app.js?v=6.27.0"></script>
+  <script src="ai-tools.js?v=6.27.0"></script>
+  <script src="ai-chat.js?v=6.27.0"></script>
   <!-- Progressive Web App Service Worker Registration -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
-        navigator.serviceWorker.register('sw.js?v=6.26.0').then(function(reg) {
+        navigator.serviceWorker.register('sw.js?v=6.27.0').then(function(reg) {
           console.log('[PWA] Service Worker registered with scope:', reg.scope);
         }).catch(function(err) {
           console.warn('[PWA] Service Worker registration failed:', err);

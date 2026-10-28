@@ -2586,3 +2586,38 @@ body:has(#aiAssistant.active) .mobile-fab-container { display: none !important; 
 .pay-ticket-meta { font-size: 11.5px; color: #2a453b; margin-top: 2px; }
 .pay-ticket-more { font-size: 11.5px; color: #4d625a; padding-top: 6px; }
 @media (max-width: 768px) { .pay-ticket-row { flex-direction: column; align-items: flex-start; } }
+
+/* Daily payments bulk upload */
+.pay-upload-modal { width: min(980px, 100%); }
+.pay-upload-help { color: #5a7066; font-size: 12px; line-height: 1.55; margin: 6px 0 14px; }
+.pay-upload-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; }
+.pay-upload-file { position: relative; cursor: pointer; }
+.pay-upload-file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+.pay-upload-summary { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.pay-upload-summary span { background: #edf7f2; border: 1px solid #c0e7d5; color: #18332b; border-radius: 6px; padding: 6px 10px; font-size: 12px; }
+.pay-upload-summary .pu-warn { background: #fdf3e7; border-color: #f0d3ad; color: #8a5413; }
+.pay-upload-preview { margin-top: 12px; max-height: 46vh; overflow: auto; border: 1px solid #e3ebe7; border-radius: 8px; }
+.pay-upload-empty { padding: 28px 12px; text-align: center; color: #83928c; font-size: 12px; }
+.pay-upload-table td, .pay-upload-table th { padding: 8px; font-size: 12px; border-bottom: 1px solid #eef3f0; white-space: nowrap; }
+.pay-upload-table thead th { position: sticky; top: 0; background: #f7faf8; z-index: 1; }
+.pay-upload-table .num { text-align: right; font-family: 'DM Mono', monospace; }
+.pay-upload-table small { display: block; color: #8a6a5a; font-size: 10px; margin-top: 2px; }
+.pu-badge { display: inline-block; border-radius: 10px; padding: 2px 8px; font: 700 10px Manrope; background: #e7f2ed; color: #087454; }
+.pay-upload-table tr.pu-notFound .pu-badge { background: #fbe9e8; color: #b23b36; }
+.pay-upload-table tr.pu-duplicate .pu-badge, .pay-upload-table tr.pu-noAmount .pu-badge { background: #fdf3e7; color: #8a5413; }
+.pay-upload-table tr:not(.pu-ready) td { color: #8b9792; }
+.pay-upload-footer { justify-content: flex-end; gap: 10px; }
+.pay-upload-footer .btn[disabled] { opacity: .5; cursor: not-allowed; }
+
+@media (max-width: 700px) {
+  .pay-upload-actions .btn { flex: 1 1 100%; text-align: center; justify-content: center; }
+  .pay-upload-preview { max-height: none; border: 0; overflow: visible; }
+  .modal .pay-upload-table thead { display: none !important; }
+  .modal .pay-upload-table, .modal .pay-upload-table tbody, .modal .pay-upload-table tr, .modal .pay-upload-table td { display: block !important; width: 100% !important; min-width: 0 !important; }
+  .modal .pay-upload-table tr { border: 1px solid #e3ebe7; border-radius: 8px; margin-bottom: 10px; padding: 6px 4px; background: #fff; }
+  .modal .pay-upload-table td { display: flex !important; justify-content: space-between; gap: 12px; border: 0; padding: 4px 8px !important; white-space: normal; text-align: right; }
+  .pay-upload-table td::before { content: attr(data-label); color: #7c8b85; font: 500 10px 'DM Mono'; text-transform: uppercase; text-align: left; }
+  .pay-upload-table td small { display: inline; margin-left: 6px; }
+  .pay-upload-footer { position: sticky; bottom: 0; background: #fff; padding-top: 10px; }
+  .pay-upload-footer .btn { flex: 1; }
+}

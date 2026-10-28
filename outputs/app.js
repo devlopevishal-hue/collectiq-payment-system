@@ -851,6 +851,11 @@ function isLocked(m) {
   return totalOutstanding(m) > 0 && oldest && days(oldest) > 19;
 }
 
+// Default next follow-up: 5 days before the oldest due date (at least `minDays` from today).
+function autoNextDate(m, minDays) {
+  return FollowupActions.autoNextDate(oldestDueDate(m), iso(today), minDays);
+}
+
 function followUpCount(m) {
   return (m.history || []).filter(h => h.type === 'followup').length;
 }
@@ -4380,8 +4385,7 @@ function openFollowup(markaId) {
   document.getElementById('expected').value = m.expected || '';
   document.getElementById('promiseDate').value = m.ptp || '';
   
-  const d2 = new Date(today.getTime() + 2 * 86400000);
-  document.getElementById('nextDate').value = iso(d2);
+  document.getElementById('nextDate').value = autoNextDate(m, 2);
   
   document.getElementById('remark').value = '';
   document.getElementById('claimNumber').value = '';
@@ -5054,7 +5058,7 @@ async function saveFollowup(e) {
       receiptImage: document.getElementById('followPayReceiptPreview')?.dataset?.base64 || '',
       ownerFallback: ownerOf(m),
       paymentFollowperFallback: (currentUser ? currentUser.followperName : '') || ownerOf(m),
-      defaultNext: iso(new Date(today.getTime() + 2 * 86400000)),
+      defaultNext: autoNextDate(m, 2),
       newId: uid, money, now: Date.now(), visit
     });
     if (r.error) return toast(r.error);
@@ -5186,7 +5190,7 @@ async function saveFollowup(e) {
 
   const stillDue = totalOutstanding(m);
   let finalStatus = statusVal;
-  let finalNext = nextDate || (isPtp ? promiseDate : iso(new Date(today.getTime() + 2 * 86400000)));
+  let finalNext = nextDate || (isPtp ? promiseDate : autoNextDate(m, 2));
   let finalRemark = remark;
 
   if (isComplaint) {
@@ -5211,7 +5215,7 @@ async function saveFollowup(e) {
       finalRemark = finalRemark || `Full payment ${money(payAmount)} received (${payMode} ref: ${payRef}). All dues cleared.`;
     } else {
       finalStatus = 'Payment Received';
-      finalNext = nextDate || iso(new Date(today.getTime() + 2 * 86400000));
+      finalNext = nextDate || autoNextDate(m, 2);
       finalRemark = finalRemark || `Payment ${money(payAmount)} received (${payMode} ref: ${payRef}); ${money(stillDue)} still due.`;
     }
   }
@@ -5679,8 +5683,8 @@ async function savePayment(e) {
   
   const stillDue = totalOutstanding(m);
   if (stillDue > 0) {
-    m.nextDate = iso(new Date(today.getTime() + 2 * 86400000));
-    m.remark = `Payment ${money(payAmount)} received; ${money(stillDue)} still due. Follow-up in 2 days.`;
+    m.nextDate = autoNextDate(m, 2);
+    m.remark = `Payment ${money(payAmount)} received; ${money(stillDue)} still due. Next follow-up ${fmt(m.nextDate)}.`;
     m.lastStatus = 'Payment Received';
   } else if (stillDue < 0) {
     m.nextDate = '';
@@ -5737,6 +5741,133 @@ async function savePayment(e) {
     toast('✓ Payment saved.');
   }
 }
+
+// ---- Daily payments bulk upload (Sales Payment Performance Report) ----
+let paymentUpload = { rows: [], items: [], fileName: '' };
+
+function openPaymentUpload() {
+  paymentUpload = { rows: [], items: [], fileName: '' };
+  document.getElementById('puDate').value = iso(today);
+  document.getElementById('puMode').value = 'RTGS';
+  document.getElementById('puRef').value = '';
+  document.getElementById('puFile').value = '';
+  document.getElementById('puFileName').textContent = '';
+  renderPaymentUploadPlan();
+  openModal('paymentUploadModal');
+}
+
+function onPaymentUploadFile(e) {
+  const f = e.target.files[0];
+  if (!f) return;
+  if (typeof XLSX === 'undefined') return toast('Excel engine is still loading. Please try again in a moment.');
+  const reader = new FileReader();
+  reader.onload = evt => {
+    try {
+      const wb = XLSX.read(new Uint8Array(evt.target.result), { type: 'array', cellDates: true });
+      let parsed = { error: 'No sheet found in the file.', rows: [] };
+      for (const name of wb.SheetNames || []) {
+        const grid = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '', raw: true });
+        parsed = PaymentUpload.parseGrid(grid);
+        if (!parsed.error) break;
+      }
+      if (parsed.error) {
+        paymentUpload = { rows: [], items: [], fileName: '' };
+        renderPaymentUploadPlan();
+        return toast(parsed.error, 8000);
+      }
+      paymentUpload.rows = parsed.rows;
+      paymentUpload.fileName = f.name;
+      document.getElementById('puFileName').textContent = `${f.name} · ${parsed.rows.length} rows`;
+      refreshPaymentUploadPlan();
+    } catch (err) {
+      console.error('Payment upload read error:', err);
+      toast('Could not read the file: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(f);
+}
+
+function refreshPaymentUploadPlan() {
+  const date = document.getElementById('puDate').value || iso(today);
+  paymentUpload.items = PaymentUpload.plan(paymentUpload.rows, { markas, payments, date });
+  renderPaymentUploadPlan();
+}
+
+function renderPaymentUploadPlan() {
+  const items = paymentUpload.items || [];
+  const box = document.getElementById('puPreview');
+  const sum = document.getElementById('puSummary');
+  const btn = document.getElementById('puSaveBtn');
+  const ready = items.filter(i => i.status === 'ready');
+  btn.disabled = !ready.length;
+  btn.textContent = ready.length ? `Save ${ready.length} payment${ready.length === 1 ? '' : 's'}` : 'Save payments';
+  if (!items.length) {
+    sum.style.display = 'none';
+    box.innerHTML = '<div class="pay-upload-empty">Choose the daily payment file to see a preview here.</div>';
+    return;
+  }
+  const total = ready.reduce((s, i) => s + i.row.paid, 0);
+  const ded = ready.reduce((s, i) => s + i.row.deductions, 0);
+  const skipped = items.length - ready.length;
+  sum.style.display = '';
+  sum.innerHTML = `<span><b>${ready.length}</b> ready</span><span>Paid <b>${money(total)}</b></span><span>Deductions <b>${money(ded)}</b></span>` +
+    (skipped ? `<span class="pu-warn"><b>${skipped}</b> will be skipped</span>` : '');
+  const label = { ready: 'Ready', notFound: 'Not found', noAmount: 'No amount', duplicate: 'Already saved' };
+  box.innerHTML = `<table class="pay-upload-table">
+    <thead><tr><th>ROW</th><th>MARKA</th><th>MASTER</th><th>POLICY</th><th class="num">BILL</th><th class="num">DEDUCTIONS</th><th class="num">PAID</th><th class="num">OUTSTANDING</th><th>STATUS</th></tr></thead>
+    <tbody>${items.map(i => `<tr class="pu-${i.status}">
+      <td data-label="Row">${i.row.rowNo}</td>
+      <td data-label="Marka"><b>${escapeHtml(i.row.marka)}</b></td>
+      <td data-label="Master">${escapeHtml(i.party ? i.party.master : i.row.master)}</td>
+      <td data-label="Policy">${escapeHtml(i.row.policy)}</td>
+      <td data-label="Bill" class="num">${money(i.row.billAmount)}</td>
+      <td data-label="Deductions" class="num">${money(i.row.deductions)}</td>
+      <td data-label="Paid" class="num"><b>${money(i.row.paid)}</b></td>
+      <td data-label="Outstanding" class="num">${i.party ? money(i.outstanding) : '—'}</td>
+      <td data-label="Status"><span class="pu-badge">${label[i.status]}</span>${i.note && i.status !== 'ready' ? `<small>${escapeHtml(i.note)}</small>` : ''}</td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+async function savePaymentUpload() {
+  const ready = (paymentUpload.items || []).filter(i => i.status === 'ready');
+  if (!ready.length) return toast('No payment rows ready to save.');
+  const btn = document.getElementById('puSaveBtn');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+  const mode = document.getElementById('puMode').value;
+  const ref = (document.getElementById('puRef').value || '').trim();
+  const done = [];
+  for (const item of ready) {
+    const payment = PaymentUpload.apply(item, { mode, ref, today: iso(today), uid, money, fileName: paymentUpload.fileName, nextDateFor: m => autoNextDate(m, 2) });
+    payments.push(payment);
+    done.push({ m: item.party, payment });
+  }
+  save();
+  renderAll();
+  let failed = 0;
+  for (const d of done) {
+    if (!(await savePartyWithPayment(d.m, d.payment))) failed++;
+  }
+  closeModal('paymentUploadModal');
+  renderAll();
+  const total = done.reduce((s, d) => s + d.payment.amount, 0);
+  if (failed) toast(`⚠ ${done.length - failed} payments saved, ${failed} NOT saved. Please upload the file again for the rest.`, 12000);
+  else toast(`✓ ${done.length} payments saved (${money(total)}).`, 6000);
+}
+
+function downloadPaymentUploadTemplate() {
+  if (typeof XLSX === 'undefined') return toast('Excel engine is still loading. Please try again in a moment.');
+  const ws = XLSX.utils.aoa_to_sheet([PaymentUpload.TEMPLATE_HEADERS, ['AKSHAY TEX', 'AKYT', '3% PARTY', 153006, 0, 0, 0, 2916, 150090, 79, 'BABLU SHERA MASTER']]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Daily Payments');
+  XLSX.writeFile(wb, 'Daily_Payments_Upload_Format.xlsx');
+}
+
+window.openPaymentUpload = openPaymentUpload;
+window.onPaymentUploadFile = onPaymentUploadFile;
+window.refreshPaymentUploadPlan = refreshPaymentUploadPlan;
+window.savePaymentUpload = savePaymentUpload;
+window.downloadPaymentUploadTemplate = downloadPaymentUploadTemplate;
 
 function openBillDetails(markaId) {
   const m = markas.find(x => x.id === markaId);
@@ -6443,7 +6574,7 @@ async function saveResolution(e) {
       remark: historyRemark,
       expected: 0,
       promise: '',
-      next: totalOutstanding(m) > 0 ? iso(new Date(today.getTime() + 2 * 86400000)) : ''
+      next: totalOutstanding(m) > 0 ? autoNextDate(m, 2) : ''
     });
     
     const remainingDue = totalOutstanding(m);
@@ -6452,7 +6583,7 @@ async function saveResolution(e) {
       m.lastStatus = 'Payment Received';
       m.remark = 'All outstanding dues cleared after claim settlement.';
     } else {
-      m.nextDate = iso(new Date(today.getTime() + 2 * 86400000));
+      m.nextDate = autoNextDate(m, 2);
       m.lastStatus = 'Claim Resolved';
       m.remark = `Claim resolved with ${money(totalSettled)} settlement. ${money(remainingDue)} remaining.`;
     }
@@ -6948,8 +7079,9 @@ function processImportedRows(rawInput, fileName = 'Imported File') {
 
       m.master = data.master || m.master;
       if (ownerOf(m) === 'Unassigned' && data.own) m.owner = data.own;
-      if (totalOutstanding(m) > 0 && !m.nextDate) {
-        m.nextDate = iso(new Date(today.getTime() + 86400000));
+      // No date yet, or nobody has followed up yet: plan from the due date
+      if (totalOutstanding(m) > 0 && (!m.nextDate || followUpCount(m) === 0)) {
+        m.nextDate = autoNextDate(m, 1);
       } else if (totalOutstanding(m) === 0) {
         m.nextDate = '';
       }
@@ -6973,7 +7105,7 @@ function processImportedRows(rawInput, fileName = 'Imported File') {
         marka: targetMarkaName,
         master: data.master,
         owner: data.own || (existingOwner && ownerOf(existingOwner)) || getMasterFollowper(data.master) || 'Unassigned',
-        nextDate: iso(new Date(today.getTime() + 86400000)),
+        nextDate: '',
         lastDate: '',
         lastStatus: '',
         remark: 'New outstanding sync.',
@@ -6983,6 +7115,8 @@ function processImportedRows(rawInput, fileName = 'Imported File') {
         bills: bills,
         escalations: []
       });
+      const added = markas[markas.length - 1];
+      added.nextDate = autoNextDate(added, 1);
     }
     updated++;
   });

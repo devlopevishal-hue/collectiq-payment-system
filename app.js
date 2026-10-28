@@ -5742,6 +5742,133 @@ async function savePayment(e) {
   }
 }
 
+// ---- Daily payments bulk upload (Sales Payment Performance Report) ----
+let paymentUpload = { rows: [], items: [], fileName: '' };
+
+function openPaymentUpload() {
+  paymentUpload = { rows: [], items: [], fileName: '' };
+  document.getElementById('puDate').value = iso(today);
+  document.getElementById('puMode').value = 'RTGS';
+  document.getElementById('puRef').value = '';
+  document.getElementById('puFile').value = '';
+  document.getElementById('puFileName').textContent = '';
+  renderPaymentUploadPlan();
+  openModal('paymentUploadModal');
+}
+
+function onPaymentUploadFile(e) {
+  const f = e.target.files[0];
+  if (!f) return;
+  if (typeof XLSX === 'undefined') return toast('Excel engine is still loading. Please try again in a moment.');
+  const reader = new FileReader();
+  reader.onload = evt => {
+    try {
+      const wb = XLSX.read(new Uint8Array(evt.target.result), { type: 'array', cellDates: true });
+      let parsed = { error: 'No sheet found in the file.', rows: [] };
+      for (const name of wb.SheetNames || []) {
+        const grid = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '', raw: true });
+        parsed = PaymentUpload.parseGrid(grid);
+        if (!parsed.error) break;
+      }
+      if (parsed.error) {
+        paymentUpload = { rows: [], items: [], fileName: '' };
+        renderPaymentUploadPlan();
+        return toast(parsed.error, 8000);
+      }
+      paymentUpload.rows = parsed.rows;
+      paymentUpload.fileName = f.name;
+      document.getElementById('puFileName').textContent = `${f.name} · ${parsed.rows.length} rows`;
+      refreshPaymentUploadPlan();
+    } catch (err) {
+      console.error('Payment upload read error:', err);
+      toast('Could not read the file: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(f);
+}
+
+function refreshPaymentUploadPlan() {
+  const date = document.getElementById('puDate').value || iso(today);
+  paymentUpload.items = PaymentUpload.plan(paymentUpload.rows, { markas, payments, date });
+  renderPaymentUploadPlan();
+}
+
+function renderPaymentUploadPlan() {
+  const items = paymentUpload.items || [];
+  const box = document.getElementById('puPreview');
+  const sum = document.getElementById('puSummary');
+  const btn = document.getElementById('puSaveBtn');
+  const ready = items.filter(i => i.status === 'ready');
+  btn.disabled = !ready.length;
+  btn.textContent = ready.length ? `Save ${ready.length} payment${ready.length === 1 ? '' : 's'}` : 'Save payments';
+  if (!items.length) {
+    sum.style.display = 'none';
+    box.innerHTML = '<div class="pay-upload-empty">Choose the daily payment file to see a preview here.</div>';
+    return;
+  }
+  const total = ready.reduce((s, i) => s + i.row.paid, 0);
+  const ded = ready.reduce((s, i) => s + i.row.deductions, 0);
+  const skipped = items.length - ready.length;
+  sum.style.display = '';
+  sum.innerHTML = `<span><b>${ready.length}</b> ready</span><span>Paid <b>${money(total)}</b></span><span>Deductions <b>${money(ded)}</b></span>` +
+    (skipped ? `<span class="pu-warn"><b>${skipped}</b> will be skipped</span>` : '');
+  const label = { ready: 'Ready', notFound: 'Not found', noAmount: 'No amount', duplicate: 'Already saved' };
+  box.innerHTML = `<table class="pay-upload-table">
+    <thead><tr><th>ROW</th><th>MARKA</th><th>MASTER</th><th>POLICY</th><th class="num">BILL</th><th class="num">DEDUCTIONS</th><th class="num">PAID</th><th class="num">OUTSTANDING</th><th>STATUS</th></tr></thead>
+    <tbody>${items.map(i => `<tr class="pu-${i.status}">
+      <td data-label="Row">${i.row.rowNo}</td>
+      <td data-label="Marka"><b>${escapeHtml(i.row.marka)}</b></td>
+      <td data-label="Master">${escapeHtml(i.party ? i.party.master : i.row.master)}</td>
+      <td data-label="Policy">${escapeHtml(i.row.policy)}</td>
+      <td data-label="Bill" class="num">${money(i.row.billAmount)}</td>
+      <td data-label="Deductions" class="num">${money(i.row.deductions)}</td>
+      <td data-label="Paid" class="num"><b>${money(i.row.paid)}</b></td>
+      <td data-label="Outstanding" class="num">${i.party ? money(i.outstanding) : '—'}</td>
+      <td data-label="Status"><span class="pu-badge">${label[i.status]}</span>${i.note && i.status !== 'ready' ? `<small>${escapeHtml(i.note)}</small>` : ''}</td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+async function savePaymentUpload() {
+  const ready = (paymentUpload.items || []).filter(i => i.status === 'ready');
+  if (!ready.length) return toast('No payment rows ready to save.');
+  const btn = document.getElementById('puSaveBtn');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+  const mode = document.getElementById('puMode').value;
+  const ref = (document.getElementById('puRef').value || '').trim();
+  const done = [];
+  for (const item of ready) {
+    const payment = PaymentUpload.apply(item, { mode, ref, today: iso(today), uid, money, fileName: paymentUpload.fileName, nextDateFor: m => autoNextDate(m, 2) });
+    payments.push(payment);
+    done.push({ m: item.party, payment });
+  }
+  save();
+  renderAll();
+  let failed = 0;
+  for (const d of done) {
+    if (!(await savePartyWithPayment(d.m, d.payment))) failed++;
+  }
+  closeModal('paymentUploadModal');
+  renderAll();
+  const total = done.reduce((s, d) => s + d.payment.amount, 0);
+  if (failed) toast(`⚠ ${done.length - failed} payments saved, ${failed} NOT saved. Please upload the file again for the rest.`, 12000);
+  else toast(`✓ ${done.length} payments saved (${money(total)}).`, 6000);
+}
+
+function downloadPaymentUploadTemplate() {
+  if (typeof XLSX === 'undefined') return toast('Excel engine is still loading. Please try again in a moment.');
+  const ws = XLSX.utils.aoa_to_sheet([PaymentUpload.TEMPLATE_HEADERS, ['AKSHAY TEX', 'AKYT', '3% PARTY', 153006, 0, 0, 0, 2916, 150090, 79, 'BABLU SHERA MASTER']]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Daily Payments');
+  XLSX.writeFile(wb, 'Daily_Payments_Upload_Format.xlsx');
+}
+
+window.openPaymentUpload = openPaymentUpload;
+window.onPaymentUploadFile = onPaymentUploadFile;
+window.refreshPaymentUploadPlan = refreshPaymentUploadPlan;
+window.savePaymentUpload = savePaymentUpload;
+window.downloadPaymentUploadTemplate = downloadPaymentUploadTemplate;
+
 function openBillDetails(markaId) {
   const m = markas.find(x => x.id === markaId);
   if (!m) return;
