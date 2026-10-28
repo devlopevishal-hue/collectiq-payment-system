@@ -4,54 +4,32 @@
 
 ---
 
-## 🚀 Quick Start & Deployment Guide
+## 🚀 How it runs
 
-### Option 1: Deploy on GitHub & Run with Node.js SQLite Server
-```bash
-# 1. Clone the repository
-git clone https://github.com/<your-username>/collectiq-payment-collection-system.git
-cd collectiq-payment-collection-system
+* **App**: a static web app (this repository), served from GitHub Pages or any static host. Phones can install it (PWA).
+* **Live database**: Supabase (Postgres + Realtime), Mumbai region. Setup and the move to logins: [`supabase/README.md`](supabase/README.md).
+* **Logins**: Supabase Auth. Each person has their own email and password; passwords are stored hashed by Supabase and never in the app, the repository or the database records.
+* **Access**: the database itself only lets people on the staff list (`cq_staff`) read or change anything. Settings and deleting are for admins. The public app key on its own gets nothing.
+* **Change log**: every save is written to `cq_audit` by the database (who, when, what changed). Admins see it on the Users page (🕘 Change log). A deleted payment or party is kept there in full.
 
-# 2. Start the built-in SQLite server (Requires Node.js 22+ - Zero external npm dependencies)
-npm start
-# or: node server.js
-```
-* **Local Web Interface**: [http://localhost:3000](http://localhost:3000)
-* **Mobile / LAN Access**: Open `http://<SERVER_IP>:3000` (e.g. `http://192.168.1.50:3000`) from any smartphone, tablet, or laptop on your office network.
-* **Database Storage**: Stored permanently in SQLite WAL mode at `data/collectiq.db`.
+The office SQLite server (`server.js`, `npm start`) is the old LAN mode and is not used with Supabase.
 
 ---
 
-### Option 2: Deploy on GitHub Pages (Static / Serverless Mode)
-1. Push this repository to GitHub.
-2. In GitHub: **Settings** → **Pages** → **Source**: `Deploy from a branch` (`main` / root).
-3. The app is live instantly! For multi-device cloud synchronization on GitHub Pages, connect Firebase Firestore in **Setup** → **Cloud Database**.
+## 👥 Logins and roles
 
----
+The admin manages logins on **Doer & Access Control** (Users page): create a login, change a role or doer name, reset a password, remove a login. New and reset passwords are shown once, to give to the person; everyone can change their own password after logging in.
 
-## 👥 Default User Credentials & Role-Based Access Control
+You can log in with your full email, the part before @ (e.g. `surendra`) or your doer name.
 
-All existing Doers and Administrators are pre-configured in SQLite:
+| Role | Access |
+| :--- | :--- |
+| **Admin** | Everything, including logins, settings, reversing payments and clearing data |
+| **Super Doer** | Full visibility, reports, logins and settings |
+| **Accounts / CRM / CRR / PC** | Their department's screens across all parties |
+| **Doer** | Own Markas, visits, FMS tasks and help tickets |
 
-| Name / Doer | Email / Username | Password | Role | Access Scope |
-| :--- | :--- | :--- | :--- | :--- |
-| **Vishal (Admin)** | `devlope.vishal@gmail.com` | `1234` | **Admin** | Full Organization Access & User Control |
-| **CollectIQ Admin** | `admin@collectiq.com` | `1234` | **Admin** | Full System & Management Control |
-| **Accounts Team** | `accounts@collectiq.com` / `accounts` | `1234` | **User (Accounts)** | Account Verification, FMS-1 & Rokad |
-| **CRM Team** | `crm@collectiq.com` / `crm` | `1234` | **User (CRM)** | Customer Claims & CRM Escalations |
-| **Sales HOD** | `sales.hod@collectiq.com` / `sales.hod` | `1234` | **User (HOD)** | Sales Escalations & Help Tickets |
-| **Surendra** | `surendra@collectiq.com` / `surendra` | `1234` | **User (Doer)** | Own Markas, Visits, FMS & Tickets Only |
-| **Mahavir** | `mahavir@collectiq.com` / `mahavir` | `1234` | **User (Doer)** | Own Markas, Visits, FMS & Tickets Only |
-| **Girdharilal** | `girdharilal@collectiq.com` / `girdharilal` | `1234` | **User (Doer)** | Own Markas, Visits, FMS & Tickets Only |
-| **Sajjan** | `sajjan@collectiq.com` / `sajjan` | `1234` | **User (Doer)** | Own Markas, Visits, FMS & Tickets Only |
-| **Anil Sharma** | `anil.sharma@collectiq.com` / `anil` | `1234` | **User (Doer)** | Own Markas, Visits, FMS & Tickets Only |
-| **Manish Agarwal** | `manish.agarwal@collectiq.com` / `manish` | `1234` | **User (Doer)** | Own Markas, Visits, FMS & Tickets Only |
-| **Ravi Kant Sharma** | `ravi.sharma@collectiq.com` / `ravi` | `1234` | **User (Doer)** | Own Markas, Visits, FMS & Tickets Only |
-| **Saurav Bhai** | `saurav@collectiq.com` / `saurav` | `1234` | **User (Doer)** | Own Markas, Visits, FMS & Tickets Only |
-| **Bhavesh Bhai** | `bhavesh@collectiq.com` / `bhavesh` | `1234` | **User (Doer)** | Own Markas, Visits, FMS & Tickets Only |
-| **Process Coordinator** | `pc@collectiq.com` / `pc` | `1234` | **User (Doer)** | FMS-2 Coordinator & Own Markas |
-
-> **Convenient Login**: You can enter either your full email (e.g. `accounts@collectiq.com`) or simple username (`accounts`) with password `1234`.
+Access comes from the role on the staff list only, never from the email or name.
 
 ---
 
@@ -99,8 +77,15 @@ Every module features 1-click **Excel Export** with formatted dates, INR currenc
 - On save, Paid + deductions settle the party's oldest bills first; the Paid Amount is recorded as the payment (with the deductions kept on it). Anything above the dues becomes an advance credit.
 - Total and blank rows are skipped. A row already saved for the same party, date and amount is not saved twice, so uploading the same file again is safe.
 
+## ↶ Reversing a payment
+
+A payment entered by mistake (wrong party, wrong amount, entered twice) is reversed by an admin from the party's **Payment Ledger** (↶ Reverse). The bills get back exactly what the payment took, its follow-up lines are removed, and a "Payment Reversed" line records who did it and why. The party and the payment are changed together in one step, and the change log keeps the deleted payment.
+
+When a payment is saved, the party (with its reduced bills) and the payment record are also saved together in one step: both are saved, or neither is.
+
 ---
 
-## 🔒 Strict Data Isolation
+## 🔒 Data isolation
+The database lets only logged-in staff in. Within the app:
 * **Standard Doers (`role: 'user'`)**: Only see their assigned Markas, their own Field Visits, FMS tasks, Help Tickets (where they are requester, assigned helper, or resolver), and CRM Escalations.
 * **Administrators (`role: 'admin'`)**: Have complete visibility across the whole organization and can manage user credentials, master assignments, and imports.

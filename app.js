@@ -193,27 +193,28 @@ const cloudBase = new Map();
 const partySaveQueue = new Map();
 let F = { followper: 'all', master: 'all', marka: '', min: '', max: '', minCount: '', maxCount: '', from: '', to: '', dateField: 'next', year: '', status: 'all', minDue: '', maxDue: '' };
 
-// User Access Control & Auth State
+// Staff names used for the doer lists until the staff list (cq_staff) has loaded.
+// Logins and passwords are in Supabase Auth, never here.
 const DEFAULT_USERS = [
-  { email: 'devlope.vishal@gmail.com', password: '1234', role: 'admin', followperName: 'all' },
-  { email: 'admin@collectiq.com', password: '1234', role: 'admin', followperName: 'all' },
-  { email: 'accounts@collectiq.com', password: '1234', role: 'accounts', followperName: 'Account Team' },
-  { email: 'crm@collectiq.com', password: '1234', role: 'crm', followperName: 'CRM' },
-  { email: 'sales.hod@collectiq.com', password: '1234', role: 'superuser', followperName: 'Sales HOD' },
-  { email: 'saurav@collectiq.com', password: '1234', role: 'superuser', followperName: 'Saurav Bhai' },
-  { email: 'saurav@bhaskarsilkmills.in', password: '1234', role: 'superuser', followperName: 'Saurav Bhai' },
-  { email: 'bhavesh@collectiq.com', password: '1234', role: 'superuser', followperName: 'Bhavesh Bhai' },
-  { email: 'nayan@collectiq.com', password: '1234', role: 'crr', followperName: 'Nayan Bhai' },
-  { email: 'ravi@collectiq.com', password: '1234', role: 'crr', followperName: 'Ravi Bhai' },
-  { email: 'mahendra@collectiq.com', password: '1234', role: 'crr', followperName: 'Mahendra Bhai' },
-  { email: 'pc@collectiq.com', password: '1234', role: 'pc', followperName: 'Process Coordinator (PC)' },
-  { email: 'surendra@collectiq.com', password: '1234', role: 'user', followperName: 'Surendra' },
-  { email: 'mahavir@collectiq.com', password: '1234', role: 'user', followperName: 'Mahavir' },
-  { email: 'girdharilal@collectiq.com', password: '1234', role: 'user', followperName: 'Girdharilal' },
-  { email: 'sajjan@collectiq.com', password: '1234', role: 'user', followperName: 'Sajjan' },
-  { email: 'anil.sharma@collectiq.com', password: '1234', role: 'user', followperName: 'Anil Sharma' },
-  { email: 'manish.agarwal@collectiq.com', password: '1234', role: 'user', followperName: 'Manish Agarwal' },
-  { email: 'ravi.sharma@collectiq.com', password: '1234', role: 'user', followperName: 'Ravi Kant Sharma' }
+  { email: 'devlope.vishal@gmail.com', role: 'admin', followperName: 'all' },
+  { email: 'admin@collectiq.com', role: 'admin', followperName: 'all' },
+  { email: 'accounts@collectiq.com', role: 'accounts', followperName: 'Account Team' },
+  { email: 'crm@collectiq.com', role: 'crm', followperName: 'CRM' },
+  { email: 'sales.hod@collectiq.com', role: 'superuser', followperName: 'Sales HOD' },
+  { email: 'saurav@collectiq.com', role: 'superuser', followperName: 'Saurav Bhai' },
+  { email: 'saurav@bhaskarsilkmills.in', role: 'superuser', followperName: 'Saurav Bhai' },
+  { email: 'bhavesh@collectiq.com', role: 'superuser', followperName: 'Bhavesh Bhai' },
+  { email: 'nayan@collectiq.com', role: 'crr', followperName: 'Nayan Bhai' },
+  { email: 'ravi@collectiq.com', role: 'crr', followperName: 'Ravi Bhai' },
+  { email: 'mahendra@collectiq.com', role: 'crr', followperName: 'Mahendra Bhai' },
+  { email: 'pc@collectiq.com', role: 'pc', followperName: 'Process Coordinator (PC)' },
+  { email: 'surendra@collectiq.com', role: 'user', followperName: 'Surendra' },
+  { email: 'mahavir@collectiq.com', role: 'user', followperName: 'Mahavir' },
+  { email: 'girdharilal@collectiq.com', role: 'user', followperName: 'Girdharilal' },
+  { email: 'sajjan@collectiq.com', role: 'user', followperName: 'Sajjan' },
+  { email: 'anil.sharma@collectiq.com', role: 'user', followperName: 'Anil Sharma' },
+  { email: 'manish.agarwal@collectiq.com', role: 'user', followperName: 'Manish Agarwal' },
+  { email: 'ravi.sharma@collectiq.com', role: 'user', followperName: 'Ravi Kant Sharma' }
 ];
 
 let hasLoadedCloudData = false;
@@ -228,59 +229,7 @@ function isOnlineMode() {
   return isLocalServer();
 }
 
-// The old Excel report built into the app (latest-report-data.js) only fills an
-// app that has no live database. With the live database it is never shown or
-// mixed in: devices that did so showed different parties and totals.
-function seedDataAllowed() {
-  return !useSupabase();
-}
-
-function ensureSeedDataLoaded() {
-  if (!seedDataAllowed()) return;
-  if (window._explicitAdminReset || localStorage.getItem('collectiq_admin_cleared') || localStorage.getItem('collectiq_live_mode')) return;
-  if ((!markas || markas.length === 0) && window.latestReportCases && Array.isArray(window.latestReportCases) && window.latestReportCases.length > 0) {
-    markas = JSON.parse(JSON.stringify(window.latestReportCases));
-    // Guarantee ALL parties/Markas have their complete bill list from the latest report
-    if (seedDataAllowed() && window.latestReportCases && Array.isArray(window.latestReportCases)) {
-      window.latestReportCases.forEach(fresh => {
-        const freshKey = PartyCheck.partyKey(fresh.marka, fresh.master);
-        const existing = markas.find(x => PartyCheck.partyKey(x.marka, x.master) === freshKey);
-        if (existing) {
-          if ((existing.bills || []).length < (fresh.bills || []).length) {
-            existing.bills = JSON.parse(JSON.stringify(fresh.bills));
-          }
-        } else if (!markas.some(x => String(x.id) === String(fresh.id) && PartyCheck.normKey(x.marka) === PartyCheck.normKey(fresh.marka))) {
-          // Not here yet (a party whose master was changed in the app keeps its record ID and is not re-added)
-          markas.push(JSON.parse(JSON.stringify(fresh)));
-        }
-      });
-      localSet('collectiq_markas_v4', JSON.stringify(markas));
-    }
-
-    markas.forEach(m => {
-      if (!m.escalations) m.escalations = [];
-      if (!m.history) m.history = [];
-      if (!m.bills) m.bills = [];
-      if (!m.fmsTasks) m.fmsTasks = [];
-      if (!m.owner || m.owner === 'Unassigned') {
-        const defaultOwner = getMasterFollowper(m.master);
-        if (defaultOwner && defaultOwner !== 'Unassigned') {
-          m.owner = defaultOwner;
-        }
-      }
-      if (!m.crr || m.crr === 'Unassigned') {
-        const defaultCrr = getMasterCrr(m.master);
-        if (defaultCrr && defaultCrr !== 'Unassigned') {
-          m.crr = defaultCrr;
-        }
-      }
-    });
-    localSet('collectiq_markas_v4', JSON.stringify(markas));
-  }
-}
-
 function checkAuth() {
-  ensureSeedDataLoaded();
   const storedUser = localStorage.getItem('collectiq_current_user');
   if (storedUser) {
     currentUser = JSON.parse(storedUser);
@@ -290,10 +239,11 @@ function checkAuth() {
     document.getElementById('userAvatar').textContent = currentUser.email.substring(0, 2).toUpperCase();
     
     const isAdmin = currentUser.role === 'admin' || currentUser.role === 'superuser';
-    const isMasterAdmin = currentUser.email === 'devlope.vishal@gmail.com' || currentUser.email === 'admin@collectiq.com' || (currentUser.role === 'admin' && currentUser.email.includes('admin'));
-    const isPcOrAdmin = isAdmin || currentUser.role === 'pc' || (currentUser.email && (currentUser.email.toLowerCase().includes('pc') || currentUser.email.toLowerCase().includes('coordinator'))) || (currentUser.followperName && (currentUser.followperName.toLowerCase().includes('pc') || currentUser.followperName.toLowerCase().includes('coordinator')));
-    const isCrm = currentUser.role === 'crm' || (currentUser.email && currentUser.email.toLowerCase().includes('crm')) || (currentUser.followperName && currentUser.followperName.toLowerCase() === 'crm');
-    const isAccounts = currentUser.role === 'accounts' || (currentUser.email && currentUser.email.toLowerCase().includes('accounts'));
+    // Access comes from the role on the staff list only, never from the email or name.
+    const isMasterAdmin = currentUser.role === 'admin';
+    const isPcOrAdmin = isAdmin || currentUser.role === 'pc';
+    const isCrm = currentUser.role === 'crm';
+    const isAccounts = currentUser.role === 'accounts';
     const isCrr = currentUser.role === 'crr';
 
     // FMS Pre-planned is only for PC / Admin
@@ -372,8 +322,8 @@ async function handleLoginSubmit(e) {
     localSet('collectiq_device_id', currentDeviceId);
   }
 
-  // 1. Try local SQLite Backend if available
-  if (isOnlineMode()) {
+  // 1. Office SQLite server (LAN mode), only when the app is not on Supabase
+  if (isOnlineMode() && !useSupabase()) {
     try {
       const response = await fetch('/api/login', {
         method: 'POST',
@@ -406,74 +356,108 @@ async function handleLoginSubmit(e) {
     }
   }
 
-  // 2. Client & Cloud Database Auth Evaluation
-  const userList = (users && users.length > 0) ? users : DEFAULT_USERS;
-
-  // Find user by email, prefix, or Doer name
-  const matchedUser = userList.find(u => {
-    const uEmail = (u.email || '').toLowerCase().trim();
-    const uDoer = (u.followperName || '').toLowerCase().trim();
-    const uPrefix = uEmail.split('@')[0];
-    return (uEmail === inputVal || uDoer === inputVal || uPrefix === inputVal);
-  });
-
-  // CASE 1: User does not exist
-  if (!matchedUser) {
-    showLoginAlert('error', 'User Does Not Exist', `No registered account found for "${inputVal}". Please check your spelling or contact Admin.`);
-    toast('User does not exist.');
+  // 2. Supabase Auth: the password is checked by Supabase, and the role comes
+  // from the staff list in the database.
+  if (!useSupabase()) {
+    showLoginAlert('error', 'Live Database Not Set Up', 'The live database is not configured (db-config.js). Please contact Admin.');
     return;
   }
-
-  // CASE 2: Incorrect Password
-  const expectedPwd = matchedUser.password || '1234';
-  const isPassMatch = (password === expectedPwd || (expectedPwd === '1234' && password === '1234'));
-
-  if (!isPassMatch) {
-    showLoginAlert('error', 'Incorrect Password', 'The password you entered is incorrect. Please check your password and try again.');
-    toast('Incorrect password.');
-    return;
-  }
-
-  // CASE 3: Active session detected on another device
-  const now = Date.now();
-  let sessionSwitched = false;
-  if (matchedUser.activeDeviceId && matchedUser.activeDeviceId !== currentDeviceId && matchedUser.lastActiveTime && (now - matchedUser.lastActiveTime < 20 * 60 * 1000)) {
-    sessionSwitched = true;
-  }
-
-  // Update device session status on the user record
-  matchedUser.activeDeviceId = currentDeviceId;
-  matchedUser.lastActiveTime = now;
-  matchedUser.lastLoginDevice = navigator.userAgent ? (navigator.userAgent.includes('Mobile') ? 'Mobile Device' : 'Desktop Browser') : 'Web';
-
-  currentUser = {
-    email: matchedUser.email,
-    role: matchedUser.role,
-    followperName: matchedUser.followperName,
-    deviceId: currentDeviceId
-  };
-  window.currentUser = currentUser;
-  localSet('collectiq_current_user', JSON.stringify(currentUser));
-  
-  checkAuth();
-  await syncWithDatabase();
-  renderAll();
-
-  if (sessionSwitched) {
-    toast(`Session active on another device transferred to this device.`);
-  } else {
-    toast(`Welcome, ${matchedUser.followperName || matchedUser.email}! Logged in successfully.`);
+  const btn = document.getElementById('loginSubmitBtn');
+  if (btn) btn.disabled = true;
+  try {
+    const user = await getStaffAuth().signIn(inputVal, password);
+    openSignedInSession(user);
+    toast(`Welcome, ${user.followperName && user.followperName !== 'all' ? user.followperName : user.email}! Logged in successfully.`);
+  } catch (err) {
+    if (err && err.code === 'bad-login') {
+      showLoginAlert('error', 'Incorrect Login', 'The email/username or password is wrong. Please try again, or ask the Admin to reset your password.');
+    } else if (err && err.code === 'no-access') {
+      showLoginAlert('error', 'No Access', err.message);
+    } else if (err && err.code === 'network') {
+      showLoginAlert('warning', 'No Internet', 'Could not reach the live database. Please check the internet and try again.');
+    } else {
+      showLoginAlert('error', 'Login Failed', (err && err.message) || 'Please try again.');
+    }
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
-function logout() {
-  localStorage.removeItem('collectiq_current_user');
+// After a login (or a saved login when the app opens): show the person's
+// screens, open the live database with their login, load the staff list.
+function openSignedInSession(user) {
+  currentUser = { email: user.email, role: user.role, followperName: user.followperName };
+  window.currentUser = currentUser;
+  localSet('collectiq_current_user', JSON.stringify(currentUser));
+  signedIn = true;
+  checkAuth();
+  initFirebase();
+  loadStaffList();
+  renderAll();
+}
+
+// When the app opens: a saved login opens the live database; without one the
+// login screen shows. Offline, the role saved at the last login is used and
+// saves wait on this device until the internet is back.
+async function startSession() {
+  if (!useSupabase()) {
+    initFirebase();
+    return;
+  }
+  const auth = getStaffAuth();
+  let session = null;
+  try { session = await auth.session(); } catch (e) { session = null; }
+  if (!session) {
+    localStorage.removeItem('collectiq_current_user');
+    currentUser = null;
+    window.currentUser = null;
+    checkAuth();
+    return;
+  }
+  try {
+    const user = await auth.profile();
+    if (!user) {
+      await auth.signOut();
+      localStorage.removeItem('collectiq_current_user');
+      currentUser = null;
+      window.currentUser = null;
+      checkAuth();
+      showLoginAlert('error', 'No Access', 'This login is not on the CollectIQ staff list any more. Please ask the Admin.');
+      return;
+    }
+    openSignedInSession(user);
+  } catch (err) {
+    if (!currentUser) { checkAuth(); return; }
+    signedIn = true;
+    initFirebase();
+  }
+}
+
+// The staff list (emails, roles, doer names; no passwords).
+async function loadStaffList() {
+  if (!useSupabase() || !signedIn) return;
+  try {
+    const list = await getStaffAuth().listStaff();
+    if (!list.length) return;
+    users = list;
+    window.users = users;
+    localSet('collectiq_users_v4', JSON.stringify(users));
+    if (currentActiveView === 'users' || currentActiveView === 'userManagement') usersView();
+  } catch (e) {
+    console.warn('Staff list not loaded:', e);
+  }
+}
+
+async function logout() {
+  const pending = firestoreDb && typeof firestoreDb.pendingSaves === 'function' ? firestoreDb.pendingSaves() : 0;
+  if (pending && !confirm(`${pending} change(s) on this device are still waiting for the internet and are not in the live database yet.\n\nIf you log out now they are lost. Log out anyway?`)) return;
+  if (useSupabase()) await getStaffAuth().signOut();
+  // Nothing of the company's data stays on this device after logging out.
+  ['collectiq_current_user', 'collectiq_markas_v4', 'collectiq_rokad_v4', 'collectiq_help_tickets_v4',
+   'collectiq_users_v4', 'collectiq_supabase_outbox'].forEach(k => localStorage.removeItem(k));
   currentUser = null;
-  clearLoginAlert();
-  document.getElementById('loginOverlay').style.display = 'flex';
-  document.getElementById('loginEmail').value = '';
-  document.getElementById('loginPassword').value = '';
-  F.followper = 'all';
+  window.currentUser = null;
+  window.location.reload();
 }
 window.handleLoginSubmit = handleLoginSubmit;
 window.logout = logout;
@@ -695,10 +679,6 @@ function load() {
       localStorage.removeItem('collectiq_markas_v4');
       localStorage.removeItem('collectiq_admin_cleared');
       localSet('collectiq_storage_version', APP_STORAGE_VERSION);
-      if (seedDataAllowed() && window.latestReportCases && Array.isArray(window.latestReportCases) && window.latestReportCases.length > 0) {
-        markas = JSON.parse(JSON.stringify(window.latestReportCases));
-        save(true);
-      }
     }
     const mf = localStorage.getItem('collectiq_master_followpers_v4');
     if (mf) {
@@ -730,28 +710,6 @@ function load() {
       markas = [];
     }
     
-    // Seed fallback if markas is empty (fresh phone / new session)
-    if (seedDataAllowed() && !window._explicitAdminReset && !localStorage.getItem('collectiq_admin_cleared') && (!markas || markas.length === 0) && window.latestReportCases && Array.isArray(window.latestReportCases) && window.latestReportCases.length > 0) {
-      markas = JSON.parse(JSON.stringify(window.latestReportCases));
-    }
-
-    // Guarantee ALL parties/Markas have their complete bill list from the latest report
-    if (seedDataAllowed() && window.latestReportCases && Array.isArray(window.latestReportCases)) {
-      window.latestReportCases.forEach(fresh => {
-        const freshKey = PartyCheck.partyKey(fresh.marka, fresh.master);
-        const existing = markas.find(x => PartyCheck.partyKey(x.marka, x.master) === freshKey);
-        if (existing) {
-          if ((existing.bills || []).length < (fresh.bills || []).length) {
-            existing.bills = JSON.parse(JSON.stringify(fresh.bills));
-          }
-        } else if (!markas.some(x => String(x.id) === String(fresh.id) && PartyCheck.normKey(x.marka) === PartyCheck.normKey(fresh.marka))) {
-          // Not here yet (a party whose master was changed in the app keeps its record ID and is not re-added)
-          markas.push(JSON.parse(JSON.stringify(fresh)));
-        }
-      });
-      localSet('collectiq_markas_v4', JSON.stringify(markas));
-    }
-
     markas.forEach(m => {
       if (!m.escalations) m.escalations = [];
       if (!m.history) m.history = [];
@@ -798,37 +756,13 @@ function load() {
     localSet('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
     window.helpTickets = helpTickets;
 
-    const storedUsers = localStorage.getItem('collectiq_users_v4');
-    const userMap = new Map();
-    if (storedUsers) {
-      try {
-        const parsed = JSON.parse(storedUsers);
-        if (Array.isArray(parsed)) {
-          parsed.forEach(u => {
-            if (u && u.email) {
-              const k = u.email.toLowerCase().trim();
-              if (!userMap.has(k)) userMap.set(k, u);
-            }
-          });
-        }
-      } catch(e) {}
-    }
-
-    DEFAULT_USERS.forEach(defUser => {
-      const k = defUser.email.toLowerCase().trim();
-      if (!userMap.has(k)) {
-        userMap.set(k, { ...defUser });
-      } else {
-        const existing = userMap.get(k);
-        if (existing.password === existing.email || !existing.password || existing.password === 'undefined') {
-          existing.password = defUser.password;
-        }
-        existing.role = defUser.role;
-        existing.followperName = defUser.followperName;
-      }
-    });
-
-    users = Array.from(userMap.values());
+    // Staff names for the doer lists, from the last staff list this device saw
+    // (no passwords: logins are checked by Supabase Auth).
+    let storedUsers = [];
+    try { storedUsers = JSON.parse(localStorage.getItem('collectiq_users_v4') || '[]'); } catch (e) { storedUsers = []; }
+    users = (Array.isArray(storedUsers) && storedUsers.length ? storedUsers : DEFAULT_USERS)
+      .filter(u => u && u.email)
+      .map(u => ({ email: u.email, role: u.role || 'user', followperName: u.followperName || '', active: u.active !== false, hasLogin: !!u.hasLogin }));
     localSet('collectiq_users_v4', JSON.stringify(users));
     window.users = users;
     checkAuth();
@@ -2995,6 +2929,14 @@ function liveToolAllowed(what) {
   return true;
 }
 
+// The same, for a change the database's change log keeps a full copy of (so no
+// backup download is asked for first).
+function liveToolAllowedNoBackup(what) {
+  if (!isAdminUser()) { toast(`❌ Only an admin can ${what}.`, 6000); return false; }
+  if (!firestoreDb) { toast('❌ The live database is not connected.', 6000); return false; }
+  return true;
+}
+
 // Payments and help tickets of a record that moved now point to its new record.
 function repointRecords(fromId, toId, markaName) {
   const sameName = n => !markaName || PartyCheck.normKey(n) === PartyCheck.normKey(markaName);
@@ -3295,7 +3237,7 @@ function helpTicketsView() {
   const curStatus = (F.htStatus || 'All').trim();
   const curPriority = (F.htPriority || 'all').trim();
   const curScope = (F.htScope || 'all').trim();
-  const isCrmUser = currentUser && (currentUser.role === 'crm' || (currentUser.email && currentUser.email.toLowerCase().includes('crm')) || (currentUser.followperName && currentUser.followperName.toLowerCase() === 'crm'));
+  const isCrmUser = currentUser && currentUser.role === 'crm';
   const isAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superuser');
   const isUserRole = currentUser && currentUser.role === 'user' && !isCrmUser && !isAdmin;
   
@@ -3780,7 +3722,7 @@ function crmEscalationsView() {
 
   const curStatus = (F.crmStatus || 'All').trim();
   const curType = (F.crmType || 'all').trim();
-  const isCrmUser = currentUser && (currentUser.role === 'crm' || (currentUser.email && currentUser.email.toLowerCase().includes('crm')) || (currentUser.followperName && currentUser.followperName.toLowerCase() === 'crm'));
+  const isCrmUser = currentUser && currentUser.role === 'crm';
   const isAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superuser');
   const isUserRole = currentUser && currentUser.role === 'user' && !isCrmUser && !isAdmin;
 
@@ -4529,7 +4471,7 @@ function openFollowup(markaId) {
   document.getElementById('claimComplaintBillList').innerHTML = billChecklistHtml || '<p class="modal-copy">No active bills to select.</p>';
 
   // FMS Pre-planned milestones is exclusively for PC / Admin. Hide from regular followpers.
-  const isPcOrAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superuser' || currentUser.role === 'pc' || (currentUser.email && (currentUser.email.toLowerCase().includes('pc') || currentUser.email.toLowerCase().includes('coordinator'))) || (currentUser.followperName && (currentUser.followperName.toLowerCase().includes('pc') || currentUser.followperName.toLowerCase().includes('coordinator'))));
+  const isPcOrAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superuser' || currentUser.role === 'pc');
   const fmsWidgetGroup = document.getElementById('followFmsMilestonesGroup');
   if (fmsWidgetGroup) {
     fmsWidgetGroup.style.display = isPcOrAdmin ? 'block' : 'none';
@@ -4977,10 +4919,9 @@ function enforcePtpDate() {
 // database refuses, this PC goes back to the saved party, so the screen and the
 // database agree, and staff are told to enter the payment again.
 async function savePartyWithPayment(m, payment) {
-  const ok = await saveMarkaCloud(m);
+  const ok = await saveMarkaCloud(m, payment);
   if (ok) {
     if (payment) {
-      savePaymentCloud(payment);
       // Open help tickets of this party show "payment received" to the person
       // who raised them and the helper, with a line in the ticket history.
       const touched = TicketActions.notePaymentOnTickets({ markas, helpTickets }, m, payment, { money });
@@ -5708,6 +5649,7 @@ async function savePayment(e) {
   
   // Apply allocations locally and save
   if (!m.history) m.history = [];
+  const paymentId = uid();
   allocations.forEach(a => {
     const b = m.bills.find(x => String(x.id) === String(a.billId));
     if (b) {
@@ -5721,7 +5663,8 @@ async function savePayment(e) {
           amount: a.amount,
           ref: payRef,
           receiptImage: receiptImage,
-          billId: b.id
+          billId: b.id,
+          paymentId
         });
       } else {
         m.history.push({
@@ -5732,7 +5675,8 @@ async function savePayment(e) {
           amount: a.amount,
           ref: payRef,
           receiptImage: receiptImage,
-          billId: b.id
+          billId: b.id,
+          paymentId
         });
       }
     }
@@ -5755,7 +5699,7 @@ async function savePayment(e) {
   m.lastDate = payDate;
   
   payments.push({
-    id: uid(),
+    id: paymentId,
     date: payDate,
     ref: payRef,
     mode: payMode,
@@ -6178,7 +6122,7 @@ function openPaymentHistory(markaId) {
         <td><span class="status active">${escapeHtml(p.mode || 'Bank transfer')}</span></td>
         <td class="money" style="font-weight:700;color:#087454;">${money(p.amount)}</td>
         <td>${allocDetails || '<small>Direct receipt</small>'}</td>
-        <td><span class="status closed">RECORDED</span>${p.receiptImage ? ` <button type="button" class="row-action" data-receipt="${escapeHtml(String(p.receiptImage))}" onclick="openReceiptViewer('Receipt', this.dataset.receipt)">🖼️ Receipt</button>` : ''}</td>
+        <td><span class="status closed">RECORDED</span>${p.receiptImage ? ` <button type="button" class="row-action" data-receipt="${escapeHtml(String(p.receiptImage))}" onclick="openReceiptViewer('Receipt', this.dataset.receipt)">🖼️ Receipt</button>` : ''}${isAdminUser() && p.id && !String(p.id).startsWith('h_pay_') ? ` <button type="button" class="row-action" style="color:#b42318;" data-pay-id="${escapeHtml(String(p.id))}" onclick="reversePayment(this.dataset.payId)" title="Undo a payment entered by mistake">↶ Reverse</button>` : ''}</td>
       </tr>
     `;
   }).join('') : '<tr><td colspan="6" style="text-align:center;color:#788882;padding:24px;">No payments recorded yet for this Marka in Daily Rokad.</td></tr>';
@@ -6200,6 +6144,50 @@ function openPaymentHistory(markaId) {
   
   openModal('paymentHistoryModal');
 }
+
+// Admin: undo a payment entered by mistake. The party's bills get back what the
+// payment took, and the party and the payment record are saved together in
+// one step on the latest saved copy of the party.
+async function reversePayment(paymentId) {
+  if (!liveToolAllowedNoBackup('reverse a payment')) return;
+  const p = (payments || []).find(x => String(x.id) === String(paymentId));
+  if (!p) return toast('Payment not found.');
+  const m = markas.find(x => String(x.id) === String(p.markaId) && PartyCheck.paymentBelongs(p, x, markas)) ||
+    markas.find(x => PartyCheck.paymentBelongs(p, x, markas));
+  if (!m) return toast('The party of this payment was not found.');
+  const check = PaymentReverse.check(m, p);
+  if (check.error) return toast(`❌ ${check.error}`, 10000);
+  const reason = prompt(`Reverse the payment of ${money(p.amount)} dated ${fmt(p.date)} (${p.mode || 'Payment'} ref: ${p.ref || 'N/A'}) for ${m.marka}?\n\nThe bills get this amount back as due. Please write why:`);
+  if (reason === null) return;
+  if (!reason.trim()) return toast('Please write why the payment is reversed.');
+
+  const by = (currentUser && (currentUser.followperName !== 'all' ? currentUser.followperName : currentUser.email)) || 'Admin';
+  const partyRef = firestoreDb.collection('collectiq_markas').doc(String(m.id));
+  const payRef = firestoreDb.collection('collectiq_payments').doc(String(p.id));
+  let fresh = null;
+  try {
+    await firestoreDb.runTransaction(async tx => {
+      const snap = await tx.get(partyRef);
+      if (!snap.exists) throw new Error('The party is not in the live database.');
+      fresh = snap.data();
+      const r = PaymentReverse.reverse(fresh, p, { today: iso(today), by, reason, money });
+      if (r.error) throw new Error(r.error);
+      tx.set(partyRef, fresh);
+      tx.delete(payRef);
+    });
+  } catch (err) {
+    return toast(`❌ Payment NOT reversed: ${err.message || err}`, 10000);
+  }
+  const i = markas.indexOf(m);
+  if (i !== -1) markas[i] = fresh;
+  cloudBase.set(String(m.id), PartySync.clone(fresh));
+  payments = payments.filter(x => String(x.id) !== String(p.id));
+  save(true);
+  renderAll();
+  openPaymentHistory(m.id);
+  toast(`✓ Payment of ${money(p.amount)} reversed for ${m.marka}.`, 8000);
+}
+window.reversePayment = reversePayment;
 
 function openPaymentHistoryFromBills() {
   const modal = document.getElementById('billModal');
@@ -7188,15 +7176,10 @@ function processImportedRows(rawInput, fileName = 'Imported File') {
 }
 
 async function clearAllData() {
-  const isMasterAdmin = !currentUser || (
-    currentUser.role === 'admin' ||
-    currentUser.role === 'superuser' ||
-    currentUser.email === 'devlope.vishal@gmail.com' ||
-    currentUser.email === 'admin@collectiq.com'
-  );
+  const isMasterAdmin = !!currentUser && currentUser.role === 'admin';
 
   if (!isMasterAdmin) {
-    return toast('Access Denied: Only devlope.vishal@gmail.com and Primary Admin can reset/clear bills data.');
+    return toast('Access Denied: Only an Admin can reset/clear bills data.');
   }
 
   if (!confirm('⚠️ Are you sure you want to clear all existing Markas, Bills, and Collection Data?\n\nThis will give you a clean slate to upload your new dataset. (User logins and accounts will be preserved).')) {
@@ -7249,7 +7232,6 @@ async function clearAllData() {
       await firestoreDb.collection('collectiq_config').doc('settings').set({
         masterFollowpers,
         masterCrrs,
-        users,
         lastClearedAt: clearTimestamp,
         version: APP_STORAGE_VERSION,
         updatedAt: clearTimestamp
@@ -7259,7 +7241,6 @@ async function clearAllData() {
         markas: [],
         payments: [],
         helpTickets: [],
-        users: users,
         masterFollowpers: masterFollowpers,
         updatedAt: clearTimestamp
       });
@@ -7726,34 +7707,49 @@ const SVG_EYE_OFF = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none"
 function usersView() {
   const container = document.getElementById('userManagement') || document.getElementById('users');
   if (!container) return;
-  
+
   const tbody = document.getElementById('usersTableBody');
   if (tbody) {
+    const me = currentUser ? currentUser.email.toLowerCase() : '';
     tbody.innerHTML = (users || []).map(u => {
-      const isPrimaryAdmin = u.email === 'admin@collectiq.com' || u.email === 'devlope.vishal@gmail.com';
-      const roleBadge = u.role === 'admin' ? 
-        '<span class="status overdue" style="font-weight:800; padding:2px 8px;">ADMIN</span>' : 
-        (u.role === 'superuser' || u.role === 'super doer') ? 
-        '<span class="status closed" style="background:#fef3c7; color:#92400e; font-weight:800; border:1px solid #fde68a; padding:2px 8px;">SUPER DOER</span>' : 
-        '<span class="status active" style="font-weight:700; padding:2px 8px;">DOER</span>';
-      
+      const roleBadge = u.role === 'admin' ?
+        '<span class="status overdue" style="font-weight:800; padding:2px 8px;">ADMIN</span>' :
+        (u.role === 'superuser' || u.role === 'super doer') ?
+        '<span class="status closed" style="background:#fef3c7; color:#92400e; font-weight:800; border:1px solid #fde68a; padding:2px 8px;">SUPER DOER</span>' :
+        `<span class="status active" style="font-weight:700; padding:2px 8px;">${escapeHtml((u.role || 'user') === 'user' ? 'DOER' : String(u.role).toUpperCase())}</span>`;
+      const login = u.hasLogin
+        ? '<span class="status active" style="padding:2px 8px;">✓ Has login</span>'
+        : '<span class="status overdue" style="padding:2px 8px;">No login yet</span>';
+      const isMe = u.email.toLowerCase() === me;
       return `
         <tr>
           <td><b>${escapeHtml(u.email)}</b></td>
-          <td><code style="background:#edf3f0; padding:2px 6px; border-radius:4px; font-weight:600;">${escapeHtml(u.password)}</code></td>
+          <td>${login}</td>
           <td>${roleBadge}</td>
           <td><b style="color:#087454;">${escapeHtml(u.followperName || '—')}</b></td>
           <td>
-            <button onclick="openEditUser('${escapeHtml(u.email)}')" class="row-action" style="background:#087454;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;margin-right:4px;" title="Edit Access & Password">Edit Access & Pwd</button>
-            ${isPrimaryAdmin 
-              ? '<span style="color:#75847e; font-size:11px;">Primary Admin</span>' 
-              : `<button onclick="deleteUser('${escapeHtml(u.email)}')" class="row-action" style="background:#d85a54;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;">Delete</button>`}
+            <button type="button" data-email="${escapeHtml(u.email)}" onclick="openEditUser(this.dataset.email)" class="row-action" style="background:#087454;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;margin-right:4px;">Edit Access</button>
+            ${u.hasLogin ? `<button type="button" data-email="${escapeHtml(u.email)}" onclick="openChangePassword(this.dataset.email)" class="row-action" style="padding:4px 8px;border-radius:4px;cursor:pointer;margin-right:4px;">${isMe ? 'Change Password' : 'Reset Password'}</button>` : ''}
+            ${isMe
+              ? '<span style="color:#75847e; font-size:11px;">You</span>'
+              : `<button type="button" data-email="${escapeHtml(u.email)}" onclick="deleteUser(this.dataset.email)" class="row-action" style="background:#d85a54;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;">Remove</button>`}
           </td>
         </tr>
       `;
     }).join('');
   }
-  
+
+  const missing = (users || []).filter(u => u.active !== false && !u.hasLogin).length;
+  const bulk = document.getElementById('usersBulkBar');
+  if (bulk) {
+    bulk.innerHTML = missing
+      ? `<button type="button" class="btn primary" onclick="createMissingLogins()">Create logins for ${missing} staff without one</button>`
+      : '';
+  }
+
+  const newPw = document.getElementById('newUserPassword');
+  if (newPw && !newPw.value) newPw.value = CollectIQAuth.generatePassword();
+
   const dList = document.getElementById('doersDatalist');
   if (dList) {
     dList.innerHTML = allFollowpers().filter(f => f !== 'Unassigned').map(d => `<option value="${escapeHtml(d)}">`).join('');
@@ -7773,16 +7769,28 @@ function togglePasswordVisibility(inputId, btnEl) {
 }
 window.togglePasswordVisibility = togglePasswordVisibility;
 
+// Logins are managed in Supabase (only an admin can), so these screens need
+// the live database.
+function staffAdminReady() {
+  if (!isAdminUser()) { toast('❌ Only an admin can manage logins.', 6000); return false; }
+  if (!useSupabase() || !signedIn) { toast('❌ The live database is not connected.', 6000); return false; }
+  return true;
+}
+
+function fullStaffEmail(v) {
+  const e = String(v || '').trim().toLowerCase();
+  return !e ? '' : e.includes('@') ? e : e.replace(/\s+/g, '.') + CollectIQAuth.DEFAULT_DOMAIN;
+}
+
 function openEditUser(email) {
-  const user = (users || []).find(u => u.email.toLowerCase() === email.toLowerCase());
+  const user = (users || []).find(u => u.email.toLowerCase() === String(email).toLowerCase());
   if (!user) return toast('User not found.');
 
   document.getElementById('editUserOriginalEmail').value = user.email;
   document.getElementById('editUserEmail').value = user.email;
   document.getElementById('editUserRole').value = user.role || 'user';
   document.getElementById('editUserFollowper').value = user.followperName === 'all' ? '' : (user.followperName || '');
-  document.getElementById('editUserPassword').value = user.password || '1234';
-  
+
   onEditUserRoleChange();
   openModal('editUserModal');
 }
@@ -7799,69 +7807,43 @@ window.onEditUserRoleChange = onEditUserRoleChange;
 
 async function handleSaveEditUser(e) {
   if (e && typeof e.preventDefault === 'function') e.preventDefault();
-  const origEmail = document.getElementById('editUserOriginalEmail').value.trim().toLowerCase();
-  const email = (document.getElementById('editUserEmail').value || '').trim().toLowerCase();
+  if (!staffAdminReady()) return;
+  const email = document.getElementById('editUserOriginalEmail').value.trim().toLowerCase();
   const role = document.getElementById('editUserRole').value;
   const fName = document.getElementById('editUserFollowper') ? document.getElementById('editUserFollowper').value.trim() : '';
-  const password = document.getElementById('editUserPassword').value.trim();
+  const user = (users || []).find(u => u.email.toLowerCase() === email);
+  if (!user) return toast('User not found.');
+  const followperName = role === 'admin' ? 'all' : (fName || email.split('@')[0]);
 
-  if (!email) return toast('Email is required.');
-  if (!password) return toast('Password is required.');
-
-  const userIdx = users.findIndex(u => u.email.toLowerCase() === origEmail);
-  if (userIdx < 0) return toast('User not found.');
-
-  const linkedDoer = (role === 'admin') ? 'all' : (fName || email.split('@')[0]);
-
-  users[userIdx] = {
-    email,
-    password,
-    role,
-    followperName: linkedDoer
-  };
-
-  localSet('collectiq_users_v4', JSON.stringify(users));
-
-  if (currentUser && currentUser.email.toLowerCase() === origEmail) {
-    currentUser.email = email;
+  try {
+    await getStaffAuth().saveStaff({ email, role, followperName, active: user.active !== false });
+  } catch (err) {
+    return toast(`❌ Not saved: ${err.message}`, 8000);
+  }
+  if (currentUser && currentUser.email.toLowerCase() === email) {
     currentUser.role = role;
-    currentUser.followperName = linkedDoer;
-    currentUser.password = password;
+    currentUser.followperName = followperName;
     localSet('collectiq_current_user', JSON.stringify(currentUser));
+    checkAuth();
   }
-
-  if (isOnlineMode()) {
-    try {
-      await fetch('/api/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(users[userIdx])
-      });
-      await syncWithDatabase();
-    } catch(err) {
-      console.warn('API sync error:', err);
-    }
-  }
-
-  save();
-  saveConfigCloud();
   closeModal('editUserModal');
+  await loadStaffList();
   renderAll();
-  toast(`User "${email}" access & password updated successfully!`);
+  toast(`✓ Access for ${email} saved.`);
 }
 window.handleSaveEditUser = handleSaveEditUser;
 
 function openChangePassword(targetEmail) {
-  const isAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superuser');
   const emailToChange = targetEmail || (currentUser ? currentUser.email : '');
   if (!emailToChange) return toast('Please log in first.');
 
   const isSelf = currentUser && currentUser.email.toLowerCase() === emailToChange.toLowerCase();
-  const isAdminReset = isAdmin && !isSelf;
+  const isAdminReset = isAdminUser() && !isSelf;
+  if (!isSelf && !isAdminReset) return toast('❌ Only an admin can reset another person\'s password.');
 
   document.getElementById('changePasswordTargetEmail').value = emailToChange;
   document.getElementById('changePasswordIsAdminReset').value = isAdminReset ? 'true' : 'false';
-  
+
   const titleEl = document.getElementById('changePasswordModalTitle');
   if (titleEl) titleEl.textContent = isAdminReset ? 'Reset User Password' : 'Change Your Password';
 
@@ -7880,14 +7862,14 @@ function openChangePassword(targetEmail) {
 
   const newInput = document.getElementById('newPasswordInput');
   if (newInput) {
-    newInput.value = '';
-    newInput.type = 'password';
+    newInput.value = isAdminReset ? CollectIQAuth.generatePassword() : '';
+    newInput.type = isAdminReset ? 'text' : 'password';
   }
 
   const confirmInput = document.getElementById('confirmNewPasswordInput');
   if (confirmInput) {
-    confirmInput.value = '';
-    confirmInput.type = 'password';
+    confirmInput.value = isAdminReset ? newInput.value : '';
+    confirmInput.type = isAdminReset ? 'text' : 'password';
   }
 
   document.querySelectorAll('#changePasswordModal .pwd-toggle-btn').forEach(btn => {
@@ -7903,56 +7885,28 @@ async function handleChangePasswordSubmit(e) {
   e.preventDefault();
   const targetEmail = document.getElementById('changePasswordTargetEmail').value.trim();
   const isAdminReset = document.getElementById('changePasswordIsAdminReset').value === 'true';
-  const currentPassword = document.getElementById('currentPasswordInput') ? document.getElementById('currentPasswordInput').value.trim() : '';
+  const currentPassword = document.getElementById('currentPasswordInput') ? document.getElementById('currentPasswordInput').value : '';
   const newPassword = document.getElementById('newPasswordInput').value.trim();
   const confirmNewPassword = document.getElementById('confirmNewPasswordInput').value.trim();
 
-  if (!newPassword) {
-    return toast('Please enter a new password.');
-  }
-  if (newPassword.length < 3) {
-    return toast('Password should be at least 3 characters.');
-  }
-  if (newPassword !== confirmNewPassword) {
-    return toast('New password and confirmation do not match.');
-  }
+  if (!newPassword) return toast('Please enter a new password.');
+  if (newPassword.length < 8) return toast('The password must be at least 8 characters.');
+  if (newPassword !== confirmNewPassword) return toast('New password and confirmation do not match.');
+  if (!useSupabase() || !signedIn) return toast('❌ The live database is not connected.', 6000);
 
-  const userObj = users.find(u => u.email.toLowerCase() === targetEmail.toLowerCase());
-  if (!userObj) return toast('User not found.');
-
-  if (!isAdminReset && userObj.password !== currentPassword && userObj.password !== '1234' && currentPassword !== '1234') {
-    return toast('Current password is incorrect.');
-  }
-
-  userObj.password = newPassword;
-  localSet('collectiq_users_v4', JSON.stringify(users));
-
-  if (currentUser && currentUser.email.toLowerCase() === targetEmail.toLowerCase()) {
-    currentUser.password = newPassword;
-    localSet('collectiq_current_user', JSON.stringify(currentUser));
-  }
-
-  if (isOnlineMode()) {
-    try {
-      await fetch('/api/users/change-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: targetEmail,
-          currentPassword,
-          newPassword,
-          isAdmin: isAdminReset
-        })
-      });
-      await syncWithDatabase();
-    } catch (err) {
-      console.warn('API error:', err);
+  try {
+    if (isAdminReset) {
+      if (!staffAdminReady()) return;
+      await getStaffAuth().setPassword(targetEmail, newPassword);
+    } else {
+      await getStaffAuth().changeOwnPassword(currentPassword, newPassword);
     }
+  } catch (err) {
+    return toast(`❌ ${err.message}`, 8000);
   }
 
   closeModal('changePasswordModal');
-  renderAll();
-  toast('Password updated successfully!');
+  toast(isAdminReset ? `✓ New password set for ${targetEmail}. Give it to them in person or on the phone.` : '✓ Your password is changed.', 8000);
 }
 window.handleChangePasswordSubmit = handleChangePasswordSubmit;
 
@@ -7967,81 +7921,146 @@ window.onUserRoleChange = onUserRoleChange;
 
 async function handleCreateUser(e) {
   if (e && typeof e.preventDefault === 'function') e.preventDefault();
-  const email = (document.getElementById('newUserEmail').value || '').trim().toLowerCase();
-  const password = document.getElementById('newUserPassword') ? document.getElementById('newUserPassword').value.trim() : '1234';
+  if (!staffAdminReady()) return;
+  const email = fullStaffEmail(document.getElementById('newUserEmail').value);
+  const password = document.getElementById('newUserPassword') ? document.getElementById('newUserPassword').value.trim() : '';
   const role = document.getElementById('newUserRole').value;
   const fName = document.getElementById('newUserFollowper') ? document.getElementById('newUserFollowper').value.trim() : '';
-  
-  if (!email) {
-    return toast('Email address or username is required.');
-  }
-  if (!password) {
-    return toast('Password is required.');
-  }
 
-  const linkedDoer = (role === 'admin') ? 'all' : (fName || email.split('@')[0]);
+  if (!email) return toast('Email address or username is required.');
+  if (password.length < 8) return toast('The password must be at least 8 characters.');
+  const followperName = role === 'admin' ? 'all' : (fName || email.split('@')[0]);
 
-  const payload = {
-    email,
-    password,
-    role,
-    followperName: linkedDoer
-  };
-
-  const existingIdx = users.findIndex(u => u.email.toLowerCase() === email.toLowerCase());
-  if (existingIdx >= 0) {
-    users[existingIdx] = payload;
-  } else {
-    users.push(payload);
+  try {
+    await getStaffAuth().createLogin({ email, role, followperName }, password);
+  } catch (err) {
+    return toast(`❌ Login not created: ${err.message}`, 8000);
   }
 
-  save();
   document.getElementById('newUserEmail').value = '';
   if (document.getElementById('newUserPassword')) document.getElementById('newUserPassword').value = '';
   if (document.getElementById('newUserFollowper')) document.getElementById('newUserFollowper').value = '';
+  await loadStaffList();
   renderAll();
-
-  if (isLocalServer()) {
-    try {
-      await fetch('/api/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      await syncWithDatabase();
-    } catch (err) {
-      console.warn('API warning:', err);
-    }
-  }
-
-  toast(`✓ User "${email}" saved with role "${role === 'superuser' ? 'Super Doer' : role === 'admin' ? 'Admin' : 'Doer'}". Live sync active.`);
+  showNewLogins([{ email, followperName, password }]);
 }
 window.handleCreateUser = handleCreateUser;
 
 async function deleteUser(email) {
-  if (email === 'admin@collectiq.com') return toast('Cannot delete system administrator account.');
-  if (!confirm(`Are you sure you want to delete the user account for ${email}?`)) return;
-
-  users = users.filter(u => u.email.toLowerCase() !== email.toLowerCase());
-  save();
+  if (!staffAdminReady()) return;
+  if (currentUser && currentUser.email.toLowerCase() === String(email).toLowerCase()) return toast('You cannot remove your own login.');
+  if (!confirm(`Remove ${email}?\n\nTheir login stops working at once. Their parties, follow-ups and payments stay as they are.`)) return;
+  try {
+    await getStaffAuth().removeLogin(email);
+  } catch (err) {
+    return toast(`❌ Not removed: ${err.message}`, 8000);
+  }
+  await loadStaffList();
   renderAll();
+  toast(`✓ ${email} removed.`);
+}
+window.deleteUser = deleteUser;
 
-  if (isLocalServer()) {
+// For the move to the new logins: one login with its own password for each
+// person on the staff list who has none yet. The passwords are shown once.
+async function createMissingLogins() {
+  if (!staffAdminReady()) return;
+  const todo = (users || []).filter(u => u.active !== false && !u.hasLogin);
+  if (!todo.length) return toast('Everyone on the staff list already has a login.');
+  if (!confirm(`Create logins for ${todo.length} people?\n\nEach gets a new password, shown once on the next screen. Download it and give each person their own password.`)) return;
+  const made = [];
+  const failed = [];
+  for (const u of todo) {
+    const password = CollectIQAuth.generatePassword();
     try {
-      const res = await fetch('/api/users/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
-      });
-      if (res.ok) {
-        await syncWithDatabase();
-      }
+      await getStaffAuth().createLogin(u, password);
+      made.push({ email: u.email, followperName: u.followperName, password });
     } catch (err) {
-      console.warn('API error:', err);
+      failed.push(`${u.email}: ${err.message}`);
     }
   }
-  toast(`✓ User account ${email} deleted successfully.`);
+  await loadStaffList();
+  renderAll();
+  if (made.length) showNewLogins(made);
+  if (failed.length) toast(`⚠ ${failed.length} not created:\n${failed.join('\n')}`, 15000);
 }
+window.createMissingLogins = createMissingLogins;
+
+const CHANGE_LOG_KINDS = {
+  collectiq_markas: 'Party', collectiq_payments: 'Payment', collectiq_help_tickets: 'Help ticket',
+  collectiq_config: 'Settings', collectiq_receipts: 'Receipt photo', collectiq: 'Old main record', cq_staff: 'Staff / login'
+};
+
+// One line saying what a change did: the fields changed, the follow-up lines
+// and bills added or removed, or the amount of a payment added or deleted.
+function changeLogSummary(row) {
+  const c = row.changes || {};
+  if (row.op === 'insert' || row.op === 'delete') {
+    const d = c.created || c.deleted || {};
+    const verb = row.op === 'insert' ? 'Added' : 'Deleted';
+    return d.amount != null ? `${verb}: ${money(+d.amount || 0)} ${d.date ? 'dated ' + fmt(d.date) : ''}` : verb;
+  }
+  return Object.keys(c).map(k => {
+    const v = c[k] || {};
+    if (Array.isArray(v.added) || Array.isArray(v.removed)) {
+      const a = (v.added || []).length;
+      const r = (v.removed || []).length;
+      return `${k}: ${a ? '+' + a : ''}${a && r ? ' / ' : ''}${r ? '−' + r : ''}`;
+    }
+    const show = x => (x === null || x === undefined || x === '' ? '—' : typeof x === 'object' ? '…' : String(x).slice(0, 40));
+    return `${k}: ${show(v.old)} → ${show(v.new)}`;
+  }).join('; ');
+}
+
+function openChangeLog() {
+  if (!staffAdminReady()) return;
+  openModal('changeLogModal');
+  loadChangeLog();
+}
+window.openChangeLog = openChangeLog;
+
+async function loadChangeLog() {
+  const body = document.getElementById('changeLogBody');
+  if (!body) return;
+  body.innerHTML = '<tr><td colspan="5">Loading…</td></tr>';
+  const term = (document.getElementById('changeLogSearch').value || '').trim().replace(/[%,()]/g, ' ');
+  let q = getSupabaseClient().from('cq_audit').select('*').order('at', { ascending: false }).limit(200);
+  if (term) q = q.or(`label.ilike.%${term}%,actor_email.ilike.%${term}%,doc_id.ilike.%${term}%`);
+  const { data, error } = await q;
+  if (error) {
+    body.innerHTML = `<tr><td colspan="5">❌ ${escapeHtml(error.message)}</td></tr>`;
+    return;
+  }
+  body.innerHTML = (data || []).length ? data.map(r => `
+    <tr>
+      <td style="white-space:nowrap;">${escapeHtml(new Date(r.at).toLocaleString('en-IN'))}</td>
+      <td>${escapeHtml(r.actor_email || 'System')}</td>
+      <td>${escapeHtml(CHANGE_LOG_KINDS[r.collection] || r.collection)} · ${escapeHtml(r.op)}</td>
+      <td>${escapeHtml(r.label || r.doc_id)}</td>
+      <td><small>${escapeHtml(changeLogSummary(r))}</small></td>
+    </tr>`).join('') : '<tr><td colspan="5">No changes found.</td></tr>';
+}
+window.loadChangeLog = loadChangeLog;
+
+let newLoginsShown = [];
+function showNewLogins(list) {
+  newLoginsShown = list;
+  const body = document.getElementById('newLoginsBody');
+  if (body) {
+    body.innerHTML = list.map(l => `<tr><td>${escapeHtml(l.followperName || '')}</td><td><b>${escapeHtml(l.email)}</b></td><td><code>${escapeHtml(l.password)}</code></td></tr>`).join('');
+  }
+  openModal('newLoginsModal');
+}
+
+function downloadNewLogins() {
+  if (!newLoginsShown.length) return;
+  if (typeof XLSX === 'undefined') return toast('Excel engine is still loading. Please try again in a moment.');
+  const ws = XLSX.utils.aoa_to_sheet([['Name', 'Login (email)', 'Password'], ...newLoginsShown.map(l => [l.followperName || '', l.email, l.password])]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Logins');
+  XLSX.writeFile(wb, `collectiq-new-logins-${iso(today)}.xlsx`);
+}
+window.downloadNewLogins = downloadNewLogins;
 
 // ==========================================
 // NAVIGATION & INIT
@@ -8430,10 +8449,26 @@ function supabaseConfigured() {
 function useSupabase() {
   return liveDbConfig().provider === 'supabase' && supabaseConfigured();
 }
+// One Supabase client for the login and the live database, so every read and
+// save carries the person's login (the database checks it on each one).
+let supabaseClient = null;
+let staffAuth = null;
+let signedIn = false;
+function getSupabaseClient() {
+  if (!supabaseClient) {
+    const c = liveDbConfig();
+    supabaseClient = window.supabase.createClient(c.supabaseUrl, c.supabaseAnonKey, {
+      auth: { persistSession: true, autoRefreshToken: true, storageKey: 'collectiq_auth' }
+    });
+  }
+  return supabaseClient;
+}
+function getStaffAuth() {
+  if (!staffAuth) staffAuth = CollectIQAuth.create(getSupabaseClient());
+  return staffAuth;
+}
 function openSupabaseStore() {
-  const c = liveDbConfig();
-  const client = window.supabase.createClient(c.supabaseUrl, c.supabaseAnonKey, { auth: { persistSession: false } });
-  return SupabaseStore.create(client, {
+  return SupabaseStore.create(getSupabaseClient(), {
     onDropped: (err, op) => reportCloudSaveError(err, `Saved offline (${op.coll.replace('collectiq_', '')} ${op.id})`)
   });
 }
@@ -8502,10 +8537,12 @@ function keepCloudOnly(list, snapshot, coll) {
 // the same party at the same time keep each other's entries and payments.
 // Resolves true when the live database has the change (or will send it when the
 // internet is back), false when it refused it (the reason is shown on screen).
-function saveMarkaCloud(m) {
+// With a payment, the party (its reduced bills) and the payment record are
+// saved together in one step: both are saved, or neither is.
+function saveMarkaCloud(m, payment) {
   if (!firestoreDb || !m || !m.id) return Promise.resolve(true);
   const id = String(m.id);
-  const run = (partySaveQueue.get(id) || Promise.resolve()).catch(() => {}).then(() => saveMarkaNow(m));
+  const run = (partySaveQueue.get(id) || Promise.resolve()).catch(() => {}).then(() => saveMarkaNow(m, payment));
   partySaveQueue.set(id, run);
   return run;
 }
@@ -8519,20 +8556,22 @@ function cloudUpdateFor(plan, m) {
   return upd;
 }
 
-async function saveMarkaNow(m) {
+async function saveMarkaNow(m, payment) {
   const id = String(m.id);
   const ref = firestoreDb.collection('collectiq_markas').doc(id);
+  const payRef = payment && payment.id ? firestoreDb.collection('collectiq_payments').doc(String(payment.id)) : null;
   const seen = cloudBase.get(id);
   const known = seen && PartyCheck.partyKey(seen.marka, seen.master) === PartyCheck.partyKey(m.marka, m.master);
   try {
     if (!known) {
       // Not in the live database yet: saved whole, as before.
-      await ref.set(m);
+      if (payRef) await firestoreDb.batch().set(ref, m).set(payRef, payment).commit();
+      else await ref.set(m);
     } else {
       PartySync.tagNewHistory(seen, m, uid);
       const plan = PartySync.diffParty(seen, m);
-      if (plan.empty) return true;
-      if (plan.simple) {
+      if (plan.empty && !payRef) return true;
+      if (plan.simple && !payRef) {
         // Only new follow-up lines and changed fields: added to the saved party
         // without reading it first, so it also works without internet (sent later).
         cloudBase.set(id, PartySync.applyPlan(seen, plan));
@@ -8548,6 +8587,7 @@ async function saveMarkaNow(m) {
           const snap = await tx.get(ref);
           merged = snap.exists ? PartySync.applyPlan(snap.data(), plan) : PartySync.clone(m);
           tx.set(ref, merged);
+          if (payRef) tx.set(payRef, payment);
         });
         cloudBase.set(id, PartySync.clone(merged));
       }
@@ -8586,7 +8626,6 @@ async function saveConfigCloud() {
     await firestoreDb.collection('collectiq_config').doc('settings').set({
       masterFollowpers,
       masterCrrs,
-      users,
       version: APP_STORAGE_VERSION,
       updatedAt: new Date().toISOString()
     });
@@ -8688,6 +8727,8 @@ let firebaseStarted = false;
 function initFirebase() {
   if (firebaseStarted) return true;
   const supa = useSupabase();
+  // The live database opens only after a login: without one it gives nothing.
+  if (supa && !signedIn) return false;
   const cfg = getCloudConfig();
   if (!supa && (!cfg || typeof firebase === 'undefined')) return false;
   try {
@@ -8868,11 +8909,6 @@ function initFirebase() {
           if (d.masterCrrs) {
             masterCrrs = { ...DEFAULT_MASTER_CRR, ...d.masterCrrs };
             localSet('collectiq_master_crrs_v4', JSON.stringify(masterCrrs));
-          }
-          if (Array.isArray(d.users) && d.users.length > 0) {
-            users = d.users;
-            window.users = users;
-            localSet('collectiq_users_v4', JSON.stringify(users));
           }
           renderAll();
         }
@@ -9064,15 +9100,9 @@ function updateDbStatusBadge(mode) {
 
 // Start
 load();
-ensureSeedDataLoaded();
-initFirebase();
+startSession();
 renderAll();
 syncWithDatabase();
-
-window.addEventListener('load', () => {
-  ensureSeedDataLoaded();
-  renderAll();
-});
 
 // Every 3 seconds: reload from the central SQLite server when one is in use.
 // The live cloud database pushes changes by itself, so it is only started here
