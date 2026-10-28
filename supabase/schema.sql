@@ -30,7 +30,7 @@ create table if not exists public.cq_files (
 alter table public.cq_docs replica identity full;
 
 -- Reports straight from the database (SQL Editor or any BI tool).
-create or replace view public.cq_parties as
+create or replace view public.cq_parties with (security_invoker = true) as
   select id,
          data->>'master' as master,
          data->>'marka' as marka,
@@ -41,7 +41,7 @@ create or replace view public.cq_parties as
          updated_at
     from public.cq_docs where collection = 'collectiq_markas';
 
-create or replace view public.cq_payments as
+create or replace view public.cq_payments with (security_invoker = true) as
   select id,
          data->>'master' as master,
          data->>'marka' as marka,
@@ -54,7 +54,7 @@ create or replace view public.cq_payments as
     from public.cq_docs where collection = 'collectiq_payments';
 
 create or replace function public.cq_table(p_coll text) returns regclass
-language sql immutable as $$
+language sql immutable set search_path = public as $$
   select case when p_coll = 'collectiq_receipts' then 'public.cq_files'::regclass
               else 'public.cq_docs'::regclass end
 $$;
@@ -63,7 +63,7 @@ $$;
 -- exist yet; n = only if it is still at version n (someone else saved first
 -- otherwise). Returns the new version, or null when it was not saved.
 create or replace function public.cq_put(p_coll text, p_id text, p_data jsonb, p_expected bigint default null)
-returns bigint language plpgsql as $$
+returns bigint language plpgsql set search_path = public as $$
 declare v bigint;
 begin
   if p_expected is null then
@@ -89,7 +89,7 @@ end $$;
 -- twice). Done inside the database in one step, so two people adding follow-ups
 -- to the same party at the same time both keep theirs.
 create or replace function public.cq_patch(p_coll text, p_id text, p_set jsonb, p_unset text[], p_union jsonb)
-returns bigint language plpgsql as $$
+returns bigint language plpgsql set search_path = public as $$
 declare
   d jsonb;
   k text;
@@ -123,7 +123,7 @@ begin
 end $$;
 
 create or replace function public.cq_delete(p_coll text, p_id text, p_expected bigint default null)
-returns boolean language plpgsql as $$
+returns boolean language plpgsql set search_path = public as $$
 declare n int;
 begin
   execute format('delete from %s where collection = $1 and id = $2 and ($3::bigint is null or version = $3)', cq_table(p_coll))
@@ -136,7 +136,7 @@ end $$;
 -- "coll", "id", "data"?, "expected"?, "set"?, "unset"?, "union"?}. A put or
 -- delete whose expected version no longer matches undoes the whole batch.
 create or replace function public.cq_batch(p_ops jsonb)
-returns boolean language plpgsql as $$
+returns boolean language plpgsql set search_path = public as $$
 declare
   op jsonb;
   expected bigint;
