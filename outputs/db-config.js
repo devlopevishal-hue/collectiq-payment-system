@@ -6,6 +6,6 @@
 // Never put the service_role key or the database password here.
 window.COLLECTIQ_DB = {
   provider: 'firebase',
-  supabaseUrl: 'https://aqhzllkdldtztoamyreo.supabase.co',
-  supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFxaHpsbGtkbGR0enRvYW15cmVvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5ODkxNzEsImV4cCI6MjEwMjU2NTE3MX0.GpmiyTWOfvngvPEIWeGxnmoAGtbSoQVcK_YihHTTt_A'
+  supabaseUrl: 'https://oxriijxeiyfubyhbohim.supabase.co',
+  supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im94cmlpanhlaXlmdWJ5aGJvaGltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMxNjkzOTQsImV4cCI6MjEwODc0NTM5NH0.cJ5nXNtDMB76R0LScAgUcGgcBVhoHyiODYrtuTlnwLM'
 };
