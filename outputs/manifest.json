@@ -7,7 +7,7 @@
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#0a261e",
-  "theme_color": "#087454",
+  "theme_color": "#0e2a24",
   "icons": [
     {
       "src": "icons/icon-192.png",
@@ -28,5 +28,14 @@
       "purpose": "any"
     }
   ],
-  "categories": ["business", "finance", "productivity"]
+  "categories": [
+    "business",
+    "finance",
+    "productivity"
+  ],
+  "id": "./index.html",
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ]
 }
