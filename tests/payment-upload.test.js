@@ -97,3 +97,11 @@ test('toIso: dates from the sheet', () => {
   assert.equal(U.toIso('5-1-26'), '2026-01-05');
   assert.equal(U.toIso(''), '');
 });
+
+test('apply: uses the app rule for the next follow-up when given', () => {
+  const m = party();
+  const { rows } = U.parseGrid([HEADER, ['', 'AKYT', '', 0, 0, 0, 0, 0, 1000, 0, 'BABLU SHERA MASTER']]);
+  const [item] = U.plan(rows, { markas: [m], date: '2026-10-28' });
+  U.apply(item, { uid, today: '2026-10-28', nextDateFor: () => '2026-11-05' });
+  assert.equal(m.nextDate, '2026-11-05');
+});

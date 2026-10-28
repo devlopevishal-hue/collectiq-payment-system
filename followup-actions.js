@@ -393,7 +393,17 @@
     return { task, entry };
   }
 
-  const api = { applyPtpFollowup, applyPaymentFollowup, applyComplaintFollowup, completeFmsTask, FMS_DEFINITIONS, CONTACT_MODES, PAY_MODES, COMPLAINT_STATUS };
+  // Next follow-up date for a party: 5 days before its due date, so calls start
+  // before the bill falls due. Never earlier than `minDays` from today (an
+  // already-close or overdue due date falls back to that).
+  const DAYS_BEFORE_DUE = 5;
+  function autoNextDate(dueDate, todayIso, minDays = 0) {
+    const min = addDays(todayIso, minDays);
+    const target = ISO_DATE.test(text(dueDate)) ? addDays(dueDate, -DAYS_BEFORE_DUE) : '';
+    return target && target > min ? target : min;
+  }
+
+  const api = { applyPtpFollowup, autoNextDate, DAYS_BEFORE_DUE, applyPaymentFollowup, applyComplaintFollowup, completeFmsTask, FMS_DEFINITIONS, CONTACT_MODES, PAY_MODES, COMPLAINT_STATUS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.FollowupActions = api;
 })(typeof window !== 'undefined' ? window : globalThis);
