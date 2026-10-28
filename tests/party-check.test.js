@@ -187,3 +187,19 @@ test('planIdSplit: the party already in the live record keeps it, the other gets
   assert.equal(odd.keeper.marka, 'AAA');
   assert.deepEqual(odd.moves.map(x => x.newId), ['m_7~Z-B-C']);
 });
+
+test('shownParties: one copy per party, the same on every device whatever the order', () => {
+  const copies = [
+    { id: 'm_12', marka: 'PALK', master: 'AVINASH MASTER', bills: [1, 2], history: [] },
+    { id: 'muny', marka: 'palk', master: 'Avinash  Master', bills: [1, 2, 3], history: [{}] },
+    { id: 'munw', marka: 'PALK', master: 'AVINASH MASTER', bills: [1, 2, 3], history: [{}] },
+    { id: 'k1', marka: 'PALK', master: 'KAMLESH MASTER', bills: [], history: [] },
+    { id: 'z9', marka: 'TIE', master: 'X', bills: [1], history: [] },
+    { id: 'a1', marka: 'TIE', master: 'X', bills: [1], history: [] },
+    null,
+    { marka: 'NOID', master: 'X' }
+  ];
+  const ids = list => P.shownParties(list).map(m => m.id).sort();
+  assert.deepEqual(ids(copies), ['a1', 'k1', 'munw']);
+  assert.deepEqual(ids([...copies].reverse()), ['a1', 'k1', 'munw']);
+});

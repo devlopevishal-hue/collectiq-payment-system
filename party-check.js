@@ -130,6 +130,23 @@
     return { index: -1, replace: false };
   }
 
+  // The parties every device shows: one copy per party (Master + Marka), picked
+  // by the same rule on every device (most history, then most bills, then the
+  // lowest record ID) from the live database only, so the same login shows the
+  // same totals everywhere, whatever is left in a browser's own copy.
+  function shownParties(docs) {
+    const best = new Map();
+    (docs || []).forEach(doc => {
+      if (!doc || typeof doc !== 'object' || doc.id == null) return;
+      const key = keyOf(doc);
+      const cur = best.get(key);
+      if (!cur) { best.set(key, doc); return; }
+      const d = hasMoreData(doc, cur);
+      if (d > 0 || (d === 0 && String(doc.id).localeCompare(String(cur.id)) < 0)) best.set(key, doc);
+    });
+    return [...best.values()];
+  }
+
   // Marka names used under more than one master.
   function sharedNameSet(list) {
     const masters = new Map();
@@ -210,7 +227,7 @@
     return { keeper, moves };
   }
 
-  const api = { normKey, partyKey, checkParties, findSharedIds, placeCloudDoc, fewerBillsThanFile, planIdSplit, sharedNameSet, findParty, partyOfPayment, paymentBelongs, partyLabel };
+  const api = { normKey, partyKey, checkParties, findSharedIds, placeCloudDoc, shownParties, fewerBillsThanFile, planIdSplit, sharedNameSet, findParty, partyOfPayment, paymentBelongs, partyLabel };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.PartyCheck = api;
 })(typeof window !== 'undefined' ? window : globalThis);

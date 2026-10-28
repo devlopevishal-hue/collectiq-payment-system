@@ -208,3 +208,16 @@ test('a batch is all or nothing', async () => {
   const snap = await col.get();
   assert.equal(snap.empty, true);
 });
+
+test('pendingIds: records saved on this device that are still waiting to be sent', async () => {
+  const c = fakeClient();
+  const db = S.create(c, { storage: memStorage() });
+  c.offline = true;
+  await db.collection('collectiq_payments').doc('p1').set({ id: 'p1' });
+  await db.collection('collectiq_markas').doc('m1').set({ id: 'm1' });
+  assert.deepEqual([...db.pendingIds('collectiq_payments')], ['p1']);
+  assert.deepEqual([...db.pendingIds('collectiq_markas')], ['m1']);
+  c.offline = false;
+  await db.flushOutbox();
+  assert.equal(db.pendingIds('collectiq_payments').size, 0);
+});

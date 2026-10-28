@@ -228,12 +228,20 @@ function isOnlineMode() {
   return isLocalServer();
 }
 
+// The old Excel report built into the app (latest-report-data.js) only fills an
+// app that has no live database. With the live database it is never shown or
+// mixed in: devices that did so showed different parties and totals.
+function seedDataAllowed() {
+  return !useSupabase();
+}
+
 function ensureSeedDataLoaded() {
+  if (!seedDataAllowed()) return;
   if (window._explicitAdminReset || localStorage.getItem('collectiq_admin_cleared') || localStorage.getItem('collectiq_live_mode')) return;
   if ((!markas || markas.length === 0) && window.latestReportCases && Array.isArray(window.latestReportCases) && window.latestReportCases.length > 0) {
     markas = JSON.parse(JSON.stringify(window.latestReportCases));
     // Guarantee ALL parties/Markas have their complete bill list from the latest report
-    if (window.latestReportCases && Array.isArray(window.latestReportCases)) {
+    if (seedDataAllowed() && window.latestReportCases && Array.isArray(window.latestReportCases)) {
       window.latestReportCases.forEach(fresh => {
         const freshKey = PartyCheck.partyKey(fresh.marka, fresh.master);
         const existing = markas.find(x => PartyCheck.partyKey(x.marka, x.master) === freshKey);
@@ -676,7 +684,9 @@ function migrateV3(oldCases) {
   return newMarkas;
 }
 
-const APP_STORAGE_VERSION = 'v8_fresh_excel_all_parties_2026_09_30';
+// Changing this clears every device's own copy of the party list once (v9: the
+// copies mixed with the old Excel file are dropped; the live database refills it).
+const APP_STORAGE_VERSION = 'v9_live_database_only_2026_10_28';
 
 function load() {
   try {
@@ -685,7 +695,7 @@ function load() {
       localStorage.removeItem('collectiq_markas_v4');
       localStorage.removeItem('collectiq_admin_cleared');
       localSet('collectiq_storage_version', APP_STORAGE_VERSION);
-      if (window.latestReportCases && Array.isArray(window.latestReportCases) && window.latestReportCases.length > 0) {
+      if (seedDataAllowed() && window.latestReportCases && Array.isArray(window.latestReportCases) && window.latestReportCases.length > 0) {
         markas = JSON.parse(JSON.stringify(window.latestReportCases));
         save(true);
       }
@@ -721,12 +731,12 @@ function load() {
     }
     
     // Seed fallback if markas is empty (fresh phone / new session)
-    if (!window._explicitAdminReset && !localStorage.getItem('collectiq_admin_cleared') && (!markas || markas.length === 0) && window.latestReportCases && Array.isArray(window.latestReportCases) && window.latestReportCases.length > 0) {
+    if (seedDataAllowed() && !window._explicitAdminReset && !localStorage.getItem('collectiq_admin_cleared') && (!markas || markas.length === 0) && window.latestReportCases && Array.isArray(window.latestReportCases) && window.latestReportCases.length > 0) {
       markas = JSON.parse(JSON.stringify(window.latestReportCases));
     }
 
     // Guarantee ALL parties/Markas have their complete bill list from the latest report
-    if (window.latestReportCases && Array.isArray(window.latestReportCases)) {
+    if (seedDataAllowed() && window.latestReportCases && Array.isArray(window.latestReportCases)) {
       window.latestReportCases.forEach(fresh => {
         const freshKey = PartyCheck.partyKey(fresh.marka, fresh.master);
         const existing = markas.find(x => PartyCheck.partyKey(x.marka, x.master) === freshKey);
@@ -8429,14 +8439,15 @@ function openSupabaseStore() {
 }
 
 // Granular Ultra-Fast Cloud Database Helpers (<100ms writes)
-// One record from the live database (added / modified / removed) into the party list.
-// Returns true when the list changed.
+// One record from the live database (added / modified / removed). Only the
+// database's own records are kept here; the party list is rebuilt from them
+// by showCloudParties().
 function applyCloudPartyChange(type, docId, data) {
-  let changed = false;
   // Every saved record, duplicates included, for the Duplicate Parties check.
-  if (type === 'removed') { cloudPartyDocs.delete(docId); cloudBase.delete(docId); }
-  else if (data) cloudPartyDocs.set(docId, data);
-  if (!data || !data.id) return false;
+  if (type === 'removed') { cloudPartyDocs.delete(docId); cloudBase.delete(docId); return true; }
+  if (!data) return false;
+  cloudPartyDocs.set(docId, data);
+  if (!data.id) return true;
 
   if (!data.escalations) data.escalations = [];
   if (!data.history) data.history = [];
@@ -8451,39 +8462,40 @@ function applyCloudPartyChange(type, docId, data) {
     if (defaultCrr && defaultCrr !== 'Unassigned') data.crr = defaultCrr;
   }
 
-  // A party is Master + Marka: the same marka name under another master is
-  // a different party, so records are matched on both, never on the name alone.
-  const dataKey = PartyCheck.partyKey(data.marka, data.master);
-  const sameParty = m => m && PartyCheck.partyKey(m.marka, m.master) === dataKey;
-
-  if (type === 'removed') {
-    const idx = markas.findIndex(m => String(m.id) === String(data.id) && sameParty(m));
-    if (idx !== -1) {
-      // If another saved copy of this party exists, show that one instead.
-      const copies = [...cloudPartyDocs.values()].filter(d => d && d.id && sameParty(d));
-      let next = null;
-      copies.forEach(d => { if (!next || PartyCheck.placeCloudDoc([next], d).replace) next = d; });
-      if (next) markas[idx] = next; else markas.splice(idx, 1);
-      changed = true;
-    }
-    return changed;
-  }
-
-  // The live database is the truth: its bills are shown as saved. (Bills from
-  // the old Excel file in the code, or from this PC's copy, no longer replace
-  // them or get written back.)
   // Remember the party exactly as the database sent it, so a save can send only what changed.
   cloudBase.set(docId, PartySync.clone(data));
+  return true;
+}
 
-  const place = PartyCheck.placeCloudDoc(markas, data);
-  if (place.index === -1) {
-    markas.push(data);
-    changed = true;
-  } else if (place.replace) {
-    markas[place.index] = data;
-    changed = true;
-  }
+// Records of a collection saved on this device that the live database has not got yet.
+function pendingCloudIds(coll) {
+  return firestoreDb && firestoreDb.pendingIds ? firestoreDb.pendingIds(coll) : new Set();
+}
+
+// The live database is the only truth: every device shows exactly the parties
+// saved there, one copy per party, picked by the same rule on every device
+// (PartyCheck.shownParties). Parties left in this browser's own copy, or from
+// the old Excel file in the code, are not shown. Only a party saved on this
+// device and still waiting for the internet stays until it is sent.
+// Returns true when the list changed.
+function showCloudParties() {
+  const shown = PartyCheck.shownParties([...cloudPartyDocs.values()].filter(d => d && d.id));
+  const ids = new Set(shown.map(m => String(m.id)));
+  const waiting = pendingCloudIds('collectiq_markas');
+  if (waiting.size) markas.forEach(m => { if (m && waiting.has(String(m.id)) && !ids.has(String(m.id))) shown.push(m); });
+  const changed = shown.length !== markas.length || shown.some((m, i) => m !== markas[i]);
+  markas = shown;
+  window.markas = markas;
   return changed;
+}
+
+// Payments / help tickets: the live database's list, plus the ones saved on this
+// device that are still waiting to be sent. Nothing else from this browser's copy.
+function keepCloudOnly(list, snapshot, coll) {
+  const ids = new Set(snapshot.docs.map(d => String(d.id)));
+  const waiting = pendingCloudIds(coll);
+  const kept = list.filter(x => x && x.id != null && (ids.has(String(x.id)) || waiting.has(String(x.id))));
+  return kept.length === list.length ? list : kept;
 }
 
 // Saves a party by sending only what this PC changed, so two people working on
@@ -8700,7 +8712,7 @@ function initFirebase() {
     }).catch(e => console.warn('Config version check error:', e));
 
     firestoreDb.collection('collectiq_markas').limit(5).get().then(snapshot => {
-      if (snapshot.empty) {
+      if (snapshot.empty && !supa) {
         // Check legacy single-doc main
         firestoreDb.collection('collectiq').doc('main').get().then(legacyDoc => {
           if (legacyDoc.exists && legacyDoc.data() && Array.isArray(legacyDoc.data().markas) && legacyDoc.data().markas.length > 0) {
@@ -8717,17 +8729,11 @@ function initFirebase() {
               payments.forEach(p => savePaymentCloud(p));
             }
             saveConfigCloud();
-          } else if (markas.length > 0) {
-            console.log('⚡ Initializing cloud database with ' + markas.length + ' active Markas...');
-            saveAllMarkasCloud(markas);
-            saveConfigCloud();
           }
-        }).catch(err => {
-          if (markas.length > 0) {
-            saveAllMarkasCloud(markas);
-            saveConfigCloud();
-          }
-        });
+          // An empty live database is never filled from this device's own copy
+          // (that is how old copies came back as duplicates). Parties come in
+          // only through an upload (Sync outstanding / Excel import).
+        }).catch(err => console.warn('Legacy data check:', err));
       }
     }).catch(err => {
       console.warn('Firestore initial check:', err);
@@ -8742,8 +8748,10 @@ function initFirebase() {
       cloudPartyDocsLoaded = true;
       if (snapshot.empty) {
         cloudPartyDocs.clear();
+        cloudBase.clear();
         if (markas.length > 0) {
           markas = [];
+          window.markas = markas;
           localStorage.removeItem('collectiq_markas_v4');
           renderAll();
         }
@@ -8751,12 +8759,11 @@ function initFirebase() {
         return;
       }
       
-      let hasChanges = false;
       snapshot.docChanges().forEach(change => {
-        if (applyCloudPartyChange(change.type, change.doc.id, change.doc.data())) hasChanges = true;
+        applyCloudPartyChange(change.type, change.doc.id, change.doc.data());
       });
 
-      if (hasChanges) {
+      if (showCloudParties()) {
         localSet('collectiq_markas_v4', JSON.stringify(markas));
         renderAll();
       }
@@ -8770,14 +8777,10 @@ function initFirebase() {
 
     // 2. Real-time Live Listener for Help Tickets
     firestoreDb.collection('collectiq_help_tickets').onSnapshot(snapshot => {
-      if (snapshot.empty) {
-        if (helpTickets.length > 0) {
-          // If Firestore collection is empty, seed existing local tickets to Firestore instead of wiping!
-          helpTickets.forEach(t => saveHelpTicketCloud(t));
-        }
-        return;
-      }
-      let hasChanges = false;
+      // Only the live database's tickets are shown (never re-uploaded from this device).
+      const keptTickets = keepCloudOnly(helpTickets, snapshot, 'collectiq_help_tickets');
+      let hasChanges = keptTickets !== helpTickets;
+      helpTickets = keptTickets;
       snapshot.docChanges().forEach(change => {
         const data = change.doc.data();
         if (!data || !data.id) return;
@@ -8807,14 +8810,10 @@ function initFirebase() {
 
     // 3. Real-time Live Listener for Payments (Rokad)
     firestoreDb.collection('collectiq_payments').onSnapshot(snapshot => {
-      if (snapshot.empty) {
-        if (payments.length > 0) {
-          // If cloud collection is empty, seed existing local payments up to cloud instead of deleting!
-          payments.forEach(p => savePaymentCloud(p));
-        }
-        return;
-      }
-      let hasChanges = false;
+      // Only the live database's payments are shown (never re-uploaded from this device).
+      const keptPayments = keepCloudOnly(payments, snapshot, 'collectiq_payments');
+      let hasChanges = keptPayments !== payments;
+      payments = keptPayments;
       snapshot.docChanges().forEach(change => {
         const data = change.doc.data();
         if (!data || !data.id) return;

@@ -365,6 +365,8 @@
       enablePersistence: () => Promise.resolve(),
       flushOutbox,
       pendingSaves: () => outbox.length,
+      // Records of one collection saved on this device and still waiting to be sent.
+      pendingIds: coll => new Set(outbox.filter(op => op.coll === coll && op.op !== 'delete').map(op => String(op.id))),
       fetchRows
     };
   }
