@@ -2,7 +2,7 @@
 ## CollectIQ — Payment Collection & Receivables Command Center
 **Document Version**: 4.0 (Production Release)  
 **System Type**: Web-Based Multi-User Receivables & Follow-Up Management System  
-**Cloud Database Engine**: Google Firebase Firestore (`collectiq-ba467`)  
+**Cloud Database Engine**: Supabase (Postgres + Realtime, Mumbai)  
 **Deployment Platform**: GitHub Pages (Global HTTPS Access) / Standalone Desktop Cache  
 
 ---
@@ -34,10 +34,10 @@ flowchart TD
 * **Production Web Link**: `https://<your-github-username>.github.io/<your-repo-name>/`
 * **Local / Office Server**: `http://localhost:3000` (or `http://<OFFICE_IP>:3000`)
 
-### B. Pre-Configured Cloud Database (Firebase)
-* **Project ID**: `collectiq-ba467`
-* **Database Type**: Cloud Firestore (Test Mode - Multi-Device Read/Write Enabled)
-* **Sync Mode**: Bidirectional Real-Time Listener (Updates reflect across all devices instantly without page refresh).
+### B. Live Database and Logins
+* **Database**: Supabase (Postgres + Realtime), Mumbai region. Changes reach every open screen in about a second.
+* **Logins**: every person has their own login (email or username) and password, created by the Admin on the Users page. Passwords are never written down in the app or shared in groups; anyone who forgets theirs asks the Admin for a reset.
+* **Access**: only logged-in staff can read or change data. Every change is recorded in the change log (who, when, what).
 
 ---
 
@@ -181,8 +181,7 @@ When accounting exports a new outstanding report from Tally/BUSY/SAP:
 ## 5. System Health & Maintenance
 
 * **Cloud Connection Indicator** (bottom-left sidebar):
-  * **`🟢 Cloud DB (Firebase)`**: Connected live to Google Cloud. All changes sync globally in real-time.
-  * **`🟢 SQLite DB (Server)`**: Connected to local Node server.
+  * **`🟢 Live Cloud Database (Connected)`**: Connected live to Supabase. All changes sync in real-time.
   * **`🟡 Local Browser Cache`**: Running offline on local storage.
 * **Full Data Backup**:
   * You can download a complete JSON database backup at any time from the browser console or by clicking **Export to Excel**.

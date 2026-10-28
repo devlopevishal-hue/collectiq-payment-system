@@ -2,7 +2,7 @@
 
 **Document Classification**: Production Operational Guide & Training Courseware  
 **Software Version**: CollectIQ 4.0 Pro  
-**Cloud Database Engine**: Google Firebase Firestore (`collectiq-ba467`)  
+**Cloud Database Engine**: Supabase (Postgres + Realtime, Mumbai)  
 **Deployment Platform**: GitHub Pages (Global HTTPS Access) / Standalone Desktop Cache  
 **PDF Document File**: [`CollectIQ_SOP_and_User_Training_Manual.pdf`](file:///c:/Users/Admin/Documents/Codex/2026-08-17/this-is-my-payment-collection-system/CollectIQ_SOP_and_User_Training_Manual.pdf)
 
@@ -38,7 +38,7 @@ CollectIQ is a cloud-native receivables management and collection tracking comma
 
 ## 2. Cloud Architecture & Global Access Details
 * **Live Global Web Link**: `https://<your-github-username>.github.io/<your-repo-name>/`
-* **Cloud Database Project**: `collectiq-ba467` (Google Firebase Firestore)
+* **Cloud Database**: Supabase (Postgres + Realtime, Mumbai). Each person logs in with their own password, created by the Admin; only logged-in staff can read or change data, and every change is kept in the change log.
 * **Multi-Device Real-Time Sync**: Whenever any Followper logs a call or enters a payment on their phone, **all other screens update in real-time worldwide** without page refresh.
 * **Offline Guarantee**: If internet drops, the system continues running offline via browser storage and syncs back upon reconnection.
 

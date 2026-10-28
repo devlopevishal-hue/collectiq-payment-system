@@ -156,6 +156,8 @@
     const payRef = row.ref || ref || 'N/A';
     let remaining = item.settle;
     const allocations = [];
+    // The payment's ID is on each of its follow-up lines, so it can be reversed.
+    const paymentId = uid();
     if (!m.bills) m.bills = [];
     if (!m.history) m.history = [];
 
@@ -173,7 +175,8 @@
         remark: `Payment of ${money(amt)} settled from daily payment upload (${mode} ref: ${payRef}) on bill ${b.firstDate}.`,
         amount: amt,
         ref: payRef,
-        billId: b.id
+        billId: b.id,
+        paymentId
       });
     }
 
@@ -197,7 +200,8 @@
         remark: `Advance payment credit of ${money(remaining)} recorded from daily payment upload (${mode} ref: ${payRef}).`,
         amount: remaining,
         ref: payRef,
-        billId: advId
+        billId: advId,
+        paymentId
       });
     }
 
@@ -226,7 +230,7 @@
     m.lastDate = date;
 
     return {
-      id: uid(),
+      id: paymentId,
       date,
       ref: payRef,
       mode,

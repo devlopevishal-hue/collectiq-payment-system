@@ -75,9 +75,60 @@ be copied back.
 - Saves made while the internet is down wait on that PC and are sent when the
   internet is back.
 
-## Next step: logins
+## Logins and access rules
 
-The app still uses its own login screen and the public key, as it does on
-Firebase. Anyone with the app URL and key could read the data. The next step
-is to move logins to Supabase Auth and add row-level rules, so each doer sees
-only their own parties.
+Logins are Supabase Auth accounts; who may use the app is the staff list
+(`cq_staff`: email, role, doer name, no passwords). The database only lets
+people on that list in, so the public app key alone gets nothing.
+
+Files:
+
+- `auth-setup.sql`: the staff list (copied from the app's old user list, without
+  passwords), the access rules for logged-in staff, and the change log
+  (`cq_audit`). Nothing stops working when this runs.
+- `functions/staff-admin`: the Edge Function the Users page calls to create a
+  login, reset a password or remove a login (admins only). It uses the service
+  key, which Supabase gives only to Edge Functions; it is never in the app.
+- `auth-lock.sql`: removes the old open access and the passwords from the
+  settings record. Run it last.
+
+### Switching over (an evening when nobody is working)
+
+1. SQL Editor: run `auth-setup.sql`. Deploy the Edge Function `staff-admin`
+   (Edge Functions → Deploy a new function, name `staff-admin`, paste
+   `functions/staff-admin/index.ts`).
+2. Authentication → Users → **Add user**: the admin's own email and a strong
+   password, "Auto Confirm User" on. Then in SQL Editor link it:
+
+   ```sql
+   update public.cq_staff set user_id = (select id from auth.users where email = 'devlope.vishal@gmail.com')
+    where email = 'devlope.vishal@gmail.com';
+   ```
+3. Authentication → Sign In / Providers: turn **Allow new users to sign up**
+   off. (Sign-ups get no access anyway, but nobody needs them.)
+4. Deploy the new app (merge the pull request). Log in as admin, open the
+   Users page and click **Create logins for N staff without one**. Download the
+   list and give each person their own password.
+5. When the admin login works, run `auth-lock.sql`. From then on the old app
+   version (and anyone with only the URL and key) gets nothing. Everyone
+   refreshes the app (Ctrl+Shift+R) and logs in with their new password.
+
+### Change log
+
+`cq_audit` gets one row for every save: who (login email), when, which record,
+and what changed (fields old → new; for bills and follow-up lists, the items
+added and removed). A deleted record is kept in full, so a payment reversed or
+a party deleted by mistake can be put back from here. Admins read it on the
+Users page (🕘 Change log) or in the Table Editor. Nobody can change or delete
+these rows from the app.
+
+### Backups
+
+The Free plan keeps no backups. On the Pro plan Supabase keeps daily backups
+for 7 days. Until then, take **⬇ Backup all data** regularly.
+
+### Still open
+
+Doers see only their own parties on screen, but the database gives every
+logged-in staff member all parties (the owner of a party is partly worked out
+in the app from the master). Limiting this in the database too is a later step.
