@@ -851,6 +851,11 @@ function isLocked(m) {
   return totalOutstanding(m) > 0 && oldest && days(oldest) > 19;
 }
 
+// Default next follow-up: 5 days before the oldest due date (at least `minDays` from today).
+function autoNextDate(m, minDays) {
+  return FollowupActions.autoNextDate(oldestDueDate(m), iso(today), minDays);
+}
+
 function followUpCount(m) {
   return (m.history || []).filter(h => h.type === 'followup').length;
 }
@@ -4380,8 +4385,7 @@ function openFollowup(markaId) {
   document.getElementById('expected').value = m.expected || '';
   document.getElementById('promiseDate').value = m.ptp || '';
   
-  const d2 = new Date(today.getTime() + 2 * 86400000);
-  document.getElementById('nextDate').value = iso(d2);
+  document.getElementById('nextDate').value = autoNextDate(m, 2);
   
   document.getElementById('remark').value = '';
   document.getElementById('claimNumber').value = '';
@@ -5054,7 +5058,7 @@ async function saveFollowup(e) {
       receiptImage: document.getElementById('followPayReceiptPreview')?.dataset?.base64 || '',
       ownerFallback: ownerOf(m),
       paymentFollowperFallback: (currentUser ? currentUser.followperName : '') || ownerOf(m),
-      defaultNext: iso(new Date(today.getTime() + 2 * 86400000)),
+      defaultNext: autoNextDate(m, 2),
       newId: uid, money, now: Date.now(), visit
     });
     if (r.error) return toast(r.error);
@@ -5186,7 +5190,7 @@ async function saveFollowup(e) {
 
   const stillDue = totalOutstanding(m);
   let finalStatus = statusVal;
-  let finalNext = nextDate || (isPtp ? promiseDate : iso(new Date(today.getTime() + 2 * 86400000)));
+  let finalNext = nextDate || (isPtp ? promiseDate : autoNextDate(m, 2));
   let finalRemark = remark;
 
   if (isComplaint) {
@@ -5211,7 +5215,7 @@ async function saveFollowup(e) {
       finalRemark = finalRemark || `Full payment ${money(payAmount)} received (${payMode} ref: ${payRef}). All dues cleared.`;
     } else {
       finalStatus = 'Payment Received';
-      finalNext = nextDate || iso(new Date(today.getTime() + 2 * 86400000));
+      finalNext = nextDate || autoNextDate(m, 2);
       finalRemark = finalRemark || `Payment ${money(payAmount)} received (${payMode} ref: ${payRef}); ${money(stillDue)} still due.`;
     }
   }
@@ -5679,8 +5683,8 @@ async function savePayment(e) {
   
   const stillDue = totalOutstanding(m);
   if (stillDue > 0) {
-    m.nextDate = iso(new Date(today.getTime() + 2 * 86400000));
-    m.remark = `Payment ${money(payAmount)} received; ${money(stillDue)} still due. Follow-up in 2 days.`;
+    m.nextDate = autoNextDate(m, 2);
+    m.remark = `Payment ${money(payAmount)} received; ${money(stillDue)} still due. Next follow-up ${fmt(m.nextDate)}.`;
     m.lastStatus = 'Payment Received';
   } else if (stillDue < 0) {
     m.nextDate = '';
@@ -6443,7 +6447,7 @@ async function saveResolution(e) {
       remark: historyRemark,
       expected: 0,
       promise: '',
-      next: totalOutstanding(m) > 0 ? iso(new Date(today.getTime() + 2 * 86400000)) : ''
+      next: totalOutstanding(m) > 0 ? autoNextDate(m, 2) : ''
     });
     
     const remainingDue = totalOutstanding(m);
@@ -6452,7 +6456,7 @@ async function saveResolution(e) {
       m.lastStatus = 'Payment Received';
       m.remark = 'All outstanding dues cleared after claim settlement.';
     } else {
-      m.nextDate = iso(new Date(today.getTime() + 2 * 86400000));
+      m.nextDate = autoNextDate(m, 2);
       m.lastStatus = 'Claim Resolved';
       m.remark = `Claim resolved with ${money(totalSettled)} settlement. ${money(remainingDue)} remaining.`;
     }
@@ -6948,8 +6952,9 @@ function processImportedRows(rawInput, fileName = 'Imported File') {
 
       m.master = data.master || m.master;
       if (ownerOf(m) === 'Unassigned' && data.own) m.owner = data.own;
-      if (totalOutstanding(m) > 0 && !m.nextDate) {
-        m.nextDate = iso(new Date(today.getTime() + 86400000));
+      // No date yet, or nobody has followed up yet: plan from the due date
+      if (totalOutstanding(m) > 0 && (!m.nextDate || followUpCount(m) === 0)) {
+        m.nextDate = autoNextDate(m, 1);
       } else if (totalOutstanding(m) === 0) {
         m.nextDate = '';
       }
@@ -6973,7 +6978,7 @@ function processImportedRows(rawInput, fileName = 'Imported File') {
         marka: targetMarkaName,
         master: data.master,
         owner: data.own || (existingOwner && ownerOf(existingOwner)) || getMasterFollowper(data.master) || 'Unassigned',
-        nextDate: iso(new Date(today.getTime() + 86400000)),
+        nextDate: '',
         lastDate: '',
         lastStatus: '',
         remark: 'New outstanding sync.',
@@ -6983,6 +6988,8 @@ function processImportedRows(rawInput, fileName = 'Imported File') {
         bills: bills,
         escalations: []
       });
+      const added = markas[markas.length - 1];
+      added.nextDate = autoNextDate(added, 1);
     }
     updated++;
   });
