@@ -1519,6 +1519,7 @@ function setF(el) {
     if (PAGINATION.schedule) PAGINATION.schedule.page = 1;
     if (PAGINATION.markas) PAGINATION.markas.page = 1;
     if (PAGINATION.gplock) PAGINATION.gplock.page = 1;
+    if (PAGINATION.fms) PAGINATION.fms.page = 1;
   }
 
   if (el.tagName === 'INPUT' && (el.type === 'text' || el.type === 'number')) {
@@ -1732,7 +1733,8 @@ function dashboard() {
 const PAGINATION = {
   schedule: { page: 1, pageSize: 25 },
   markas: { page: 1, pageSize: 25 },
-  gplock: { page: 1, pageSize: 25 }
+  gplock: { page: 1, pageSize: 25 },
+  fms: { page: 1, pageSize: 25 }
 };
 
 function renderPaginationControls(containerId, totalItems, stateKey, onPageChangeCallbackName) {
@@ -1778,6 +1780,7 @@ function changePageSize(stateKey, newSize) {
   if (stateKey === 'schedule') schedule();
   else if (stateKey === 'markas') markaView();
   else if (stateKey === 'gplock') locks();
+  else if (stateKey === 'fms') fmsView();
 }
 
 function changeSchedulePage(newPage) {
@@ -1793,6 +1796,14 @@ function changeMarkaPage(newPage) {
   const el = document.getElementById('markas');
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
+
+function changeFmsPage(newPage) {
+  PAGINATION.fms.page = Math.max(1, newPage);
+  fmsView();
+  const el = document.getElementById('fms');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+window.changeFmsPage = changeFmsPage;
 
 function changeLockPage(newPage) {
   PAGINATION.gplock.page = Math.max(1, newPage);
@@ -2218,7 +2229,7 @@ function fmsView() {
   redrawKeepingFocus(document.getElementById('fmsFilters'), `
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
       <label style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;">Responsible Role:
-        <select class="filter-input" onchange="F.fmsRole = this.value; fmsView();">
+        <select class="filter-input" onchange="F.fmsRole = this.value; PAGINATION.fms.page = 1; fmsView();">
           <option value="all" ${curRole === 'all' ? 'selected' : ''}>All Roles</option>
           <option value="Account Team" ${curRole === 'Account Team' ? 'selected' : ''}>Account Team</option>
           <option value="Process Coordinator (PC)" ${curRole === 'Process Coordinator (PC)' || curRole === 'Process Coordinator' || curRole === 'PC' ? 'selected' : ''}>Process Coordinator (PC)</option>
@@ -2226,7 +2237,7 @@ function fmsView() {
         </select>
       </label>
       <label style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;">Milestone Step:
-        <select class="filter-input" onchange="F.fmsStep = this.value; fmsView();">
+        <select class="filter-input" onchange="F.fmsStep = this.value; PAGINATION.fms.page = 1; fmsView();">
           <option value="all" ${curStep === 'all' ? 'selected' : ''}>All Milestone Steps</option>
           <option value="FMS-1" ${curStep === 'FMS-1' ? 'selected' : ''}>FMS-1: Account Update (Due + 2d)</option>
           <option value="FMS-2" ${curStep === 'FMS-2' ? 'selected' : ''}>FMS-2: Master Intimation (Due + 5d)</option>
@@ -2235,7 +2246,7 @@ function fmsView() {
         </select>
       </label>
       <label style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;">Status:
-        <select class="filter-input" onchange="F.fmsStatus = this.value; fmsView();">
+        <select class="filter-input" onchange="F.fmsStatus = this.value; PAGINATION.fms.page = 1; fmsView();">
           <option value="all" ${curStatus === 'all' ? 'selected' : ''}>All Statuses</option>
           <option value="Pending" ${curStatus === 'Pending' ? 'selected' : ''}>Pending &amp; Overdue</option>
           <option value="DoneOnTime" ${curStatus === 'DoneOnTime' ? 'selected' : ''}>Done On-Time (1.0 pt)</option>
@@ -2243,7 +2254,7 @@ function fmsView() {
         </select>
       </label>
       <label style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;">Search Marka:
-        <input type="text" class="filter-input" placeholder="e.g. ABT..." value="${escapeHtml(F.marka || '')}" oninput="F.marka = this.value; fmsView();" style="width:120px;">
+        <input type="text" class="filter-input" placeholder="e.g. ABT..." value="${escapeHtml(F.marka || '')}" oninput="F.marka = this.value; PAGINATION.fms.page = 1; fmsView();" style="width:120px;">
       </label>
       <button id="fmsBulkBtn" onclick="openBulkFmsModal()" class="btn primary" style="padding:6px 14px; font-size:12px; font-weight:700; display:none; margin-left:auto;">✓ Mark Selected Done (0)</button>
     </div>
@@ -2318,7 +2329,16 @@ function fmsView() {
   const tbody = document.getElementById('fmsTable');
   if (!tbody) return;
 
-  tbody.innerHTML = allTasks.length ? allTasks.map(t => {
+  // Render one page at a time: all milestones at once (1,700+ rows) froze phones.
+  let pageTasks = allTasks;
+  if (PAGINATION.fms.pageSize !== 'all') {
+    const totalPages = Math.max(1, Math.ceil(allTasks.length / PAGINATION.fms.pageSize));
+    if (PAGINATION.fms.page > totalPages) PAGINATION.fms.page = totalPages;
+    const start = (PAGINATION.fms.page - 1) * PAGINATION.fms.pageSize;
+    pageTasks = allTasks.slice(start, start + PAGINATION.fms.pageSize);
+  }
+
+  tbody.innerHTML = pageTasks.length ? pageTasks.map(t => {
     let statusBadge = '';
     if (t.isDone) {
       if (t.score === 1.0) {
@@ -2376,6 +2396,7 @@ function fmsView() {
       </tr>
     `;
   }).join('') : '<tr><td colspan="12" style="text-align:center;color:#788882;padding:24px;">No FMS milestone tasks found.</td></tr>';
+  renderPaginationControls('fmsPagination', allTasks.length, 'fms', 'changeFmsPage');
 }
 
 function toggleAllFmsSelect(masterCheckbox) {
@@ -4088,7 +4109,8 @@ function visitsView() {
 
   // Subtab 2: Party-wise (Marka-wise) Matrix — the Doer and Search boxes above apply here too
   const matrixTbody = document.getElementById('partyMatrixTable');
-  if (matrixTbody) {
+  // Only build the matrix (one row per party, thousands of cells) while its tab is open.
+  if (matrixTbody && visitSubtab === 'matrix') {
     const matrixList = activeMarkaList.filter(m =>
       (curDoer === 'all' || ListFilters.sameName(ownerOf(m), curDoer)) &&
       (!q || [m.marka, m.master].some(x => String(x || '').toLowerCase().includes(q))));

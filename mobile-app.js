@@ -1,4 +1,4 @@
-// CollectIQ mobile app shell (v6.28.0)
+// CollectIQ mobile app shell (v6.29.0)
 // On phones the page behaves like an installed app: a 5-tab bottom bar, a centre
 // quick-action button, and a "More" sheet that lists every other section.
 // Desktop is untouched; everything here is gated on the phone breakpoint.

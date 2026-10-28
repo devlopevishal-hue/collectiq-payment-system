@@ -1,5 +1,5 @@
 /* ==========================================
-   CollectIQ mobile app shell (v6.28.0)
+   CollectIQ mobile app shell (v6.29.0)
    Loaded after styles.css. Phone-only: makes the web page look and
    behave like an installed app. Desktop layout is not affected.
    ========================================== */
@@ -79,9 +79,8 @@
     height: auto !important;
     min-height: calc(var(--m-tabbar-h) + var(--m-safe-bottom)) !important;
     padding: 6px 6px calc(6px + var(--m-safe-bottom)) 6px !important;
-    background: rgba(14, 42, 36, 0.97) !important;
-    -webkit-backdrop-filter: saturate(160%) blur(14px);
-    backdrop-filter: saturate(160%) blur(14px);
+    /* Solid colour, no backdrop blur: blurring behind a fixed bar re-paints on every scroll frame on low-end phones. */
+    background: var(--m-bar) !important;
     border-top: 1px solid var(--m-bar-line) !important;
     align-items: stretch !important;
     z-index: 900 !important;
@@ -594,6 +593,13 @@
   }
   html body .section-top .header-actions::-webkit-scrollbar { display: none; }
   html body .section-top .header-actions .btn { flex: none !important; width: auto !important; white-space: nowrap !important; }
+
+  /* Speed: the browser skips laying out and painting cards that are off-screen. */
+  html body tr.case-row,
+  html body table.m-auto-card tbody > tr:not(.m-row-empty) {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 360px;
+  }
 
   /* Pagination as a simple centred control */
   html body .pagination-bar { border: 0 !important; background: transparent !important; justify-content: center !important; gap: 8px !important; padding: 6px 0 !important; }
