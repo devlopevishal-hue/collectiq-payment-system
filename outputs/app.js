@@ -3025,11 +3025,60 @@ async function splitSharedRecord(id) {
 }
 window.splitSharedRecord = splitSharedRecord;
 
+// Moving to Supabase: copies every collection of the Firebase live database
+// into Supabase, so Supabase becomes an exact copy (records only in Supabase
+// are removed), then counts both sides. Firebase is only read, never changed,
+// so this can be run again.
+const LIVE_COLLECTIONS = ['collectiq_markas', 'collectiq_payments', 'collectiq_help_tickets', 'collectiq_config', 'collectiq_receipts', 'collectiq'];
+async function copyLiveDataToSupabase() {
+  if (useSupabase()) return toast('Supabase is already the live database.', 6000);
+  if (!supabaseConfigured()) return toast('❌ Supabase is not set up yet (db-config.js).', 8000);
+  if (!liveToolAllowed('copy the data to Supabase')) return;
+  if (!confirm('Copy ALL live data from Firebase into the new Supabase database?\n\nFirebase is only read and is not changed. Supabase is made an exact copy of Firebase (what is in Supabase now is replaced).')) return;
+  const btn = document.getElementById('copyToSupabaseBtn');
+  const label = btn ? btn.textContent : '';
+  const target = openSupabaseStore();
+  const report = [];
+  try {
+    for (const name of LIVE_COLLECTIONS) {
+      if (btn) { btn.disabled = true; btn.textContent = `Copying ${name.replace('collectiq_', '')}…`; }
+      const snap = await firestoreDb.collection(name).get({ source: 'server' });
+      const docs = snap.docs.map(d => ({ id: d.id, data: JSON.parse(JSON.stringify(d.data())) }));
+      // Receipt photos are large: fewer per request.
+      const size = name === 'collectiq_receipts' ? 10 : 200;
+      for (let i = 0; i < docs.length; i += size) {
+        const b = target.batch();
+        docs.slice(i, i + size).forEach(d => b.set(target.collection(name).doc(d.id), d.data));
+        await b.commit();
+      }
+      const keep = new Set(docs.map(d => String(d.id)));
+      const extra = (await target.fetchRows(name)).filter(r => !keep.has(String(r.id)));
+      for (let i = 0; i < extra.length; i += 200) {
+        const b = target.batch();
+        extra.slice(i, i + 200).forEach(r => b.delete(target.collection(name).doc(r.id)));
+        await b.commit();
+      }
+      const copied = (await target.fetchRows(name)).length;
+      report.push({ name, firebase: docs.length, supabase: copied });
+    }
+    const bad = report.filter(r => r.supabase !== r.firebase);
+    const lines = report.map(r => `${r.name === 'collectiq' ? 'legacy' : r.name.replace('collectiq_', '')}: Firebase ${r.firebase}, Supabase ${r.supabase}`).join('\n');
+    alert((bad.length ? '⚠️ The counts do not match. Run the copy again.\n\n' : '✓ All data copied to Supabase.\n\n') + lines);
+  } catch (err) {
+    reportCloudSaveError(err, 'Copy to Supabase');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+  }
+}
+window.copyLiveDataToSupabase = copyLiveDataToSupabase;
+
 function markaView() {
   const container = document.getElementById('markas');
   if (!container) return;
   const backupBtn = document.getElementById('backupBtn');
   if (backupBtn) backupBtn.style.display = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superuser') ? '' : 'none';
+  const copyBtn = document.getElementById('copyToSupabaseBtn');
+  if (copyBtn) copyBtn.style.display = isAdminUser() && supabaseConfigured() && !useSupabase() ? '' : 'none';
   if (markaSubtab === 'dupes') {
     try { renderDuplicateParties(); } catch (err) { console.error('Duplicate parties check failed:', err); }
   }
@@ -8178,6 +8227,26 @@ function getCloudConfig() {
   return DEFAULT_FIREBASE_CONFIG;
 }
 
+// Supabase (Postgres + Realtime) is used instead of Firebase when db-config.js
+// says so. The Supabase store takes the same calls as Firestore.
+function liveDbConfig() {
+  return window.COLLECTIQ_DB || { provider: 'firebase' };
+}
+function supabaseConfigured() {
+  const c = liveDbConfig();
+  return !!(c.supabaseUrl && c.supabaseAnonKey && window.supabase && window.SupabaseStore);
+}
+function useSupabase() {
+  return liveDbConfig().provider === 'supabase' && supabaseConfigured();
+}
+function openSupabaseStore() {
+  const c = liveDbConfig();
+  const client = window.supabase.createClient(c.supabaseUrl, c.supabaseAnonKey, { auth: { persistSession: false } });
+  return SupabaseStore.create(client, {
+    onDropped: (err, op) => reportCloudSaveError(err, `Saved offline (${op.coll.replace('collectiq_', '')} ${op.id})`)
+  });
+}
+
 // Granular Ultra-Fast Cloud Database Helpers (<100ms writes)
 // One record from the live database (added / modified / removed) into the party list.
 // Returns true when the list changed.
@@ -8249,7 +8318,7 @@ function saveMarkaCloud(m) {
 }
 
 function cloudUpdateFor(plan, m) {
-  const FV = firebase.firestore.FieldValue;
+  const FV = firestoreDb.FieldValue || firebase.firestore.FieldValue;
   const upd = {};
   Object.keys(plan.fields).forEach(k => { upd[k] = plan.fields[k] === undefined ? FV.delete() : plan.fields[k]; });
   if (plan.history.removed.length) upd.history = PartySync.clone(m.history || []);
@@ -8418,15 +8487,25 @@ async function saveCloud(options = {}) {
 }
 
 let isInitialMarkasCloudLoaded = false;
+// The live database listeners are started once per page. Starting them again
+// (the 3-second sync timer used to) stacks copies that never stop, so every
+// save made by anyone was processed hundreds of times and the app hung.
+let firebaseStarted = false;
 
 function initFirebase() {
+  if (firebaseStarted) return true;
+  const supa = useSupabase();
   const cfg = getCloudConfig();
-  if (!cfg || typeof firebase === 'undefined') return false;
+  if (!supa && (!cfg || typeof firebase === 'undefined')) return false;
   try {
-    if (!firebase.apps.length) {
-      firebase.initializeApp(cfg);
+    if (supa) {
+      firestoreDb = openSupabaseStore();
+    } else {
+      if (!firebase.apps.length) {
+        firebase.initializeApp(cfg);
+      }
+      firestoreDb = firebase.firestore();
     }
-    firestoreDb = firebase.firestore();
     try {
       firestoreDb.enablePersistence({ synchronizeTabs: true }).catch(() => {});
     } catch(e) {}
@@ -8622,6 +8701,7 @@ function initFirebase() {
       console.warn('Firestore config listener error:', err);
     });
 
+    firebaseStarted = true;
     updateDbStatusBadge('firebase');
     return true;
   } catch (err) {
@@ -8780,7 +8860,7 @@ function updateDbStatusBadge(mode) {
   if (el) {
     if (mode === 'firebase') {
       el.innerHTML = '<span style="color:#4ba779;">●</span> Live Cloud Database (Connected)';
-      el.title = 'Real-time live multi-device sync active via Cloud Firestore';
+      el.title = 'Real-time live multi-device sync active via ' + (useSupabase() ? 'Supabase' : 'Cloud Firestore');
       el.onclick = openCloudModal;
       el.style.cursor = 'pointer';
     } else if (mode === 'firebase_permission_denied') {
@@ -8814,7 +8894,9 @@ window.addEventListener('load', () => {
   renderAll();
 });
 
-// Live auto-polling every 3 seconds for real-time direct database sync across all users & devices
+// Every 3 seconds: reload from the central SQLite server when one is in use.
+// The live cloud database pushes changes by itself, so it is only started here
+// if it could not start yet (it is never started twice).
 setInterval(() => {
   if (!document.hidden) {
     syncWithDatabase();
