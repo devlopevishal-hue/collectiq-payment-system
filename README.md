@@ -90,6 +90,17 @@ Every module features 1-click **Excel Export** with formatted dates, INR currenc
 
 ---
 
+## 💰 Daily Payments Bulk Upload
+
+**⇪ Upload Daily Payments** (header, or the + button on mobile) reads the Sales Payment Performance Report: Party, Party Marka, Policy, Bill Amount, Disc / RD / Claim / TDS Amount, Paid Amount, Days, Master. **⇩ Download format** gives a blank sheet in this layout.
+
+- Each row is matched to a party by **Party Marka + Master** (marka alone only when that name is one party).
+- A preview shows every row as Ready, Not found, No amount or Already saved before anything is saved.
+- On save, Paid + deductions settle the party's oldest bills first; the Paid Amount is recorded as the payment (with the deductions kept on it). Anything above the dues becomes an advance credit.
+- Total and blank rows are skipped. A row already saved for the same party, date and amount is not saved twice, so uploading the same file again is safe.
+
+---
+
 ## 🔒 Strict Data Isolation
 * **Standard Doers (`role: 'user'`)**: Only see their assigned Markas, their own Field Visits, FMS tasks, Help Tickets (where they are requester, assigned helper, or resolver), and CRM Escalations.
 * **Administrators (`role: 'admin'`)**: Have complete visibility across the whole organization and can manage user credentials, master assignments, and imports.
