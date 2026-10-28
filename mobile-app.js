@@ -156,6 +156,58 @@
     window.switchView = wrapped;
   }
 
+
+  // ---------- Wide tables become cards on phones ----------
+  // Tables that are not already mobile cards (FMS, visits, tickets, CRM, reports)
+  // get each cell labelled from its column header so CSS can lay rows out as cards.
+  function labelText(th) {
+    return (th.textContent || '').replace(/[▲▼⇅↑↓⇵]/g, '').replace(/\s+/g, ' ').trim();
+  }
+
+  function cardifyTable(table) {
+    if (table.closest('.modal')) return;
+    var heads = table.querySelectorAll('thead th');
+    if (heads.length < 4) return;
+    var labels = Array.prototype.map.call(heads, labelText);
+    var rows = table.querySelectorAll('tbody > tr');
+    var changed = false;
+    rows.forEach(function (tr) {
+      if (tr.classList.contains('case-row')) return;
+      var cells = tr.children;
+      if (cells.length === 1) { tr.classList.add('m-row-empty'); return; }
+      for (var i = 0; i < cells.length; i++) {
+        var td = cells[i];
+        if (td.hasAttribute('data-label') || td.hasAttribute('data-m-label')) continue;
+        var label = labels[i] || '';
+        if (label && !/^actions?$/i.test(label)) td.setAttribute('data-m-label', label);
+        else td.classList.add('m-cell-wide');
+        changed = true;
+      }
+    });
+    if (changed || rows.length) table.classList.add('m-auto-card');
+  }
+
+  function cardifyAll() {
+    if (!PHONE.matches) return;
+    document.querySelectorAll('main .view table').forEach(function (t) {
+      if (t.querySelector('tbody > tr.case-row')) return;
+      cardifyTable(t);
+    });
+  }
+
+  function watchTables() {
+    var pending = false;
+    var mo = new MutationObserver(function () {
+      if (pending) return;
+      pending = true;
+      requestAnimationFrame(function () { pending = false; cardifyAll(); });
+    });
+    document.querySelectorAll('main .view tbody').forEach(function (tb) {
+      mo.observe(tb, { childList: true });
+    });
+    cardifyAll();
+  }
+
   // ---------- Wiring ----------
   function init() {
     wrapSwitchView();
@@ -184,8 +236,9 @@
     });
 
     document.querySelectorAll('.m-sheet').forEach(enableSwipeDown);
+    watchTables();
 
-    PHONE.addEventListener && PHONE.addEventListener('change', function () { closeSheets(); });
+    PHONE.addEventListener && PHONE.addEventListener('change', function () { closeSheets(); cardifyAll(); });
 
     syncTabs(window.currentActiveView || 'dashboard');
     // Badges are filled in after data loads; keep the More dot in step.
