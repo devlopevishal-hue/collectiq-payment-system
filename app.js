@@ -8418,8 +8418,13 @@ async function saveCloud(options = {}) {
 }
 
 let isInitialMarkasCloudLoaded = false;
+// The live database listeners are started once per page. Starting them again
+// (the 3-second sync timer used to) stacks copies that never stop, so every
+// save made by anyone was processed hundreds of times and the app hung.
+let firebaseStarted = false;
 
 function initFirebase() {
+  if (firebaseStarted) return true;
   const cfg = getCloudConfig();
   if (!cfg || typeof firebase === 'undefined') return false;
   try {
@@ -8622,6 +8627,7 @@ function initFirebase() {
       console.warn('Firestore config listener error:', err);
     });
 
+    firebaseStarted = true;
     updateDbStatusBadge('firebase');
     return true;
   } catch (err) {
@@ -8814,7 +8820,9 @@ window.addEventListener('load', () => {
   renderAll();
 });
 
-// Live auto-polling every 3 seconds for real-time direct database sync across all users & devices
+// Every 3 seconds: reload from the central SQLite server when one is in use.
+// The live cloud database pushes changes by itself, so it is only started here
+// if it could not start yet (it is never started twice).
 setInterval(() => {
   if (!document.hidden) {
     syncWithDatabase();
