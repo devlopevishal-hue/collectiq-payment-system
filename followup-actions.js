@@ -393,10 +393,10 @@
     return { task, entry };
   }
 
-  // Next follow-up date for a party: 5 days before its due date, so calls start
+  // Next follow-up date for a party: 7 days before its due date, so calls start
   // before the bill falls due. Never earlier than `minDays` from today (an
   // already-close or overdue due date falls back to that).
-  const DAYS_BEFORE_DUE = 5;
+  const DAYS_BEFORE_DUE = 7;
   function autoNextDate(dueDate, todayIso, minDays = 0) {
     const min = addDays(todayIso, minDays);
     const target = ISO_DATE.test(text(dueDate)) ? addDays(dueDate, -DAYS_BEFORE_DUE) : '';

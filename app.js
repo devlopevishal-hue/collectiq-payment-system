@@ -820,7 +820,7 @@ function isLocked(m) {
   return totalOutstanding(m) > 0 && oldest && days(oldest) > 19;
 }
 
-// Default next follow-up: 5 days before the oldest due date (at least `minDays` from today).
+// Default next follow-up: 7 days before the oldest due date (at least `minDays` from today).
 function autoNextDate(m, minDays) {
   return FollowupActions.autoNextDate(oldestDueDate(m), iso(today), minDays);
 }
@@ -937,7 +937,7 @@ function allMasters() {
 // TABLE SORTING SYSTEM
 // ==========================================
 const SORTS = {
-  schedule: { col: 'marka', dir: 'asc' },
+  schedule: { col: 'nextDate', dir: 'asc' },
   fms: { col: 'plannedDate', dir: 'asc' },
   gplock: { col: 'days', dir: 'desc' },
   escalations: { col: 'date', dir: 'desc' },
