@@ -1,5 +1,5 @@
 /* ==========================================
-   CollectIQ mobile app shell (v6.29.0)
+   CollectIQ mobile app shell (v6.34.0)
    Loaded after styles.css. Phone-only: makes the web page look and
    behave like an installed app. Desktop layout is not affected.
    ========================================== */
@@ -604,6 +604,23 @@
   /* Pagination as a simple centred control */
   html body .pagination-bar { border: 0 !important; background: transparent !important; justify-content: center !important; gap: 8px !important; padding: 6px 0 !important; }
   html body .pagination-bar button { border-radius: 12px !important; min-height: 40px !important; }
+}
+
+/* v6.34.0: smoother on Android and iOS */
+@media (max-width: 768px) {
+  /* Pop-up forms: fit the visible screen on iOS (its toolbar hides part of 90vh),
+     keep the Save button above the home bar, and scroll only the form, not the page behind. */
+  html body .modal {
+    max-height: 90vh !important;
+    max-height: 90dvh !important;
+    overscroll-behavior: contain;
+    padding-bottom: calc(24px + var(--m-safe-bottom)) !important;
+  }
+  html body .modal-backdrop { overscroll-behavior: contain; touch-action: pan-y; }
+  html body .m-sheet { overscroll-behavior: contain; }
+
+  /* Taps answer at once (no double-tap zoom wait) on every control, not only buttons. */
+  a, label, select, summary, [onclick], .tab, .b-nav, .m-tile { touch-action: manipulation; }
 }
 
 @keyframes mViewIn {
