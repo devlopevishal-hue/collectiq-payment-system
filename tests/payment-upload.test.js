@@ -105,3 +105,17 @@ test('apply: uses the app rule for the next follow-up when given', () => {
   U.apply(item, { uid, today: '2026-10-28', nextDateFor: () => '2026-11-05' });
   assert.equal(m.nextDate, '2026-11-05');
 });
+
+test('findParty: parties saved under their full name are found by the Party column', () => {
+  const list = [
+    { id: 'a', marka: 'SHREE RAM FASHION', markaCode: 'GSHR', master: 'GUDDU MASTER' },
+    { id: 'b', marka: 'JASHOL TEX FAB', markaCode: 'GSHR', master: 'GUDDU MASTER' },
+    { id: 'c', marka: 'SHREE RAM FASHION', markaCode: 'GSHR', master: 'KALPESH MASTER' }
+  ];
+  assert.equal(U.findParty(list, 'GSHR', 'GUDDU MASTER', 'Jashol Tex Fab').id, 'b');
+  assert.equal(U.findParty(list, 'GSHR', 'KALPESH MASTER', 'SHREE RAM FASHION').id, 'c');
+  // One marka code shared by two parties under a master cannot pick one.
+  assert.equal(U.findParty(list, 'GSHR', 'GUDDU MASTER', ''), null);
+  // Marka code alone still works when that code is one party.
+  assert.equal(U.findParty(list.slice(2), 'GSHR', 'KALPESH MASTER', '').id, 'c');
+});

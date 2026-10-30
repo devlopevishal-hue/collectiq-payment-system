@@ -1151,10 +1151,11 @@ function filtered(list = activeMarkas()) {
     if (F.marka && F.marka.trim()) {
       const q = F.marka.toLowerCase().trim();
       const mMarka = (m.marka || '').toLowerCase();
+      const mCode = (m.markaCode || '').toLowerCase();
       const mMaster = (m.master || '').toLowerCase();
       const mOwner = (ownerOf(m) || '').toLowerCase();
       const mRemark = (m.remark || '').toLowerCase();
-      if (!mMarka.includes(q) && !mMaster.includes(q) && !mOwner.includes(q) && !mRemark.includes(q)) {
+      if (!mMarka.includes(q) && !mCode.includes(q) && !mMaster.includes(q) && !mOwner.includes(q) && !mRemark.includes(q)) {
         return false;
       }
     }
@@ -6947,26 +6948,25 @@ function processImportedRows(rawInput, fileName = 'Imported File') {
       row[cleanKey] = v;
     }
 
-    // Extract Marka / Party
-    let markaName = (
+    // Extract Party: the full party name; the marka / group code is kept beside it
+    // (one marka code can cover several parties).
+    let markaCode = String(
       row['markagroup'] || row['markagrou'] || row['marka'] || row['group'] || row['markaname'] || ''
+    ).trim();
+    let markaName = (
+      row['party'] || row['partyname'] || row['customername'] || row['accountname'] || row['particulars'] || row['ledger'] || row['name'] || ''
     );
-    if (!markaName) {
-      markaName = (
-        row['party'] || row['partyname'] || row['accaddress'] || row['accaddr'] ||
-        row['customername'] || row['accountname'] || row['particulars'] || row['ledger'] || row['name'] || ''
-      );
-    }
-    // Positional fallback: Column C (index 2) or Column B (index 1)
+    // Positional fallback: Column B (index 1) or Column C (index 2)
     if (!markaName && rawRow._rawLine && Array.isArray(rawRow._rawLine)) {
-      if (rawRow._rawLine[2] && String(rawRow._rawLine[2]).trim()) {
-        markaName = String(rawRow._rawLine[2]);
-      } else if (rawRow._rawLine[1] && String(rawRow._rawLine[1]).trim()) {
+      if (rawRow._rawLine[1] && String(rawRow._rawLine[1]).trim()) {
         markaName = String(rawRow._rawLine[1]);
+      } else if (rawRow._rawLine[2] && String(rawRow._rawLine[2]).trim()) {
+        markaName = String(rawRow._rawLine[2]);
       }
     }
+    if (!markaName) markaName = markaCode;
 
-    markaName = String(markaName || '').trim();
+    markaName = String(markaName || '').replace(/\s+/g, ' ').trim();
     if (!markaName) return;
 
     // Extract Bill Date
@@ -7029,15 +7029,15 @@ function processImportedRows(rawInput, fileName = 'Imported File') {
 
     totalBillsCount++;
 
-    const cleanMarkaKey = markaName.toUpperCase();
+    const cleanMarkaKey = PartyCheck.partyKey(markaName, master);
     if (!markaMap.has(cleanMarkaKey)) {
-      markaMap.set(cleanMarkaKey, { marka: markaName, master, own, bills: [] });
+      markaMap.set(cleanMarkaKey, { marka: markaName, markaCode, master, own, bills: [] });
     }
     const mg = markaMap.get(cleanMarkaKey);
 
     // Smart in-file bill deduplication
     const existingInMg = mg.bills.find(b => 
-      (billNo && (b.billNos || []).includes(billNo)) ||
+      (billNo && b.firstDate === billDate && (b.billNos || []).includes(billNo)) ||
       (!billNo && b.firstDate === billDate && Math.abs(b.balance - balance) < 0.01)
     );
     if (existingInMg) {
@@ -7075,7 +7075,12 @@ function processImportedRows(rawInput, fileName = 'Imported File') {
 
   markaMap.forEach((data, cleanMarkaKey) => {
     const targetMarkaName = data.marka;
-    let m = markas.find(x => x.marka && x.marka.trim().toUpperCase() === cleanMarkaKey);
+    // Same master + full name; by name alone only when that name is one party.
+    let m = markas.find(x => x.marka && PartyCheck.partyKey(x.marka, x.master) === cleanMarkaKey);
+    if (!m) {
+      const sameName = markas.filter(x => PartyCheck.normKey(x.marka) === PartyCheck.normKey(targetMarkaName));
+      if (sameName.length === 1) m = sameName[0];
+    }
     if (m) {
       const matchedBillIds = new Set();
       data.bills.forEach((newBill) => {
@@ -7123,6 +7128,7 @@ function processImportedRows(rawInput, fileName = 'Imported File') {
       }
 
       m.master = data.master || m.master;
+      if (data.markaCode) m.markaCode = data.markaCode;
       if (ownerOf(m) === 'Unassigned' && data.own) m.owner = data.own;
       // No date yet, or nobody has followed up yet: plan from the due date
       if (totalOutstanding(m) > 0 && (!m.nextDate || followUpCount(m) === 0)) {
@@ -7131,7 +7137,8 @@ function processImportedRows(rawInput, fileName = 'Imported File') {
         m.nextDate = '';
       }
     } else {
-      const existingOwner = markas.find(x => x.marka && x.marka.trim().toUpperCase() === cleanMarkaKey);
+      const existingOwner = markas.find(x => PartyCheck.normKey(x.master) === PartyCheck.normKey(data.master) &&
+        data.markaCode && PartyCheck.normKey(x.markaCode || x.marka) === PartyCheck.normKey(data.markaCode));
       const bills = [];
       data.bills.forEach((b) => {
         bills.push({
@@ -7148,6 +7155,7 @@ function processImportedRows(rawInput, fileName = 'Imported File') {
       markas.push({
         id: uid(),
         marka: targetMarkaName,
+        markaCode: data.markaCode || '',
         master: data.master,
         owner: data.own || (existingOwner && ownerOf(existingOwner)) || getMasterFollowper(data.master) || 'Unassigned',
         nextDate: '',
