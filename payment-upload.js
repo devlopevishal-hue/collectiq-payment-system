@@ -109,14 +109,25 @@
     return `${normKey(m.master)}|${normKey(m.marka)}`;
   }
 
-  // Master + marka first; by marka alone only when that name is one party.
-  function findParty(list, marka, master) {
+  // Parties are saved under their full name with the marka code beside it.
+  // Full party name first (master + name, then the name alone when it is one
+  // party), then master + marka; by marka alone only when that name is one party.
+  function findParty(list, marka, master, party) {
     const items = (list || []).filter(Boolean);
+    if (party) {
+      const named = items.filter(m => normKey(m.marka) === normKey(party));
+      const exact = master ? named.find(m => normKey(m.master) === normKey(master)) : null;
+      if (exact) return exact;
+      if (named.length === 1) return named[0];
+    }
     if (master) {
       const exact = items.find(m => keyOf(m) === `${normKey(master)}|${normKey(marka)}`);
       if (exact) return exact;
     }
-    const hits = items.filter(m => normKey(m.marka) === normKey(marka));
+    let hits = items.filter(m => normKey(m.marka) === normKey(marka));
+    if (!hits.length) {
+      hits = items.filter(m => normKey(m.markaCode) === normKey(marka) && (!master || normKey(m.master) === normKey(master)));
+    }
     return hits.length === 1 ? hits[0] : null;
   }
 
@@ -131,7 +142,7 @@
     return (rows || []).map(row => {
       const payDate = row.date || date;
       const settle = row.paid + row.deductions;
-      const m = findParty(markas, row.marka, row.master);
+      const m = findParty(markas, row.marka, row.master, row.party);
       let status = 'ready';
       let note = '';
       if (!m) { status = 'notFound'; note = 'Party not found in CollectIQ'; }
