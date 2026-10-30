@@ -56,6 +56,20 @@ function uid() {
   return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
 }
 
+// Marka code first, then the party's full name ("RDY · DYNAMIC FABRIC").
+function partyLabel(m) {
+  const name = (m && m.marka) || '';
+  const code = (m && m.markaCode) || '';
+  return code && code.toUpperCase() !== name.toUpperCase() ? `${code} · ${name}` : name;
+}
+
+function partyNameHtml(m) {
+  const name = (m && m.marka) || '';
+  const code = (m && m.markaCode) || '';
+  if (!code || code.toUpperCase() === name.toUpperCase()) return escapeHtml(name);
+  return `<b class="marka-code">${escapeHtml(code)}</b> <span class="party-full-name">${escapeHtml(name)}</span>`;
+}
+
 function escapeHtml(str) {
   if (typeof str !== 'string') return '';
   return str
@@ -1615,7 +1629,7 @@ function dashboard() {
       <div class="queue-item">
         <span class="due-dot ${dotColor}"></span>
         <div>
-          <b>${escapeHtml(m.marka)} · ${escapeHtml(m.master)}</b>
+          <b>${escapeHtml(partyLabel(m))} · ${escapeHtml(m.master)}</b>
           <small>Due (Policy): ${fmt(oldestDueDate(m))} · ${escapeHtml(ownerOf(m))} · ${followUpCount(m)} follow-ups</small>
         </div>
         <div>
@@ -1677,7 +1691,7 @@ function dashboard() {
   let allHist = [];
   active.forEach(m => {
     (m.history || []).forEach(h => {
-      allHist.push({ ...h, marka: m.marka });
+      allHist.push({ ...h, marka: partyLabel(m) });
     });
   });
   allHist.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -1879,7 +1893,7 @@ function schedule() {
         <td class="col-marka">
           <div class="m-card-top-header">
             <div>
-              <span class="case-name">${escapeHtml(m.marka)}</span>
+              <span class="case-name">${partyNameHtml(m)}</span>
               <span onclick="openBillDetails('${m.id}')" class="bills-pill" title="Click to view all ${(m.bills||[]).length} bills">📄 ${(m.bills||[]).length} Bills ▾</span>
             </div>
             <div class="m-card-badge-mobile">${badge}</div>
@@ -1988,7 +2002,7 @@ function locks() {
           <td class="col-marka">
             <div class="m-card-top-header">
               <div>
-                <span class="case-name">${escapeHtml(m.marka)}</span>
+                <span class="case-name">${partyNameHtml(m)}</span>
                 <span class="case-sub">${escapeHtml(m.master)}</span>
               </div>
               <span class="status overdue" style="font-weight:800;">${totalOverdueDays}D OVERDUE</span>
@@ -2028,7 +2042,7 @@ function openSalesHodModal(markaId) {
   document.getElementById('salesHodBy').value = (currentUser ? currentUser.followperName : 'Sales HOD') || 'Sales HOD';
   document.getElementById('salesHodPartyInfo').innerHTML = `
     <div style="display:flex; justify-content:space-between; align-items:center;">
-      <h3 style="margin:0; font-size:15px; color:#991b1b;">⊘ GP LOCKED · ${escapeHtml(m.marka)} · ${escapeHtml(m.master)}</h3>
+      <h3 style="margin:0; font-size:15px; color:#991b1b;">⊘ GP LOCKED · ${escapeHtml(partyLabel(m))} · ${escapeHtml(m.master)}</h3>
       <span class="status overdue" style="font-weight:800;">${totalOverdueDays} DAYS OVERDUE</span>
     </div>
     <div style="margin-top:8px; font-size:12px; color:#495d56; display:grid; grid-template-columns:1fr 1fr; gap:6px; background:#fff; padding:8px; border-radius:4px; border:1px solid #fed7c3;">
@@ -2452,7 +2466,7 @@ function openFmsModal(markaId, taskCode) {
   document.getElementById('fmsCompletedBy').value = t.completedBy || (window.currentUser ? (window.currentUser.followperName || window.currentUser.email) : 'Admin');
   document.getElementById('fmsRemark').value = t.remark || '';
 
-  document.getElementById('fmsModalTitle').textContent = `Complete ${t.code} · ${escapeHtml(m.marka)} · ${escapeHtml(m.master)}`;
+  document.getElementById('fmsModalTitle').textContent = `Complete ${t.code} · ${escapeHtml(partyLabel(m))} · ${escapeHtml(m.master)}`;
   document.getElementById('fmsTaskInfo').innerHTML = `
     <div style="font-weight:700; color:#182e25; font-size:13px;"><span style="color:#087454; font-family:'DM Mono', monospace; margin-right:6px;">${t.code}</span>${escapeHtml(t.name)}</div>
     <div style="color:#495d56; font-size:11px; margin-top:2px;">${escapeHtml(t.desc)}</div>
@@ -3130,7 +3144,7 @@ function markaView() {
           <td class="col-marka">
             <div class="m-card-top-header">
               <div>
-                <span class="case-name">${escapeHtml(m.marka)}</span>
+                <span class="case-name">${partyNameHtml(m)}</span>
                 <span onclick="openBillDetails('${m.id}')" class="bills-pill" title="Click to view all ${(m.bills||[]).length} bills">📄 ${(m.bills||[]).length} Bills ▾</span>
               </div>
               <span class="status ${ownerOf(m) === 'Unassigned' ? 'overdue' : 'active'}">${escapeHtml(ownerOf(m))}</span>
@@ -3471,7 +3485,7 @@ function openHelpTicketModal(optionalMarkaId) {
   if (mSelect) {
     const list = [...activeMarkas()].sort((a, b) => (a.marka || '').localeCompare(b.marka || ''));
     mSelect.innerHTML = '<option value="">General (Not Specific to a Single Marka)...</option>' + 
-      list.map(m => `<option value="${m.id}" ${optionalMarkaId === m.id ? 'selected' : ''}>${escapeHtml(m.marka)} · ${escapeHtml(m.master)} (${escapeHtml(ownerOf(m))}) - ₹${money(totalOutstanding(m))}</option>`).join('');
+      list.map(m => `<option value="${m.id}" ${optionalMarkaId === m.id ? 'selected' : ''}>${escapeHtml(partyLabel(m))} · ${escapeHtml(m.master)} (${escapeHtml(ownerOf(m))}) - ₹${money(totalOutstanding(m))}</option>`).join('');
     if (optionalMarkaId) mSelect.value = optionalMarkaId;
   }
 
@@ -4105,7 +4119,7 @@ function visitsView() {
       return `
         <tr>
           <td>
-          <span class="case-name">${escapeHtml(m.marka)}</span>
+          <span class="case-name">${partyNameHtml(m)}</span>
           <span onclick="openBillDetails('${m.id}')" style="display:inline-block;margin-left:6px;cursor:pointer;background:#e8f4f0;color:#087454;padding:2px 7px;border-radius:10px;font-size:11px;font-weight:700;border:1px solid #bfe7d4;" title="Click to view all ${(m.bills||[]).length} bills">📄 ${(m.bills||[]).length} Bills ▾</span>
         </td>
           <td>${escapeHtml(m.master)}</td>
@@ -4318,7 +4332,7 @@ function exportPartyMatrixExcel() {
     const calls = hist.filter(h => h.mode && h.mode.toLowerCase().includes('phone'));
     const wa = hist.filter(h => h.mode && h.mode.toLowerCase().includes('whatsapp'));
     return {
-      marka: m.marka,
+      marka: partyLabel(m),
       master: m.master,
       owner: ownerOf(m),
       visits: visits.length,
@@ -5389,7 +5403,7 @@ function openPayment(optionalMarkaId) {
   sel.innerHTML = '<option value="">Choose Marka...</option>' + markas.slice().sort((a,b) => (a.marka || '').localeCompare(b.marka || '')).map(m => {
     const out = totalOutstanding(m);
     const labelText = out < 0 ? `ADVANCE (${money(Math.abs(out))})` : money(out);
-    return `<option value="${m.id}">${escapeHtml(m.marka)} · ${escapeHtml(m.master)} · ${labelText}</option>`;
+    return `<option value="${m.id}">${escapeHtml(partyLabel(m))} · ${escapeHtml(m.master)} · ${labelText}</option>`;
   }).join('');
   
   if (optionalMarkaId) {
@@ -5877,7 +5891,7 @@ function openBillDetails(markaId) {
   
   const modal = document.getElementById('billModal');
   if (modal) modal.dataset.markaId = markaId;
-  document.getElementById('billTitle').textContent = `Bill Details · ${escapeHtml(m.marka)} · ${escapeHtml(m.master)}`;
+  document.getElementById('billTitle').textContent = `Bill Details · ${escapeHtml(partyLabel(m))} · ${escapeHtml(m.master)}`;
   
   const bills = (m.bills || []).slice();
   const { col, dir } = SORTS.bills;
@@ -5939,7 +5953,7 @@ function openBillDetails(markaId) {
 function openHistory(markaId) {
   const m = markas.find(x => x.id === markaId);
   if (!m) return;
-  document.getElementById('historyTitle').textContent = `Conversation History · ${escapeHtml(m.marka)} · ${escapeHtml(m.master)}`;
+  document.getElementById('historyTitle').textContent = `Conversation History · ${escapeHtml(partyLabel(m))} · ${escapeHtml(m.master)}`;
   document.getElementById('historyTimeline').innerHTML = renderHistoryTimeline(m);
   openModal('historyModal');
 }
@@ -6070,7 +6084,7 @@ function openPaymentHistory(markaId) {
   const modal = document.getElementById('paymentHistoryModal');
   if (modal) modal.dataset.markaId = markaId;
   
-  document.getElementById('payHistTitle').textContent = `Payment Ledger · ${escapeHtml(m.marka)} · ${escapeHtml(m.master)}`;
+  document.getElementById('payHistTitle').textContent = `Payment Ledger · ${escapeHtml(partyLabel(m))} · ${escapeHtml(m.master)}`;
   
   // Combine payments from payments array and payment entries from m.history
   const markaPayments = [...(payments || []).filter(p => PartyCheck.paymentBelongs(p, m, markas))];
@@ -6207,7 +6221,7 @@ function exportMarkaPaymentExcel() {
   
   const markaPayments = payments.filter(p => PartyCheck.paymentBelongs(p, m, markas));
   const rows = markaPayments.map(p => ({
-    marka: m.marka,
+    marka: partyLabel(m),
     master: m.master,
     followper: ownerOf(m),
     date: p.date,
@@ -6235,7 +6249,7 @@ function exportMarkaBillsExcel() {
     const d = days(b.policyDate || b.firstDate);
     const dueStatus = b.balance < 0 ? 'Advance' : b.balance === 0 ? 'Cleared' : d > 0 ? `Overdue (${d} days)` : d === 0 ? 'Due Today' : `Upcoming (${Math.abs(d)} days)`;
     return {
-      marka: m.marka,
+      marka: partyLabel(m),
       master: m.master,
       billDate: b.firstDate,
       policyDate: b.policyDate || b.firstDate,
@@ -6292,7 +6306,7 @@ function openResolution(markaId, escId) {
   
   document.getElementById('resolveMarkaId').value = m.id;
   document.getElementById('resolveEscId').value = esc.id;
-  document.getElementById('resolveTitle').textContent = `Resolve ${esc.type} · ${escapeHtml(m.marka)} ${esc.claimNumber || esc.waComplaintNo ? '· (' + (esc.claimNumber || esc.waComplaintNo) + ')' : ''}`;
+  document.getElementById('resolveTitle').textContent = `Resolve ${esc.type} · ${escapeHtml(partyLabel(m))} ${esc.claimNumber || esc.waComplaintNo ? '· (' + (esc.claimNumber || esc.waComplaintNo) + ')' : ''}`;
   document.getElementById('resolveDate').value = iso(today);
   document.getElementById('resolveRemark').value = esc.remark || '';
   document.getElementById('resolveType').value = 'Discount / Debit Note';
@@ -6419,7 +6433,7 @@ function openEscalationDetails(markaId, escId) {
     };
   }
 
-  document.getElementById('escDetailsTitle').textContent = `${esc.type} Details · ${escapeHtml(m.marka)} · ${escapeHtml(m.master)}`;
+  document.getElementById('escDetailsTitle').textContent = `${esc.type} Details · ${escapeHtml(partyLabel(m))} · ${escapeHtml(m.master)}`;
   
   const isOpen = (esc.status || 'Open').toLowerCase() === 'open';
   let taggedBillsHtml = '';
@@ -6487,7 +6501,7 @@ function openEscalationDetails(markaId, escId) {
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; margin-bottom:10px; border-bottom:1px solid #f0f4f2; padding-bottom:8px;">
         <div>
           <span style="font-size:11px; font-weight:800; color:#495d56; letter-spacing:0.5px; text-transform:uppercase;">TICKET INFORMATION</span>
-          <h3 style="margin:2px 0 0; font-size:16px; color:#182e25;">${escapeHtml(m.marka)} · ${escapeHtml(m.master)}</h3>
+          <h3 style="margin:2px 0 0; font-size:16px; color:#182e25;">${escapeHtml(partyLabel(m))} · ${escapeHtml(m.master)}</h3>
         </div>
         <div style="display:flex; gap:6px; align-items:center;">
           <span class="status active">${escapeHtml(esc.type)}</span>
@@ -7283,7 +7297,7 @@ function exportExcel() {
     const d = days(b.policyDate || b.firstDate);
     const dueStatus = b.balance < 0 ? 'Advance' : b.balance === 0 ? 'Cleared' : d > 0 ? `Overdue (${d} days)` : d === 0 ? 'Due Today' : `Upcoming (${Math.abs(d)} days)`;
     return {
-      marka: m.marka,
+      marka: partyLabel(m),
       master: m.master,
       masterFollowper: getMasterFollowper(m.master),
       markaFollowper: ownerOf(m),
@@ -7454,7 +7468,7 @@ function exportEscalationsExcel() {
     (m.escalations || []).forEach(e => {
       list.push({
         date: e.date,
-        marka: m.marka,
+        marka: partyLabel(m),
         master: m.master,
         type: e.type,
         ref: e.claimNumber || e.waComplaintNo || '—',
@@ -7496,7 +7510,7 @@ function exportFmsExcel() {
     const tasks = getFmsTasks(m);
     tasks.forEach(t => {
       rows.push({
-        marka: m.marka,
+        marka: partyLabel(m),
         master: m.master,
         dueDate: oldestDueDate(m),
         outstanding: totalOutstanding(m),
@@ -7653,7 +7667,7 @@ window.exportDoerAnalysisExcel = exportDoerAnalysisExcel;
 function exportMarkasExcel() {
   const list = filtered(activeMarkas());
   const rows = list.map(m => ({
-    marka: m.marka,
+    marka: partyLabel(m),
     master: m.master,
     masterFollowper: getMasterFollowper(m.master),
     owner: ownerOf(m),
