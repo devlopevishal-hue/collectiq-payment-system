@@ -186,6 +186,8 @@ td { padding: 12px 8px; border-bottom: 1px solid #eef1ef; font-size: 11px; backg
 tr:last-child td { border-bottom: 1px solid #eef1ef; }
 tr:hover td { background: #fbfdfc; }
 .case-name { font-weight: 800; display: block; }
+.case-name .marka-code { color: #087454; letter-spacing: .02em; margin-right: 4px; }
+.case-name .party-full-name { font-weight: 600; }
 .case-sub { display: block; color: #82908a; font: 10px 'DM Mono', ui-monospace, Menlo, monospace; margin-top: 3px; }
 .money { font: 500 11px 'DM Mono', ui-monospace, Menlo, monospace; }
 .status { font-size: 9px; font-weight: 800; padding: 4px 7px; border-radius: 20px; text-transform: uppercase; }

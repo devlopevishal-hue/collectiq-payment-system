@@ -1,5 +1,5 @@
 // CollectIQ Progressive Web App Service Worker
-const VERSION = '6.34.0';
+const VERSION = '6.35.0';
 const CACHE_NAME = 'collectiq-v' + VERSION;
 const APP_FILES = [
   'styles.css', 'mobile-app.css',
@@ -57,7 +57,7 @@ function putInCache(req, res) {
   return res;
 }
 
-// Files whose address names their version (app.js?v=6.34.0, supabase-js@2.45.4,
+// Files whose address names their version (app.js?v=6.35.0, supabase-js@2.45.4,
 // fonts) never change, so the saved copy is used straight away: opening the app
 // does not wait for ~20 downloads over the phone network.
 function isVersioned(url) {
