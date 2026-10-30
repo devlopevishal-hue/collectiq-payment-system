@@ -14,9 +14,12 @@
   <title>CollectIQ - Payment Collection System</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="styles.css?v=6.33.0">
-  <link rel="stylesheet" href="mobile-app.css?v=6.33.0">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="preconnect" href="https://oxriijxeiyfubyhbohim.supabase.co" crossorigin>
+  <!-- Fonts load without holding up the first screen (system font shows until then). -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="styles.css?v=6.35.0">
+  <link rel="stylesheet" href="mobile-app.css?v=6.35.0">
   <script>
     function toggleMobileMenu(e) {
       if (e) {
@@ -1652,31 +1655,30 @@ service cloud.firestore {
 
   <div id="toast"></div>
 
-  <!-- SheetJS Library for Direct Excel (.xlsx/.xls) File Parsing -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- SheetJS (Excel) is loaded after the app opens: see loadXlsx() in app.js. -->
   <!-- Firebase Compatibility Libraries for Real-time Cloud DB -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-  <script src="activity-log.js?v=6.33.0"></script>
-  <script src="party-check.js?v=6.33.0"></script>
-  <script src="list-filters.js?v=6.33.0"></script>
-  <script src="save-guard.js?v=6.33.0"></script>
-  <script src="db-config.js?v=6.33.0"></script>
-  <script src="supabase-store.js?v=6.33.0"></script>
-  <script src="auth.js?v=6.33.0"></script>
-  <script src="party-sync.js?v=6.33.0"></script>
-  <script src="followup-actions.js?v=6.33.0"></script>
-  <script src="ticket-actions.js?v=6.33.0"></script>
-  <script src="payment-upload.js?v=6.33.0"></script>
-  <script src="payment-reverse.js?v=6.33.0"></script>
-  <script src="app.js?v=6.33.0"></script>
-  <script src="ai-tools.js?v=6.33.0"></script>
-  <script src="ai-chat.js?v=6.33.0"></script>
-  <script src="mobile-app.js?v=6.33.0"></script>
+  <script src="activity-log.js?v=6.35.0"></script>
+  <script src="party-check.js?v=6.35.0"></script>
+  <script src="list-filters.js?v=6.35.0"></script>
+  <script src="save-guard.js?v=6.35.0"></script>
+  <script src="db-config.js?v=6.35.0"></script>
+  <script src="supabase-store.js?v=6.35.0"></script>
+  <script src="auth.js?v=6.35.0"></script>
+  <script src="party-sync.js?v=6.35.0"></script>
+  <script src="followup-actions.js?v=6.35.0"></script>
+  <script src="ticket-actions.js?v=6.35.0"></script>
+  <script src="payment-upload.js?v=6.35.0"></script>
+  <script src="payment-reverse.js?v=6.35.0"></script>
+  <script src="app.js?v=6.35.0"></script>
+  <script src="ai-tools.js?v=6.35.0"></script>
+  <script src="ai-chat.js?v=6.35.0"></script>
+  <script src="mobile-app.js?v=6.35.0"></script>
   <!-- Progressive Web App Service Worker Registration -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
-        navigator.serviceWorker.register('sw.js?v=6.33.0').then(function(reg) {
+        navigator.serviceWorker.register('sw.js?v=6.35.0').then(function(reg) {
           console.log('[PWA] Service Worker registered with scope:', reg.scope);
         }).catch(function(err) {
           console.warn('[PWA] Service Worker registration failed:', err);

@@ -38,8 +38,25 @@ function fmt(d) {
   return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-');
 }
 
+// Days from a date to today. The lists ask this for every bill of every party on
+// each screen refresh (tens of thousands of calls), and `today` is fixed while the
+// app is open, so each date string is worked out once.
+const daysCache = new Map();
 function days(d) {
   if (!d) return 0;
+  if (typeof d === 'string') {
+    let n = daysCache.get(d);
+    if (n === undefined) {
+      n = daysUncached(d);
+      if (daysCache.size > 20000) daysCache.clear();
+      daysCache.set(d, n);
+    }
+    return n;
+  }
+  return daysUncached(d);
+}
+
+function daysUncached(d) {
   let target;
   if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
     const [y, m, day] = d.split('-').map(Number);
@@ -550,21 +567,32 @@ function localSet(key, value) {
   return r.ok;
 }
 
-// Writing the big offline copy is slow (MBs of JSON), so it is batched: many
-// saves in a row (live updates, bulk uploads) become one write a moment later.
+// Writing the big offline copy is slow (MBs of JSON, a visible freeze on phones),
+// so it is never done while someone is using the screen: changes only mark it out
+// of date, and it is written when the app goes to the background (switching apps,
+// locking the phone), or after a minute of the app sitting idle.
+let bigOfflineDirty = false;
 let bigOfflineTimer = null;
 function writeBigOfflineCopy() {
-  bigOfflineTimer = null;
-  if (bigOfflineCopyFull) return;
+  if (bigOfflineTimer) { clearTimeout(bigOfflineTimer); bigOfflineTimer = null; }
+  if (!bigOfflineDirty || bigOfflineCopyFull) return;
+  bigOfflineDirty = false;
   localSet('collectiq_markas_v4', JSON.stringify(markas));
   if (bigOfflineCopyFull) return;
   localSet('collectiq_rokad_v4', JSON.stringify(payments));
 }
 function scheduleBigOfflineCopy() {
-  if (bigOfflineCopyFull || bigOfflineTimer) return;
-  bigOfflineTimer = setTimeout(writeBigOfflineCopy, 1500);
+  if (bigOfflineCopyFull) return;
+  bigOfflineDirty = true;
+  if (bigOfflineTimer) clearTimeout(bigOfflineTimer);
+  bigOfflineTimer = setTimeout(() => {
+    bigOfflineTimer = null;
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(writeBigOfflineCopy, { timeout: 10000 });
+    else writeBigOfflineCopy();
+  }, 60000);
 }
-window.addEventListener('pagehide', () => { if (bigOfflineTimer) { clearTimeout(bigOfflineTimer); writeBigOfflineCopy(); } });
+document.addEventListener('visibilitychange', () => { if (document.hidden) writeBigOfflineCopy(); });
+window.addEventListener('pagehide', writeBigOfflineCopy);
 
 // A save the live database did not take is shown on screen, not only in the console.
 let lastCloudErrorAt = 0;
@@ -795,13 +823,23 @@ function totalOutstanding(m) {
 }
 
 function alreadyDueAmount(m) {
-  return (m.bills || []).filter(b => b.balance > 0 && days(b.policyDate || b.firstDate) >= 0)
-    .reduce((sum, b) => sum + b.balance, 0);
+  const bills = m.bills || [];
+  let sum = 0;
+  for (let i = 0; i < bills.length; i++) {
+    const b = bills[i];
+    if (b.balance > 0 && days(b.policyDate || b.firstDate) >= 0) sum += b.balance;
+  }
+  return sum;
 }
 
 function upcomingDueAmount(m) {
-  return (m.bills || []).filter(b => b.balance > 0 && days(b.policyDate || b.firstDate) < 0)
-    .reduce((sum, b) => sum + b.balance, 0);
+  const bills = m.bills || [];
+  let sum = 0;
+  for (let i = 0; i < bills.length; i++) {
+    const b = bills[i];
+    if (b.balance > 0 && days(b.policyDate || b.firstDate) < 0) sum += b.balance;
+  }
+  return sum;
 }
 
 function activeBills(m) {
@@ -5772,10 +5810,38 @@ function openPaymentUpload() {
   openModal('paymentUploadModal');
 }
 
+// The Excel engine (about 900 KB) is only needed for uploads and downloads, so it
+// is fetched after the app has opened instead of holding up the first screen.
+const XLSX_URL = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+let xlsxLoading = null;
+function loadXlsx() {
+  if (typeof XLSX !== 'undefined') return Promise.resolve();
+  if (!xlsxLoading) {
+    xlsxLoading = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = XLSX_URL;
+      s.onload = () => resolve();
+      s.onerror = () => { xlsxLoading = null; s.remove(); reject(new Error('Excel engine did not load')); };
+      document.head.appendChild(s);
+    });
+  }
+  return xlsxLoading;
+}
+window.loadXlsx = loadXlsx;
+function withXlsx(fn) {
+  toast('Loading Excel engine...');
+  loadXlsx().then(fn, () => toast('❌ Excel engine could not load. Check the internet and try again.', 8000));
+}
+window.addEventListener('load', () => {
+  const later = () => loadXlsx().catch(() => {});
+  if (typeof requestIdleCallback === 'function') setTimeout(() => requestIdleCallback(later, { timeout: 8000 }), 2500);
+  else setTimeout(later, 4000);
+});
+
 function onPaymentUploadFile(e) {
   const f = e.target.files[0];
   if (!f) return;
-  if (typeof XLSX === 'undefined') return toast('Excel engine is still loading. Please try again in a moment.');
+  if (typeof XLSX === 'undefined') { withXlsx(() => onPaymentUploadFile(e)); return; }
   const reader = new FileReader();
   reader.onload = evt => {
     try {
@@ -5872,7 +5938,7 @@ async function savePaymentUpload() {
 }
 
 function downloadPaymentUploadTemplate() {
-  if (typeof XLSX === 'undefined') return toast('Excel engine is still loading. Please try again in a moment.');
+  if (typeof XLSX === 'undefined') { withXlsx(() => downloadPaymentUploadTemplate()); return; }
   const ws = XLSX.utils.aoa_to_sheet([PaymentUpload.TEMPLATE_HEADERS, ['AKSHAY TEX', 'AKYT', '3% PARTY', 153006, 0, 0, 0, 2916, 150090, 79, 'BABLU SHERA MASTER']]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Daily Payments');
@@ -6886,11 +6952,7 @@ function importFile(e) {
       parseWithXlsx(data);
     } else {
       toast('Loading Excel engine...');
-      const s = document.createElement('script');
-      s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
-      s.onload = () => parseWithXlsx(data);
-      s.onerror = () => parseAsTextFallback();
-      document.head.appendChild(s);
+      loadXlsx().then(() => parseWithXlsx(data), () => parseAsTextFallback());
     }
   };
   reader.readAsArrayBuffer(f);
@@ -8076,7 +8138,7 @@ function showNewLogins(list) {
 
 function downloadNewLogins() {
   if (!newLoginsShown.length) return;
-  if (typeof XLSX === 'undefined') return toast('Excel engine is still loading. Please try again in a moment.');
+  if (typeof XLSX === 'undefined') { withXlsx(() => downloadNewLogins()); return; }
   const ws = XLSX.utils.aoa_to_sheet([['Name', 'Login (email)', 'Password'], ...newLoginsShown.map(l => [l.followperName || '', l.email, l.password])]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Logins');
@@ -8136,8 +8198,24 @@ function switchView(id) {
     users: 'Doer & Access Control Management',
     aiAssistant: 'CollectIQ AI Assistant'
   };
+  // Phones show a short title that fits the app bar.
+  const shortTitles = {
+    dashboard: 'Command center',
+    schedule: 'Follow-ups',
+    fms: 'FMS tasks',
+    visits: 'Field visits',
+    helpTickets: 'Help tickets',
+    crmEscalations: 'CRM escalations',
+    gplock: 'GP lock',
+    analysis: 'Reports',
+    markas: 'Marka assignment',
+    import: 'Outstanding sync',
+    users: 'Users & access',
+    aiAssistant: 'AI assistant'
+  };
+  const phone = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
   const titleEl = document.getElementById('pageTitle');
-  if (titleEl) titleEl.textContent = titles[id] || 'CollectIQ';
+  if (titleEl) titleEl.textContent = (phone && shortTitles[id]) || titles[id] || 'CollectIQ';
 }
 window.switchView = switchView;
 
@@ -8168,6 +8246,28 @@ function closeMobileFab() {
   if (icon) icon.textContent = '+';
 }
 window.closeMobileFab = closeMobileFab;
+
+// Changes from other devices arrive one by one (a bulk upload sends hundreds).
+// Redrawing the screen for each froze phones, so they are gathered: at most one
+// redraw every LIVE_RENDER_GAP ms, and none while the app is in the background
+// (it is redrawn once when it comes back).
+const LIVE_RENDER_GAP = 700;
+let liveRenderTimer = null;
+let lastLiveRender = 0;
+let renderWhenVisible = false;
+function renderAllLive() {
+  if (document.hidden) { renderWhenVisible = true; return; }
+  if (liveRenderTimer) return;
+  const wait = Math.max(0, LIVE_RENDER_GAP - (Date.now() - lastLiveRender));
+  liveRenderTimer = setTimeout(() => {
+    liveRenderTimer = null;
+    lastLiveRender = Date.now();
+    renderAll();
+  }, wait);
+}
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && renderWhenVisible) { renderWhenVisible = false; renderAll(); }
+});
 
 let renderPending = false;
 function renderAll() {
@@ -8282,6 +8382,17 @@ function _executeRenderAll() {
   populateFollowperDropdowns();
 }
 
+// The person lists are rebuilt on every screen refresh. Rewriting a list that has
+// not changed closed an open drop-down on phones (and cost time), so it is only
+// rewritten when its options are different.
+function setOptionsIfChanged(el, html) {
+  if (el._cqOptionsHtml === html) return;
+  const prevVal = el.value;
+  el.innerHTML = html;
+  el._cqOptionsHtml = html;
+  if (prevVal) el.value = prevVal;
+}
+
 function populateFollowperDropdowns() {
   const doers = allFollowpers().filter(x => x !== 'Unassigned' && !x.includes('@'));
   const crrs = allCrrs().filter(x => x !== 'Unassigned' && !x.includes('@'));
@@ -8298,9 +8409,7 @@ function populateFollowperDropdowns() {
   doerIds.forEach(id => {
     const el = document.getElementById(id);
     if (el) {
-      const prevVal = el.value;
-      el.innerHTML = optionsHtml;
-      if (prevVal) el.value = prevVal;
+      setOptionsIfChanged(el, optionsHtml);
     }
   });
 
@@ -8308,9 +8417,7 @@ function populateFollowperDropdowns() {
   crrIds.forEach(id => {
     const el = document.getElementById(id);
     if (el) {
-      const prevVal = el.value;
-      el.innerHTML = crrOptionsHtml;
-      if (prevVal) el.value = prevVal;
+      setOptionsIfChanged(el, crrOptionsHtml);
     }
   });
 
@@ -8318,20 +8425,14 @@ function populateFollowperDropdowns() {
   helperIds.forEach(id => {
     const el = document.getElementById(id);
     if (el) {
-      const prevVal = el.value;
-      el.innerHTML = helperOptionsHtml;
-      if (prevVal) el.value = prevVal;
+      setOptionsIfChanged(el, helperOptionsHtml);
     }
   });
 
   const dList = document.getElementById('doersDatalist');
-  if (dList) {
-    dList.innerHTML = doers.map(d => `<option value="${escapeHtml(d)}">`).join('');
-  }
+  if (dList) setOptionsIfChanged(dList, doers.map(d => `<option value="${escapeHtml(d)}">`).join(''));
   const fList = document.getElementById('followperList');
-  if (fList) {
-    fList.innerHTML = doers.map(d => `<option value="${escapeHtml(d)}">`).join('');
-  }
+  if (fList) setOptionsIfChanged(fList, doers.map(d => `<option value="${escapeHtml(d)}">`).join(''));
 }
 
 function openModal(id) {
@@ -8816,7 +8917,7 @@ function initFirebase() {
           markas = [];
           window.markas = markas;
           localStorage.removeItem('collectiq_markas_v4');
-          renderAll();
+          renderAllLive();
         }
         updateDbStatusBadge('firebase');
         return;
@@ -8827,8 +8928,8 @@ function initFirebase() {
       });
 
       if (showCloudParties()) {
-        localSet('collectiq_markas_v4', JSON.stringify(markas));
-        renderAll();
+        scheduleBigOfflineCopy();
+        renderAllLive();
       }
       updateDbStatusBadge('firebase');
     }, err => {
@@ -8865,7 +8966,7 @@ function initFirebase() {
       if (hasChanges) {
         localSet('collectiq_help_tickets_v4', JSON.stringify(helpTickets));
         window.helpTickets = helpTickets;
-        renderAll();
+        renderAllLive();
       }
     }, err => {
       console.warn('Firestore help_tickets listener error:', err);
@@ -8896,8 +8997,8 @@ function initFirebase() {
         }
       });
       if (hasChanges) {
-        localSet('collectiq_rokad_v4', JSON.stringify(payments));
-        renderAll();
+        scheduleBigOfflineCopy();
+        renderAllLive();
       }
     }, err => {
       console.warn('Firestore payments listener error:', err);
@@ -8920,7 +9021,7 @@ function initFirebase() {
                 localStorage.removeItem('collectiq_markas_v4');
                 localStorage.removeItem('collectiq_rokad_v4');
                 localStorage.removeItem('collectiq_help_tickets_v4');
-                renderAll();
+                renderAllLive();
               }
             }
           }
@@ -8932,7 +9033,7 @@ function initFirebase() {
             masterCrrs = { ...DEFAULT_MASTER_CRR, ...d.masterCrrs };
             localSet('collectiq_master_crrs_v4', JSON.stringify(masterCrrs));
           }
-          renderAll();
+          renderAllLive();
         }
       }
     }, err => {
