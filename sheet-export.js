@@ -248,14 +248,13 @@
     const markaById = {};
     markas.forEach(m => { markaById[m.id] = m; });
     const byCode = (a, b) => text(a[0]).localeCompare(text(b[0]));
-    const byPlanDesc = col => (a, b) => (a[col] < b[col] ? 1 : a[col] > b[col] ? -1 : 0);
-    // Each party's follow-ups together, oldest first, so its history reads top to bottom.
-    const byPartyThenPlan = (a, b) => byCode(a, b) || text(a[1]).localeCompare(text(b[1])) || (a[3] < b[3] ? -1 : a[3] > b[3] ? 1 : 0);
+    // Oldest follow-up date first; same date stays grouped by party.
+    const byPlanAsc = (col, partyCol) => (a, b) => (a[col] < b[col] ? -1 : a[col] > b[col] ? 1 : text(a[partyCol]).localeCompare(text(b[partyCol])));
 
-    const follow = markas.flatMap(m => followupRows(m, ctx)).sort(byPartyThenPlan);
-    const tickets = ticketRows(helpTickets, markaById, today).sort(byPlanDesc(1));
-    const esc = markas.flatMap(m => escalationRows(m, today)).sort(byPlanDesc(4));
-    const fms = markas.flatMap(m => fmsRows(m, today)).sort(byPlanDesc(2));
+    const follow = markas.flatMap(m => followupRows(m, ctx)).sort(byPlanAsc(3, 0));
+    const tickets = ticketRows(helpTickets, markaById, today).sort(byPlanAsc(1, 3));
+    const esc = markas.flatMap(m => escalationRows(m, today)).sort(byPlanAsc(4, 0));
+    const fms = markas.flatMap(m => fmsRows(m, today)).sort(byPlanAsc(2, 4));
     const parties = markas.map(m => partyRow(m, ctx)).sort(byCode);
     const scores = scoreRows([
       { name: 'Follow Up Schedule', rows: follow, doerCol: 2, planCol: 3, scoreCol: 8 },
