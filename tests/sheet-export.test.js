@@ -78,8 +78,9 @@ test('follow-ups: dates the app sets after a payment show as Auto date and are n
 });
 
 test('follow-ups: a same-day repeat does not close the plan, a past next date is Bad date, system lines are not contacts', () => {
+  // nextDate was overwritten to the old 19 Oct by the 1 Nov help ticket line.
   const m = party({
-    nextDate: '2026-11-02',
+    nextDate: '2026-10-19',
     history: [
       { date: '2026-10-16', followper: 'Girdharilal', status: 'Promise to Pay', next: '2026-10-19' },
       { date: '2026-10-16', followper: 'Girdharilal', status: 'Promise to Pay', next: '2026-10-19' },

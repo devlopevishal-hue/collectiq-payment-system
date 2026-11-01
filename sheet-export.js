@@ -133,13 +133,16 @@
       const kind = isBadPlan(h) ? 'Bad date' : isPersonPlan(h) ? '' : 'Auto date';
       rows.push(followupRow(m, text(done.followper) || doer, plan, day(done.date), done, ctx.today, kind));
     });
-    const openPlan = day(m.nextDate);
-    if (openPlan && activeBills(m).length) {
+    // The open plan: the next date set at the last call, or, when the last
+    // contact set none (a payment), the date the app keeps on the party.
+    if (activeBills(m).length) {
       const last = events[events.length - 1];
-      const doneAfter = last && day(last.date) >= openPlan;
-      const kind = last && day(last.next) === openPlan && isBadPlan(last) ? 'Bad date'
-        : isPersonPlan(last) && day(last.next) === openPlan ? '' : 'Auto date';
-      if (!doneAfter || kind === 'Bad date') rows.push(followupRow(m, doer, openPlan, '', null, ctx.today, kind));
+      const openPlan = day(m.nextDate);
+      if (isPersonPlan(last)) {
+        rows.push(followupRow(m, doer, day(last.next), '', null, ctx.today, isBadPlan(last) ? 'Bad date' : ''));
+      } else if (openPlan && !(last && day(last.date) >= openPlan)) {
+        rows.push(followupRow(m, doer, openPlan, '', null, ctx.today, 'Auto date'));
+      }
     }
     return rows;
   }
