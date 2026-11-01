@@ -4435,9 +4435,16 @@ function openFollowup(markaId) {
   document.getElementById('contactMode').value = 'Phone call';
   document.getElementById('actionStatus').value = 'Promise to Pay';
   document.getElementById('expected').value = m.expected || '';
-  document.getElementById('promiseDate').value = m.ptp || '';
+  // An old promise date that has already passed is not offered again: PTP
+  // copies the promise date into the next follow-up date.
+  const promiseEl = document.getElementById('promiseDate');
+  promiseEl.value = m.ptp && m.ptp >= iso(today) ? m.ptp : '';
+  promiseEl.min = iso(today);
   
-  document.getElementById('nextDate').value = autoNextDate(m, 2);
+  // Next follow-up: 2 days ahead by default; only future dates can be picked.
+  const nextEl = document.getElementById('nextDate');
+  nextEl.value = FollowupActions.defaultNextDate(iso(today));
+  nextEl.min = addDaysToIso(iso(today), 1);
   
   document.getElementById('remark').value = '';
   document.getElementById('claimNumber').value = '';
@@ -4961,7 +4968,9 @@ function enforcePtpDate() {
   const nd = document.getElementById('nextDate');
   const stat = document.getElementById('actionStatus');
   if (stat && stat.value === 'Promise to Pay' && pd && pd.value) {
-    nd.value = pd.value;
+    // Follow up on the promised day; a promise for today is checked tomorrow.
+    const tomorrow = addDaysToIso(iso(today), 1);
+    nd.value = pd.value < tomorrow ? tomorrow : pd.value;
   }
 }
 
@@ -5069,9 +5078,13 @@ async function saveFollowup(e) {
     return toast('Promise date is required for PTP.');
   }
 
+  const closesFollowup = isPayment && (document.getElementById('followPayType')?.value || '') === 'Full Payment';
+  const dateError = FollowupActions.checkFollowupDates({ today: iso(today), promiseDate, nextDate: nextDate || (isPtp ? promiseDate : ''), isPtp, nextRequired: !closesFollowup });
+  if (dateError) return toast(dateError);
+
   if (isPtp) {
     const r = FollowupActions.applyPtpFollowup(m, {
-      date: followDate, followper, contactPerson, contactMode, expected, promiseDate, nextDate, remark,
+      today: iso(today), date: followDate, followper, contactPerson, contactMode, expected, promiseDate, nextDate, remark,
       ownerFallback: ownerOf(m),
       visit: {
         purpose: document.getElementById('visitPurpose')?.value || '',

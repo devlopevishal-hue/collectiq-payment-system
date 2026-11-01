@@ -245,3 +245,23 @@ test('autoNextDate plans the follow-up 7 days before the due date', () => {
   assert.equal(FA.autoNextDate('2026-10-01', '2026-10-28', 1), '2026-10-29'); // overdue
   assert.equal(FA.autoNextDate('', '2026-10-28', 2), '2026-10-30'); // no due date
 });
+
+test('checkFollowupDates: next date is required and must be in the future; promise cannot be in the past', () => {
+  const today = '2026-11-01';
+  assert.match(FA.checkFollowupDates({ today, nextDate: '', isPtp: false }), /required/);
+  assert.equal(FA.checkFollowupDates({ today, nextDate: '', isPtp: false, nextRequired: false }), '');
+  assert.match(FA.checkFollowupDates({ today, nextDate: '2026-10-19', isPtp: false }), /future date/);
+  assert.match(FA.checkFollowupDates({ today, nextDate: today, isPtp: false }), /future date/);
+  assert.equal(FA.checkFollowupDates({ today, nextDate: '2026-11-02', isPtp: false }), '');
+  assert.match(FA.checkFollowupDates({ today, promiseDate: '2026-10-19', nextDate: '2026-11-03', isPtp: true }), /Promise date is in the past/);
+  assert.equal(FA.checkFollowupDates({ today, promiseDate: '2026-10-19', nextDate: '2026-11-03', isPtp: false }), '');
+  assert.equal(FA.defaultNextDate(today), '2026-11-03');
+});
+
+test('applyPtpFollowup: an old promise date carried into the form is refused and the party is unchanged', () => {
+  const m = { id: 'j', marka: 'JHC', nextDate: '2026-10-19', ptp: '2026-10-19', history: [] };
+  const r = FA.applyPtpFollowup(m, { date: '2026-10-22', followper: 'Girdharilal', contactMode: 'Phone call', promiseDate: '2026-10-19', remark: '22/10 ko payment aayega' });
+  assert.match(r.error, /Promise date is in the past/);
+  assert.equal(m.history.length, 0);
+  assert.equal(m.nextDate, '2026-10-19');
+});

@@ -91,11 +91,12 @@
     return mode.includes('person') || mode.includes('visit');
   }
 
-  // Back-office log lines (FMS, ticket and escalation updates) are not calls
+  // Back-office log lines (FMS, ticket and escalation updates) and lines the
+  // system writes on its own (daily payment upload, no followper) are not calls
   // with the party, so they neither close nor open a follow-up.
   function isPartyContact(h) {
     const s = text(h.status);
-    return !/^FMS|^Help Ticket|^Escalation/i.test(s);
+    return !/^FMS|Help Ticket|^Escalation/i.test(s) && !!text(h.followper);
   }
 
   // A next date typed by a person at a call or visit is a plan. Dates the app
@@ -103,6 +104,12 @@
   // listed as "Auto date" and not scored.
   function isPersonPlan(h) {
     return !!h && h.type !== 'payment' && !!day(h.next) && !/^Claim Resolved|Settle/i.test(text(h.status));
+  }
+
+  // A next date before the day it was saved is a data-entry mistake (an old
+  // promise date carried into the form), not a plan.
+  function isBadPlan(h) {
+    return !!day(h.next) && day(h.next) < day(h.date);
   }
 
   // One row per planned follow-up: the next date set at a follow-up is the
@@ -117,24 +124,31 @@
     events.forEach((h, i) => {
       const plan = day(h.next);
       if (!plan) return;
-      const done = events.slice(i + 1).find(e => day(e.date) >= day(h.date));
+      // Two entries on the same day are one call saved twice; the later one counts.
+      if (events[i + 1] && day(events[i + 1].date) === day(h.date)) return;
+      // The plan is done by the next contact on a later day; a second entry on
+      // the same day is a repeat of the same call.
+      const done = events.slice(i + 1).find(e => day(e.date) > day(h.date));
       if (!done) return; // the open plan comes from the party's current next date below
-      rows.push(followupRow(m, text(done.followper) || doer, plan, day(done.date), done, ctx.today, !isPersonPlan(h)));
+      const kind = isBadPlan(h) ? 'Bad date' : isPersonPlan(h) ? '' : 'Auto date';
+      rows.push(followupRow(m, text(done.followper) || doer, plan, day(done.date), done, ctx.today, kind));
     });
     const openPlan = day(m.nextDate);
     if (openPlan && activeBills(m).length) {
       const last = events[events.length - 1];
       const doneAfter = last && day(last.date) >= openPlan;
-      const auto = !(isPersonPlan(last) && day(last.next) === openPlan);
-      if (!doneAfter) rows.push(followupRow(m, doer, openPlan, '', null, ctx.today, auto));
+      const kind = last && day(last.next) === openPlan && isBadPlan(last) ? 'Bad date'
+        : isPersonPlan(last) && day(last.next) === openPlan ? '' : 'Auto date';
+      if (!doneAfter || kind === 'Bad date') rows.push(followupRow(m, doer, openPlan, '', null, ctx.today, kind));
     }
     return rows;
   }
 
-  function followupRow(m, doer, plan, actual, done, today, auto) {
-    const s = auto ? '' : score(plan, actual, today);
+  // kind: '' for a plan a person set, else 'Auto date' or 'Bad date' (listed, not scored).
+  function followupRow(m, doer, plan, actual, done, today, kind) {
+    const s = kind ? '' : score(plan, actual, today);
     return [markaCode(m), text(m.marka), doer, plan, actual,
-      done ? text(done.mode) : '', done ? text(done.status) : '', done ? text(done.remark) : '', s, auto ? 'Auto date' : resultLabel(s)];
+      done ? text(done.mode) : '', done ? text(done.status) : '', done ? text(done.remark) : '', s, kind || resultLabel(s)];
   }
 
   function ticketRows(tickets, markaById, today) {

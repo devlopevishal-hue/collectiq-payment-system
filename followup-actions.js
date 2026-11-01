@@ -52,6 +52,29 @@
     return m.includes('person') || m.includes('visit');
   }
 
+  // Next follow-up date rules of the Update Follow-up form: it is required
+  // (except when a full payment closes the follow-up) and must be a future
+  // date, so no plan is saved in the past. A promise date cannot be in the
+  // past either: the form used to open with the party's old promise date, and
+  // PTP copies it into the next date.
+  const DEFAULT_NEXT_DAYS = 2;
+  function defaultNextDate(todayIso) {
+    return addDays(todayIso, DEFAULT_NEXT_DAYS);
+  }
+
+  function checkFollowupDates({ today, promiseDate, nextDate, isPtp, nextRequired = true }) {
+    const now = text(today);
+    const next = text(nextDate);
+    const promise = text(promiseDate);
+    if (isPtp && ISO_DATE.test(promise) && ISO_DATE.test(now) && promise < now) {
+      return 'Promise date is in the past. Please enter the new date the party promised.';
+    }
+    if (!next) return nextRequired ? 'Next follow-up date is required.' : '';
+    if (!ISO_DATE.test(next)) return 'Next date must be in YYYY-MM-DD format.';
+    if (ISO_DATE.test(now) && next <= now) return 'Next follow-up date must be a future date (tomorrow or later).';
+    return '';
+  }
+
   // Status "Promise to Pay" of the Update Follow-up form.
   function applyPtpFollowup(marka, input) {
     const promiseDate = text(input.promiseDate);
@@ -60,13 +83,18 @@
     if (!promiseDate) return { error: 'Promise date is required for PTP.' };
     if (!ISO_DATE.test(promiseDate)) return { error: 'Promise date must be in YYYY-MM-DD format.' };
     if (input.nextDate && !ISO_DATE.test(text(input.nextDate))) return { error: 'Next date must be in YYYY-MM-DD format.' };
+    const today = text(input.today) || text(input.date);
+    // Follow up on the promised day; a promise for today is checked the next day.
+    const ptpNext = ISO_DATE.test(today) && promiseDate <= today ? addDays(today, 1) : promiseDate;
+    const dateError = checkFollowupDates({ today, promiseDate, nextDate: text(input.nextDate) || ptpNext, isPtp: true });
+    if (dateError) return { error: dateError };
     if (!CONTACT_MODES.includes(mode)) return { error: `Contact mode must be one of: ${CONTACT_MODES.join(', ')}` };
     if (!Number.isFinite(expected) || expected < 0) return { error: 'Expected amount must be a valid amount.' };
 
     const followper = text(input.followper);
     const contact = text(input.contactPerson);
     const remark = String(input.remark == null ? '' : input.remark);
-    const next = text(input.nextDate) || promiseDate;
+    const next = text(input.nextDate) || ptpNext;
     const visit = input.visit || {};
     const field = isFieldVisit(mode);
     const entry = {
@@ -403,7 +431,7 @@
     return target && target > min ? target : min;
   }
 
-  const api = { applyPtpFollowup, autoNextDate, DAYS_BEFORE_DUE, applyPaymentFollowup, applyComplaintFollowup, completeFmsTask, FMS_DEFINITIONS, CONTACT_MODES, PAY_MODES, COMPLAINT_STATUS };
+  const api = { applyPtpFollowup, checkFollowupDates, defaultNextDate, DEFAULT_NEXT_DAYS, autoNextDate, DAYS_BEFORE_DUE, applyPaymentFollowup, applyComplaintFollowup, completeFmsTask, FMS_DEFINITIONS, CONTACT_MODES, PAY_MODES, COMPLAINT_STATUS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.FollowupActions = api;
 })(typeof window !== 'undefined' ? window : globalThis);
