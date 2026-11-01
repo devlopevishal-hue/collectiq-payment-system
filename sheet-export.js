@@ -98,7 +98,14 @@
     return !/^FMS|^Help Ticket|^Escalation/i.test(s);
   }
 
-  // One row per planned follow-up: the "next date" set at a follow-up is the
+  // A next date typed by a person at a call or visit is a plan. Dates the app
+  // fills in by itself (after a payment, a claim settlement or an import) are
+  // listed as "Auto date" and not scored.
+  function isPersonPlan(h) {
+    return !!h && h.type !== 'payment' && !!day(h.next) && !/^Claim Resolved|Settle/i.test(text(h.status));
+  }
+
+  // One row per planned follow-up: the next date set at a follow-up is the
   // plan, and the date of the following contact is the actual. The open plan
   // is the party's current next date.
   function followupRows(m, ctx) {
@@ -112,22 +119,22 @@
       if (!plan) return;
       const done = events.slice(i + 1).find(e => day(e.date) >= day(h.date));
       if (!done) return; // the open plan comes from the party's current next date below
-      const actual = day(done.date);
-      rows.push(followupRow(m, text(done.followper) || doer, plan, actual, done, ctx.today));
+      rows.push(followupRow(m, text(done.followper) || doer, plan, day(done.date), done, ctx.today, !isPersonPlan(h)));
     });
     const openPlan = day(m.nextDate);
     if (openPlan && activeBills(m).length) {
       const last = events[events.length - 1];
       const doneAfter = last && day(last.date) >= openPlan;
-      if (!doneAfter) rows.push(followupRow(m, doer, openPlan, '', null, ctx.today));
+      const auto = !(isPersonPlan(last) && day(last.next) === openPlan);
+      if (!doneAfter) rows.push(followupRow(m, doer, openPlan, '', null, ctx.today, auto));
     }
     return rows;
   }
 
-  function followupRow(m, doer, plan, actual, done, today) {
-    const s = score(plan, actual, today);
+  function followupRow(m, doer, plan, actual, done, today, auto) {
+    const s = auto ? '' : score(plan, actual, today);
     return [markaCode(m), text(m.marka), doer, plan, actual,
-      done ? text(done.mode) : '', done ? text(done.status) : '', done ? text(done.remark) : '', s, resultLabel(s)];
+      done ? text(done.mode) : '', done ? text(done.status) : '', done ? text(done.remark) : '', s, auto ? 'Auto date' : resultLabel(s)];
   }
 
   function ticketRows(tickets, markaById, today) {
@@ -241,12 +248,13 @@
     const markaById = {};
     markas.forEach(m => { markaById[m.id] = m; });
     const byCode = (a, b) => text(a[0]).localeCompare(text(b[0]));
-    const byPlanDesc = col => (a, b) => (a[col] < b[col] ? 1 : a[col] > b[col] ? -1 : 0);
+    // Oldest follow-up date first; same date stays grouped by party.
+    const byPlanAsc = (col, partyCol) => (a, b) => (a[col] < b[col] ? -1 : a[col] > b[col] ? 1 : text(a[partyCol]).localeCompare(text(b[partyCol])));
 
-    const follow = markas.flatMap(m => followupRows(m, ctx)).sort(byPlanDesc(3));
-    const tickets = ticketRows(helpTickets, markaById, today).sort(byPlanDesc(1));
-    const esc = markas.flatMap(m => escalationRows(m, today)).sort(byPlanDesc(4));
-    const fms = markas.flatMap(m => fmsRows(m, today)).sort(byPlanDesc(2));
+    const follow = markas.flatMap(m => followupRows(m, ctx)).sort(byPlanAsc(3, 0));
+    const tickets = ticketRows(helpTickets, markaById, today).sort(byPlanAsc(1, 3));
+    const esc = markas.flatMap(m => escalationRows(m, today)).sort(byPlanAsc(4, 0));
+    const fms = markas.flatMap(m => fmsRows(m, today)).sort(byPlanAsc(2, 4));
     const parties = markas.map(m => partyRow(m, ctx)).sort(byCode);
     const scores = scoreRows([
       { name: 'Follow Up Schedule', rows: follow, doerCol: 2, planCol: 3, scoreCol: 8 },
