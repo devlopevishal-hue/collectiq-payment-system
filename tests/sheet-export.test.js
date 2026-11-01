@@ -58,7 +58,7 @@ test('follow-ups: FMS and ticket log lines do not count as contacts', () => {
   assert.equal(rows[0].Result, 'Missed');
 });
 
-test('follow-ups: dates the app sets after a payment show as Auto date and are not scored', () => {
+test('follow-ups: dates the app sets after a payment are Policy plans and are scored', () => {
   const m = party({
     nextDate: '2026-10-29',
     history: [
@@ -69,12 +69,15 @@ test('follow-ups: dates the app sets after a payment show as Auto date and are n
   });
   const rows = tab(SE.buildSheet({ markas: [m], config, today: TODAY }), 'Follow Up Schedule');
   const open = rows.find(r => r['Next Followup Date/ plan Date'] === '2026-10-29');
-  assert.equal(open.Result, 'Auto date');
-  assert.equal(open.Score, '');
-  assert.equal(rows.find(r => r['Next Followup Date/ plan Date'] === '2026-10-26').Score, 0.5);
+  assert.equal(open['Plan Set By'], 'Policy');
+  assert.equal(open.Result, 'Missed');
+  assert.equal(open.Score, 0);
+  const done = rows.find(r => r['Next Followup Date/ plan Date'] === '2026-10-26');
+  assert.equal(done.Score, 0.5);
+  assert.equal(done['Plan Set By'], 'Person');
   const score = tab(SE.buildSheet({ markas: [m], config, today: TODAY }), 'Score').filter(r => r.Tab === 'Follow Up Schedule');
   assert.equal(score.length, 1);
-  assert.equal(score[0]['Tasks Due'], 1);
+  assert.equal(score[0]['Tasks Due'], 2);
 });
 
 test('follow-ups: a same-day repeat does not close the plan, a past next date is Bad date, system lines are not contacts', () => {
@@ -173,4 +176,22 @@ test('every task tab shows Master right after Party Name', () => {
     assert.ok(tab(out, name).length, name);
     tab(out, name).forEach(r => assert.equal(r.Master, 'BABLU SHERA MASTER', name));
   });
+});
+
+test('follow-ups: a party that owes money with no next date gets a policy task', () => {
+  // Due 10 Nov -> policy date 3 Nov; paid on 30 Oct with no next date kept.
+  const m = party({
+    nextDate: '',
+    bills: [{ id: 1, balance: 5000, firstDate: '2026-10-01', policyDate: '2026-11-10' }],
+    history: [{ date: '2026-10-30', followper: 'Surendra', type: 'payment', status: 'Payment Received', next: '' }]
+  });
+  let rows = tab(SE.buildSheet({ markas: [m], config, today: TODAY }), 'Follow Up Schedule');
+  assert.deepEqual(rows.map(r => [r['Next Followup Date/ plan Date'], r['Plan Set By'], r.Result]), [['2026-11-03', 'Policy', 'Not due']]);
+  // Already past due: 2 days after the last contact.
+  m.bills[0].policyDate = '2026-10-05';
+  rows = tab(SE.buildSheet({ markas: [m], config, today: TODAY }), 'Follow Up Schedule');
+  assert.equal(rows[0]['Next Followup Date/ plan Date'], '2026-11-01');
+  // Nothing owed net of an advance: no task.
+  m.bills.push({ id: 2, balance: -6000, firstDate: '2026-10-30', policyDate: '2026-10-30', policyName: 'ADVANCE PAYMENT' });
+  assert.equal(tab(SE.buildSheet({ markas: [m], config, today: TODAY }), 'Follow Up Schedule').length, 0);
 });

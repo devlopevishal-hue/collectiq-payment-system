@@ -265,3 +265,10 @@ test('applyPtpFollowup: an old promise date carried into the form is refused and
   assert.equal(m.history.length, 0);
   assert.equal(m.nextDate, '2026-10-19');
 });
+
+test('applyPaymentFollowup: "Full Payment" with dues still left keeps the follow-up open', () => {
+  const m = billedParty();
+  const r = FA.applyPaymentFollowup(m, [], pay({ payAmount: 20000, payType: 'Full Payment', defaultNext: '2026-10-12' }));
+  assert.equal(r.entry.status, 'Payment Received');
+  assert.equal(r.entry.next, '2026-10-12');
+});

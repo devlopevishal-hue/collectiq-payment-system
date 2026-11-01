@@ -13,6 +13,11 @@
   // The Score tab counts tasks planned on or after this day (system go-live),
   // so years-old unpaid bills do not show up as missed FMS steps.
   const DEFAULT_SCORE_FROM = '2026-10-01';
+  // Due follow-up policy (same as autoNextDate in followup-actions.js): call
+  // 7 days before the oldest due date, and never sooner than 2 days after the
+  // last contact.
+  const DAYS_BEFORE_DUE = 7;
+  const POLICY_MIN_DAYS = 2;
 
   const FMS_DEFINITIONS = [
     { code: 'FMS-1', offset: 2, role: 'Account Team', name: 'Update Payment in System / Rokad' },
@@ -99,9 +104,10 @@
     return !/^FMS|Help Ticket|^Escalation/i.test(s) && !!text(h.followper);
   }
 
-  // A next date typed by a person at a call or visit is a plan. Dates the app
-  // fills in by itself (after a payment, a claim settlement or an import) are
-  // listed as "Auto date" and not scored.
+  // A next date typed by a person at a call or visit is a person plan. Dates
+  // the app fills in by itself (after a payment, a claim settlement or an
+  // import) come from the due follow-up policy: they are scored too, marked
+  // "Policy" in the Plan Set By column.
   function isPersonPlan(h) {
     return !!h && h.type !== 'payment' && !!day(h.next) && !/^Claim Resolved|Settle/i.test(text(h.status));
   }
@@ -130,28 +136,48 @@
       // the same day is a repeat of the same call.
       const done = events.slice(i + 1).find(e => day(e.date) > day(h.date));
       if (!done) return; // the open plan comes from the party's current next date below
-      const kind = isBadPlan(h) ? 'Bad date' : isPersonPlan(h) ? '' : 'Auto date';
+      const kind = isBadPlan(h) ? 'Bad date' : isPersonPlan(h) ? 'Person' : 'Policy';
       rows.push(followupRow(m, text(done.followper) || doer, plan, day(done.date), done, ctx.today, kind));
     });
-    // The open plan: the next date set at the last call, or, when the last
-    // contact set none (a payment), the date the app keeps on the party.
-    if (activeBills(m).length) {
+    // Every party that still owes money always has one open follow-up: the
+    // next date set at the last call, else the date the app keeps on the
+    // party, else the due follow-up policy date.
+    if (netOutstanding(m) > 0) {
       const last = events[events.length - 1];
-      const openPlan = day(m.nextDate);
+      const lastDay = last ? day(last.date) : '';
+      const kept = day(m.nextDate);
       if (isPersonPlan(last)) {
-        rows.push(followupRow(m, doer, day(last.next), '', null, ctx.today, isBadPlan(last) ? 'Bad date' : ''));
-      } else if (openPlan && !(last && day(last.date) >= openPlan)) {
-        rows.push(followupRow(m, doer, openPlan, '', null, ctx.today, 'Auto date'));
+        rows.push(followupRow(m, doer, day(last.next), '', null, ctx.today, isBadPlan(last) ? 'Bad date' : 'Person'));
+      } else if (kept && !(lastDay && lastDay >= kept)) {
+        rows.push(followupRow(m, doer, kept, '', null, ctx.today, 'Policy'));
+      } else {
+        rows.push(followupRow(m, doer, policyDate(m, lastDay, ctx.scoreFrom), '', null, ctx.today, 'Policy'));
       }
     }
     return rows;
   }
 
-  // kind: '' for a plan a person set, else 'Auto date' or 'Bad date' (listed, not scored).
+  // Net of credits and advances, the same as totalOutstanding() in app.js.
+  function netOutstanding(m) {
+    return (m.bills || []).reduce((s, b) => s + (Number(b.balance) || 0), 0);
+  }
+
+  // 7 days before the oldest due date, but not before 2 days after the last
+  // contact (or the scoring start, for a party nobody has called yet).
+  function policyDate(m, lastDay, scoreFrom) {
+    const due = oldestDueDate(m);
+    const target = due ? addDays(due, -DAYS_BEFORE_DUE) : '';
+    const min = lastDay ? addDays(lastDay, POLICY_MIN_DAYS) : scoreFrom;
+    return target && target > min ? target : min;
+  }
+
+  // kind: 'Person' or 'Policy' (scored), or 'Bad date' (a next date before
+  // the day it was saved: listed, not scored).
   function followupRow(m, doer, plan, actual, done, today, kind) {
-    const s = kind ? '' : score(plan, actual, today);
+    const s = kind === 'Bad date' ? '' : score(plan, actual, today);
     return [markaCode(m), text(m.marka), text(m.master), doer, plan, actual,
-      done ? text(done.mode) : '', done ? text(done.status) : '', done ? text(done.remark) : '', s, kind || resultLabel(s)];
+      done ? text(done.mode) : '', done ? text(done.status) : '', done ? text(done.remark) : '', s,
+      kind === 'Bad date' ? kind : resultLabel(s), kind];
   }
 
   function ticketRows(tickets, markaById, today) {
@@ -244,7 +270,7 @@
   }
 
   const HEADERS = {
-    'Follow Up Schedule': ['Marka', 'Party Name', 'Master', 'Doer', 'Next Followup Date/ plan Date', 'Actual Date', 'Mode', 'Status', 'Remark', 'Score', 'Result'],
+    'Follow Up Schedule': ['Marka', 'Party Name', 'Master', 'Doer', 'Next Followup Date/ plan Date', 'Actual Date', 'Mode', 'Status', 'Remark', 'Score', 'Result', 'Plan Set By'],
     'Help Tickets': ['Doer', 'Next Followup Date/ plan Date', 'Actual Date', 'Marka', 'Party Name', 'Master', 'Subject', 'Priority', 'Requested By', 'Ticket Date', 'Status', 'Remark', 'Score', 'Result', 'Ticket ID'],
     'Crm Escalations': ['Marka', 'Party Name', 'Master', 'Current status', 'Doer', 'Next Followup Date/ plan Date', 'Actual Date', 'Escalated To', 'Type', 'Claim / Complaint No', 'Raised By', 'Escalation Date', 'Remark', 'Score', 'Result', 'Escalation ID'],
     'FMS Pre-planned': ['Doer', 'Stage stage', 'Next Followup Date/ plan Date', 'Actual Date', 'Marka', 'Party Name', 'Master', 'Oldest Due Date', 'Completed By', 'Score', 'Result'],
@@ -256,6 +282,7 @@
   function buildSheet({ markas = [], payments = [], helpTickets = [], config = {}, today, scoreFrom = DEFAULT_SCORE_FROM }) {
     const ctx = {
       today,
+      scoreFrom,
       masterFollowpers: config.masterFollowpers || {},
       paymentsByMarka: {},
       ticketsByMarka: {}
