@@ -7,6 +7,9 @@
 (function (root) {
   const DEFAULT_TICKET_DAYS = 2;
   const DEFAULT_ESCALATION_DAYS = 3;
+  // Every escalation is first assigned to CRM, so CRM is its Doer for scoring
+  // whoever it was escalated to.
+  const ESCALATION_DOER = 'CRM';
   // The Score tab counts tasks planned on or after this day (system go-live),
   // so years-old unpaid bills do not show up as missed FMS steps.
   const DEFAULT_SCORE_FROM = '2026-10-01';
@@ -151,8 +154,8 @@
       const plan = day(e.nextDate) || (opened ? addDays(opened, DEFAULT_ESCALATION_DAYS) : '');
       const actual = text(e.status).toLowerCase() === 'resolved' ? day(e.resolvedDate) : '';
       const s = score(plan, actual, today);
-      return [markaCode(m), text(m.marka), text(e.status) || 'Open', text(e.escalatedTo) || 'Unassigned', plan, actual,
-        text(e.type), text(e.claimNumber) || text(e.waComplaintNo), text(e.followper), opened, text(e.remark), s, resultLabel(s), text(e.id)];
+      return [markaCode(m), text(m.marka), text(e.status) || 'Open', ESCALATION_DOER, plan, actual,
+        text(e.escalatedTo), text(e.type), text(e.claimNumber) || text(e.waComplaintNo), text(e.followper), opened, text(e.remark), s, resultLabel(s), text(e.id)];
     }).filter(r => r[4]);
   }
 
@@ -219,7 +222,7 @@
   const HEADERS = {
     'Follow Up Schedule': ['Marka', 'Party Name', 'Doer', 'Next Followup Date/ plan Date', 'Actual Date', 'Mode', 'Status', 'Remark', 'Score', 'Result'],
     'Help Tickets': ['Doer', 'Next Followup Date/ plan Date', 'Actual Date', 'Marka', 'Party Name', 'Subject', 'Priority', 'Requested By', 'Ticket Date', 'Status', 'Remark', 'Score', 'Result', 'Ticket ID'],
-    'Crm Escalations': ['Marka', 'Party Name', 'Current status', 'Doer', 'Next Followup Date/ plan Date', 'Actual Date', 'Type', 'Claim / Complaint No', 'Raised By', 'Escalation Date', 'Remark', 'Score', 'Result', 'Escalation ID'],
+    'Crm Escalations': ['Marka', 'Party Name', 'Current status', 'Doer', 'Next Followup Date/ plan Date', 'Actual Date', 'Escalated To', 'Type', 'Claim / Complaint No', 'Raised By', 'Escalation Date', 'Remark', 'Score', 'Result', 'Escalation ID'],
     'FMS Pre-planned': ['Doer', 'Stage stage', 'Next Followup Date/ plan Date', 'Actual Date', 'Marka', 'Party Name', 'Oldest Due Date', 'Completed By', 'Score', 'Result'],
     'Parties': ['Marka', 'Party Name', 'Master', 'Followper', 'CRR', 'Outstanding', 'Overdue', 'Unpaid Bills', 'Oldest Due Date', 'Days Overdue', 'Last Payment Date', 'Last Payment Amount', 'Paid Last 30 Days', 'PTP Date', 'Next Follow-up', 'Last Status', 'Last Follow-up', 'Calls Last 30 Days', 'Visits Last 30 Days', 'Open Tickets', 'Open Escalations', 'CollectIQ ID'],
     'Score': ['Week Starting', 'Tab', 'Doer', 'Tasks Due', 'On Time', 'Late', 'Missed', 'Points', 'Score %']
@@ -248,7 +251,7 @@
     const scores = scoreRows([
       { name: 'Follow Up Schedule', rows: follow, doerCol: 2, planCol: 3, scoreCol: 8 },
       { name: 'Help Tickets', rows: tickets, doerCol: 0, planCol: 1, scoreCol: 11 },
-      { name: 'Crm Escalations', rows: esc, doerCol: 3, planCol: 4, scoreCol: 11 },
+      { name: 'Crm Escalations', rows: esc, doerCol: 3, planCol: 4, scoreCol: 12 },
       { name: 'FMS Pre-planned', rows: fms, doerCol: 0, planCol: 2, scoreCol: 8 }
     ], scoreFrom);
     const rows = { 'Follow Up Schedule': follow, 'Help Tickets': tickets, 'Crm Escalations': esc, 'FMS Pre-planned': fms, 'Parties': parties, 'Score': scores };

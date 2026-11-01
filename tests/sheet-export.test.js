@@ -71,11 +71,12 @@ test('help tickets: plan is next date or ticket date + 2 days; resolved date is 
   assert.equal(rows.find(r => r['Ticket ID'] === 't2').Result, 'Not due');
 });
 
-test('escalations: plan is escalation date + 3 days', () => {
-  const m = party({ escalations: [{ id: 'e1', date: '2026-10-19', escalatedTo: 'CRM', status: 'Resolved', resolvedDate: '2026-10-25', type: 'Claim Matter' }] });
+test('escalations: CRM is the Doer, plan is escalation date + 3 days', () => {
+  const m = party({ escalations: [{ id: 'e1', date: '2026-10-19', escalatedTo: 'Saurav Bhai', status: 'Resolved', resolvedDate: '2026-10-25', type: 'Claim Matter' }] });
   const [row] = tab(SE.buildSheet({ markas: [m], config, today: TODAY }), 'Crm Escalations');
   assert.equal(row['Next Followup Date/ plan Date'], '2026-10-22');
   assert.equal(row.Doer, 'CRM');
+  assert.equal(row['Escalated To'], 'Saurav Bhai');
   assert.equal(row['Current status'], 'Resolved');
   assert.equal(row.Score, 0.5);
 });
