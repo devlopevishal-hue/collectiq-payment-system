@@ -159,3 +159,18 @@ test('score tab groups by doer and week, and skips tasks planned before scoreFro
   assert.equal(rows[0]['Tasks Due'], 2);
   assert.equal(rows[0]['Score %'], 50);
 });
+
+test('every task tab shows Master right after Party Name', () => {
+  const m = party({
+    nextDate: '2026-11-02',
+    history: [{ date: '2026-10-20', next: '2026-10-25', followper: 'Surendra', mode: 'Call', status: 'Follow-up' }],
+    escalations: [{ id: 'e1', date: '2026-10-20', status: 'Open' }]
+  });
+  const out = SE.buildSheet({ markas: [m], helpTickets: [{ id: 't1', markaId: 'p1', date: '2026-10-20', status: 'Open' }], config, today: TODAY });
+  ['Follow Up Schedule', 'Help Tickets', 'Crm Escalations', 'FMS Pre-planned'].forEach(name => {
+    const h = out.tabs[name].headers;
+    assert.equal(h[h.indexOf('Party Name') + 1], 'Master', name);
+    assert.ok(tab(out, name).length, name);
+    tab(out, name).forEach(r => assert.equal(r.Master, 'BABLU SHERA MASTER', name));
+  });
+});

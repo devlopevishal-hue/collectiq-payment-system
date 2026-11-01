@@ -150,7 +150,7 @@
   // kind: '' for a plan a person set, else 'Auto date' or 'Bad date' (listed, not scored).
   function followupRow(m, doer, plan, actual, done, today, kind) {
     const s = kind ? '' : score(plan, actual, today);
-    return [markaCode(m), text(m.marka), doer, plan, actual,
+    return [markaCode(m), text(m.marka), text(m.master), doer, plan, actual,
       done ? text(done.mode) : '', done ? text(done.status) : '', done ? text(done.remark) : '', s, kind || resultLabel(s)];
   }
 
@@ -162,7 +162,7 @@
       const actual = text(t.status).toLowerCase() === 'resolved' ? day(t.resolvedAt) || lastHistoryDate(t) : '';
       const s = score(plan, actual, today);
       return [text(t.assignedHelper) || 'Unassigned', plan, actual,
-        markaCode(m) || text(t.markaName), text(m.marka) || text(t.markaName), text(t.subject), text(t.priority),
+        markaCode(m) || text(t.markaName), text(m.marka) || text(t.markaName), text(m.master), text(t.subject), text(t.priority),
         text(t.requestedBy), opened, text(t.status), text(t.remark), s, resultLabel(s), text(t.id)];
     }).filter(r => r[1]);
   }
@@ -178,9 +178,9 @@
       const plan = day(e.nextDate) || (opened ? addDays(opened, DEFAULT_ESCALATION_DAYS) : '');
       const actual = text(e.status).toLowerCase() === 'resolved' ? day(e.resolvedDate) : '';
       const s = score(plan, actual, today);
-      return [markaCode(m), text(m.marka), text(e.status) || 'Open', ESCALATION_DOER, plan, actual,
+      return [markaCode(m), text(m.marka), text(m.master), text(e.status) || 'Open', ESCALATION_DOER, plan, actual,
         text(e.escalatedTo), text(e.type), text(e.claimNumber) || text(e.waComplaintNo), text(e.followper), opened, text(e.remark), s, resultLabel(s), text(e.id)];
-    }).filter(r => r[4]);
+    }).filter(r => r[5]);
   }
 
   // FMS milestones per party, from the oldest due date of its unpaid bills,
@@ -198,7 +198,7 @@
       }
       const doer = def.role === 'Master' ? text(m.master) || 'Master' : def.role;
       const s = score(plan, actual, today);
-      return [doer, `${def.code} ${def.name}`, plan, actual, markaCode(m), text(m.marka), base,
+      return [doer, `${def.code} ${def.name}`, plan, actual, markaCode(m), text(m.marka), text(m.master), base,
         saved ? text(saved.completedBy) : '', s, resultLabel(s)];
     });
   }
@@ -244,10 +244,10 @@
   }
 
   const HEADERS = {
-    'Follow Up Schedule': ['Marka', 'Party Name', 'Doer', 'Next Followup Date/ plan Date', 'Actual Date', 'Mode', 'Status', 'Remark', 'Score', 'Result'],
-    'Help Tickets': ['Doer', 'Next Followup Date/ plan Date', 'Actual Date', 'Marka', 'Party Name', 'Subject', 'Priority', 'Requested By', 'Ticket Date', 'Status', 'Remark', 'Score', 'Result', 'Ticket ID'],
-    'Crm Escalations': ['Marka', 'Party Name', 'Current status', 'Doer', 'Next Followup Date/ plan Date', 'Actual Date', 'Escalated To', 'Type', 'Claim / Complaint No', 'Raised By', 'Escalation Date', 'Remark', 'Score', 'Result', 'Escalation ID'],
-    'FMS Pre-planned': ['Doer', 'Stage stage', 'Next Followup Date/ plan Date', 'Actual Date', 'Marka', 'Party Name', 'Oldest Due Date', 'Completed By', 'Score', 'Result'],
+    'Follow Up Schedule': ['Marka', 'Party Name', 'Master', 'Doer', 'Next Followup Date/ plan Date', 'Actual Date', 'Mode', 'Status', 'Remark', 'Score', 'Result'],
+    'Help Tickets': ['Doer', 'Next Followup Date/ plan Date', 'Actual Date', 'Marka', 'Party Name', 'Master', 'Subject', 'Priority', 'Requested By', 'Ticket Date', 'Status', 'Remark', 'Score', 'Result', 'Ticket ID'],
+    'Crm Escalations': ['Marka', 'Party Name', 'Master', 'Current status', 'Doer', 'Next Followup Date/ plan Date', 'Actual Date', 'Escalated To', 'Type', 'Claim / Complaint No', 'Raised By', 'Escalation Date', 'Remark', 'Score', 'Result', 'Escalation ID'],
+    'FMS Pre-planned': ['Doer', 'Stage stage', 'Next Followup Date/ plan Date', 'Actual Date', 'Marka', 'Party Name', 'Master', 'Oldest Due Date', 'Completed By', 'Score', 'Result'],
     'Parties': ['Marka', 'Party Name', 'Master', 'Followper', 'CRR', 'Outstanding', 'Overdue', 'Unpaid Bills', 'Oldest Due Date', 'Days Overdue', 'Last Payment Date', 'Last Payment Amount', 'Paid Last 30 Days', 'PTP Date', 'Next Follow-up', 'Last Status', 'Last Follow-up', 'Calls Last 30 Days', 'Visits Last 30 Days', 'Open Tickets', 'Open Escalations', 'CollectIQ ID'],
     'Score': ['Week Starting', 'Tab', 'Doer', 'Tasks Due', 'On Time', 'Late', 'Missed', 'Points', 'Score %']
   };
@@ -268,16 +268,16 @@
     // Oldest follow-up date first; same date stays grouped by party.
     const byPlanAsc = (col, partyCol) => (a, b) => (a[col] < b[col] ? -1 : a[col] > b[col] ? 1 : text(a[partyCol]).localeCompare(text(b[partyCol])));
 
-    const follow = markas.flatMap(m => followupRows(m, ctx)).sort(byPlanAsc(3, 0));
+    const follow = markas.flatMap(m => followupRows(m, ctx)).sort(byPlanAsc(4, 0));
     const tickets = ticketRows(helpTickets, markaById, today).sort(byPlanAsc(1, 3));
-    const esc = markas.flatMap(m => escalationRows(m, today)).sort(byPlanAsc(4, 0));
+    const esc = markas.flatMap(m => escalationRows(m, today)).sort(byPlanAsc(5, 0));
     const fms = markas.flatMap(m => fmsRows(m, today)).sort(byPlanAsc(2, 4));
     const parties = markas.map(m => partyRow(m, ctx)).sort(byCode);
     const scores = scoreRows([
-      { name: 'Follow Up Schedule', rows: follow, doerCol: 2, planCol: 3, scoreCol: 8 },
-      { name: 'Help Tickets', rows: tickets, doerCol: 0, planCol: 1, scoreCol: 11 },
-      { name: 'Crm Escalations', rows: esc, doerCol: 3, planCol: 4, scoreCol: 12 },
-      { name: 'FMS Pre-planned', rows: fms, doerCol: 0, planCol: 2, scoreCol: 8 }
+      { name: 'Follow Up Schedule', rows: follow, doerCol: 3, planCol: 4, scoreCol: 9 },
+      { name: 'Help Tickets', rows: tickets, doerCol: 0, planCol: 1, scoreCol: 12 },
+      { name: 'Crm Escalations', rows: esc, doerCol: 4, planCol: 5, scoreCol: 13 },
+      { name: 'FMS Pre-planned', rows: fms, doerCol: 0, planCol: 2, scoreCol: 9 }
     ], scoreFrom);
     const rows = { 'Follow Up Schedule': follow, 'Help Tickets': tickets, 'Crm Escalations': esc, 'FMS Pre-planned': fms, 'Parties': parties, 'Score': scores };
     const tabs = {};
