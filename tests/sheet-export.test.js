@@ -58,6 +58,25 @@ test('follow-ups: FMS and ticket log lines do not count as contacts', () => {
   assert.equal(rows[0].Result, 'Missed');
 });
 
+test('follow-ups: dates the app sets after a payment show as Auto date and are not scored', () => {
+  const m = party({
+    nextDate: '2026-10-29',
+    history: [
+      { date: '2026-10-19', followper: 'Surendra', type: 'followup', status: 'Promise to Pay', next: '2026-10-26' },
+      { date: '2026-10-27', followper: 'Surendra', type: 'payment', status: 'Payment Received', next: '' },
+      { date: '2026-10-30', followper: 'Admin', type: 'followup', status: 'FMS Task Completed' }
+    ]
+  });
+  const rows = tab(SE.buildSheet({ markas: [m], config, today: TODAY }), 'Follow Up Schedule');
+  const open = rows.find(r => r['Next Followup Date/ plan Date'] === '2026-10-29');
+  assert.equal(open.Result, 'Auto date');
+  assert.equal(open.Score, '');
+  assert.equal(rows.find(r => r['Next Followup Date/ plan Date'] === '2026-10-26').Score, 0.5);
+  const score = tab(SE.buildSheet({ markas: [m], config, today: TODAY }), 'Score').filter(r => r.Tab === 'Follow Up Schedule');
+  assert.equal(score.length, 1);
+  assert.equal(score[0]['Tasks Due'], 1);
+});
+
 test('help tickets: plan is next date or ticket date + 2 days; resolved date is actual', () => {
   const tickets = [
     { id: 't1', markaId: 'p1', date: '2026-10-20', assignedHelper: 'CRM', status: 'Resolved', resolvedAt: '2026-10-21T10:00:00Z' },
