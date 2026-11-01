@@ -266,7 +266,7 @@
       status = 'Advance Payment';
       next = '';
       finalRemark = finalRemark || `Payment ${money(payAmount)} received (${payMode} ref: ${payRef}). Advance credit balance: ${money(Math.abs(stillDue))}. Follow-up closed.`;
-    } else if (stillDue === 0 || payType === 'Full Payment') {
+    } else if (stillDue === 0) {
       next = '';
       finalRemark = finalRemark || `Full payment ${money(payAmount)} received (${payMode} ref: ${payRef}). All dues cleared.`;
     } else {

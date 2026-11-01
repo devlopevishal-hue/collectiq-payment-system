@@ -5078,8 +5078,8 @@ async function saveFollowup(e) {
     return toast('Promise date is required for PTP.');
   }
 
-  const closesFollowup = isPayment && (document.getElementById('followPayType')?.value || '') === 'Full Payment';
-  const dateError = FollowupActions.checkFollowupDates({ today: iso(today), promiseDate, nextDate: nextDate || (isPtp ? promiseDate : ''), isPtp, nextRequired: !closesFollowup });
+  // A payment needs no typed next date: if dues remain, the due-date policy fills it in.
+  const dateError = FollowupActions.checkFollowupDates({ today: iso(today), promiseDate, nextDate: nextDate || (isPtp ? promiseDate : ''), isPtp, nextRequired: !isPayment });
   if (dateError) return toast(dateError);
 
   if (isPtp) {
@@ -5273,7 +5273,8 @@ async function saveFollowup(e) {
       finalStatus = 'Advance Payment';
       finalNext = '';
       finalRemark = finalRemark || `Payment ${money(payAmount)} received (${payMode} ref: ${payRef}). Advance credit balance: ${money(Math.abs(stillDue))}. Follow-up closed.`;
-    } else if (stillDue === 0 || payType === 'Full Payment') {
+    } else if (stillDue === 0) {
+      // Closed only when nothing is left; "Full Payment" of one bill keeps the follow-up for the rest.
       finalStatus = 'Payment Received';
       finalNext = '';
       finalRemark = finalRemark || `Full payment ${money(payAmount)} received (${payMode} ref: ${payRef}). All dues cleared.`;
