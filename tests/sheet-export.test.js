@@ -77,6 +77,28 @@ test('follow-ups: dates the app sets after a payment show as Auto date and are n
   assert.equal(score[0]['Tasks Due'], 1);
 });
 
+test('follow-ups: a same-day repeat does not close the plan, a past next date is Bad date, system lines are not contacts', () => {
+  // nextDate was overwritten to the old 19 Oct by the 1 Nov help ticket line.
+  const m = party({
+    nextDate: '2026-10-19',
+    history: [
+      { date: '2026-10-16', followper: 'Girdharilal', status: 'Promise to Pay', next: '2026-10-19' },
+      { date: '2026-10-16', followper: 'Girdharilal', status: 'Promise to Pay', next: '2026-10-19' },
+      { date: '2026-10-22', followper: 'Girdharilal', status: 'Promise to Pay', next: '2026-10-19' },
+      { date: '2026-10-29', followper: 'Girdharilal', status: 'Promise to Pay', next: '2026-11-02' },
+      { date: '2026-10-31', type: 'payment', status: 'Payment Received', remark: 'daily payment upload' },
+      { date: '2026-11-01', followper: 'Girdharilal', status: 'Internal Help Ticket', next: '2026-10-19' }
+    ]
+  });
+  const rows = tab(SE.buildSheet({ markas: [m], config, today: '2026-11-01' }), 'Follow Up Schedule');
+  const pairs = rows.map(r => [r['Next Followup Date/ plan Date'], r['Actual Date'], r.Result]);
+  assert.deepEqual(pairs, [
+    ['2026-10-19', '2026-10-22', 'Late'],
+    ['2026-10-19', '2026-10-29', 'Bad date'],
+    ['2026-11-02', '', 'Not due']
+  ]);
+});
+
 test('help tickets: plan is next date or ticket date + 2 days; resolved date is actual', () => {
   const tickets = [
     { id: 't1', markaId: 'p1', date: '2026-10-20', assignedHelper: 'CRM', status: 'Resolved', resolvedAt: '2026-10-21T10:00:00Z' },
