@@ -1963,6 +1963,7 @@ function schedule() {
             <button onclick="openBillDetails('${m.id}')" class="row-action">📄 Bills</button>
             <button onclick="openPaymentHistory('${m.id}')" class="row-action">₹ Payments</button>
             <button onclick="openHistory('${m.id}')" class="row-action">History</button>
+            <button onclick="openPartyHealth('${m.id}')" class="row-action" title="Party current status &amp; health report">🩺 Health</button>
           </div>
         </td>
       </tr>
@@ -2058,6 +2059,7 @@ function locks() {
               <button onclick="openSalesHodModal('${m.id}')" class="row-action" style="background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; font-weight:700;">HOD Action</button>
               <button onclick="openBillDetails('${m.id}')" class="row-action">📄 Bills</button>
               <button onclick="openHistory('${m.id}')" class="row-action">History</button>
+              <button onclick="openPartyHealth('${m.id}')" class="row-action" title="Party current status &amp; health report">🩺 Health</button>
             </div>
           </td>
         </tr>
@@ -8196,6 +8198,7 @@ function switchView(id) {
   else if (id === 'markas') markaView();
   else if (id === 'users' || id === 'userManagement') usersView();
   else if (id === 'aiAssistant' && typeof aiAssistantView === 'function') aiAssistantView();
+  else if (id === 'partyHealth' && typeof partyHealthView === 'function') partyHealthView();
 
   const titles = {
     dashboard: 'Collection command center',
@@ -8204,6 +8207,7 @@ function switchView(id) {
     visits: 'Field Visits, Daily Logs & Party Matrix',
     helpTickets: 'Internal Team Assistance (Help Tickets)',
     crmEscalations: 'Customer Claims & CRM Escalations',
+    partyHealth: 'Party current status & health report',
     gplock: 'GP lock control',
     analysis: 'Analysis & reports',
     markas: 'Marka & Followper assignment',
@@ -8219,6 +8223,7 @@ function switchView(id) {
     visits: 'Field visits',
     helpTickets: 'Help tickets',
     crmEscalations: 'CRM escalations',
+    partyHealth: 'Party status',
     gplock: 'GP lock',
     analysis: 'Reports',
     markas: 'Marka assignment',
@@ -8309,6 +8314,7 @@ function _executeRenderAll() {
   else if (cur === 'markas') markaView();
   else if (cur === 'rokad') rokad();
   else if (cur === 'users' || cur === 'userManagement') usersView();
+  else if (cur === 'partyHealth' && typeof partyHealthView === 'function') partyHealthView();
 
   // If payment history modal is currently open, live-refresh it
   const payModal = document.getElementById('paymentHistoryModal');

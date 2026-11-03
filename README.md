@@ -68,6 +68,16 @@ Every module features 1-click **Excel Export** with formatted dates, INR currenc
 
 ---
 
+## 🩺 Party Current Status (health report)
+
+**Party Current Status** in the side menu (or **🩺 Health** on a follow-up or GP lock row) opens a one-page report for one party.
+
+* **Party groups**: every firm that shares a marka / group code is shown together (e.g. JGG with 7 firms under different masters). Pick *All firms (combined)* or one firm; the firm-wise and master-wise tables show each one side by side.
+* **What it covers**: outstanding and due now, dues by age, pending by bill month, the **oldest pending month with its bills**, last payments, follow-up count and on-time rate, every followper who worked the party (first / last / last remark), promises to pay (kept / broken / pending), help tickets, complaints / claims / escalations, FMS steps open or late, recent remarks and all pending bills.
+* **Health score (0–100)**: payment age 30, payment flow 10, follow-up discipline 25, complaints 15, help tickets 10, promises & FMS 10. 80+ Healthy, 60+ Watch, 40+ At risk, below 40 Critical. The group score is half weighted by money due and half by firm count.
+* **Analysis notes**: what is wrong and the next step (clear the oldest month, call on the planned date, resolve the complaint, close the ticket), worst first.
+* A doer sees only their own parties; a CRR their masters' parties. Print / Save PDF prints the report on its own.
+
 ## 💰 Daily Payments Bulk Upload
 
 **⇪ Upload Daily Payments** (header, or the + button on mobile) reads the Sales Payment Performance Report: Party, Party Marka, Policy, Bill Amount, Disc / RD / Claim / TDS Amount, Paid Amount, Days, Master. **⇩ Download format** gives a blank sheet in this layout.

@@ -1,11 +1,11 @@
 // CollectIQ Progressive Web App Service Worker
-const VERSION = '6.36.0';
+const VERSION = '6.37.0';
 const CACHE_NAME = 'collectiq-v' + VERSION;
 const APP_FILES = [
   'styles.css', 'mobile-app.css',
   'activity-log.js', 'party-check.js', 'list-filters.js', 'save-guard.js', 'db-config.js',
   'supabase-store.js', 'auth.js', 'party-sync.js', 'followup-actions.js', 'ticket-actions.js',
-  'payment-upload.js', 'payment-reverse.js', 'app.js', 'ai-tools.js', 'ai-chat.js', 'mobile-app.js'
+  'payment-upload.js', 'payment-reverse.js', 'app.js', 'party-health.js', 'party-health-view.js', 'ai-tools.js', 'ai-chat.js', 'mobile-app.js'
 ];
 const CORE_ASSETS = [
   './',
@@ -57,7 +57,7 @@ function putInCache(req, res) {
   return res;
 }
 
-// Files whose address names their version (app.js?v=6.36.0, supabase-js@2.45.4,
+// Files whose address names their version (app.js?v=6.37.0, supabase-js@2.45.4,
 // fonts) never change, so the saved copy is used straight away: opening the app
 // does not wait for ~20 downloads over the phone network.
 function isVersioned(url) {
