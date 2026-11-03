@@ -5886,7 +5886,7 @@ function onPaymentUploadFile(e) {
 
 function refreshPaymentUploadPlan() {
   const date = document.getElementById('puDate').value || iso(today);
-  paymentUpload.items = PaymentUpload.plan(paymentUpload.rows, { markas, payments, date });
+  paymentUpload.items = PaymentUpload.plan(paymentUpload.rows, { markas, payments, date, money });
   renderPaymentUploadPlan();
 }
 
@@ -5895,7 +5895,7 @@ function renderPaymentUploadPlan() {
   const box = document.getElementById('puPreview');
   const sum = document.getElementById('puSummary');
   const btn = document.getElementById('puSaveBtn');
-  const ready = items.filter(i => i.status === 'ready');
+  const ready = PaymentUpload.toSave(items);
   btn.disabled = !ready.length;
   btn.textContent = ready.length ? `Save ${ready.length} payment${ready.length === 1 ? '' : 's'}` : 'Save payments';
   if (!items.length) {
@@ -5906,13 +5906,15 @@ function renderPaymentUploadPlan() {
   const total = ready.reduce((s, i) => s + i.row.paid, 0);
   const ded = ready.reduce((s, i) => s + i.row.deductions, 0);
   const skipped = items.length - ready.length;
+  const doubtful = items.filter(i => i.status === 'possibleDup' && !i.include).length;
   sum.style.display = '';
   sum.innerHTML = `<span><b>${ready.length}</b> ready</span><span>Paid <b>${money(total)}</b></span><span>Deductions <b>${money(ded)}</b></span>` +
-    (skipped ? `<span class="pu-warn"><b>${skipped}</b> will be skipped</span>` : '');
-  const label = { ready: 'Ready', notFound: 'Not found', noAmount: 'No amount', duplicate: 'Already saved' };
+    (skipped ? `<span class="pu-warn"><b>${skipped}</b> will be skipped</span>` : '') +
+    (doubtful ? `<span class="pu-warn"><b>${doubtful}</b> possible duplicate${doubtful === 1 ? '' : 's'} already entered by hand. Tick only if it is a new payment.</span>` : '');
+  const label = { ready: 'Ready', notFound: 'Not found', noAmount: 'No amount', duplicate: 'Already saved', possibleDup: 'Possible duplicate' };
   box.innerHTML = `<table class="pay-upload-table">
     <thead><tr><th>ROW</th><th>MARKA</th><th>MASTER</th><th>POLICY</th><th class="num">BILL</th><th class="num">DEDUCTIONS</th><th class="num">PAID</th><th class="num">OUTSTANDING</th><th>STATUS</th></tr></thead>
-    <tbody>${items.map(i => `<tr class="pu-${i.status}">
+    <tbody>${items.map((i, idx) => `<tr class="pu-${i.status}${i.include ? ' pu-included' : ''}">
       <td data-label="Row">${i.row.rowNo}</td>
       <td data-label="Marka"><b>${escapeHtml(i.row.marka)}</b></td>
       <td data-label="Master">${escapeHtml(i.party ? i.party.master : i.row.master)}</td>
@@ -5921,12 +5923,20 @@ function renderPaymentUploadPlan() {
       <td data-label="Deductions" class="num">${money(i.row.deductions)}</td>
       <td data-label="Paid" class="num"><b>${money(i.row.paid)}</b></td>
       <td data-label="Outstanding" class="num">${i.party ? money(i.outstanding) : '—'}</td>
-      <td data-label="Status"><span class="pu-badge">${label[i.status]}</span>${i.note && i.status !== 'ready' ? `<small>${escapeHtml(i.note)}</small>` : ''}</td>
+      <td data-label="Status"><span class="pu-badge">${label[i.status]}</span>${i.note && i.status !== 'ready' ? `<small>${escapeHtml(i.note)}</small>` : ''}${i.status === 'possibleDup' ? `<label class="pu-include"><input type="checkbox" ${i.include ? 'checked' : ''} onchange="togglePaymentUploadRow(${idx}, this.checked)"> Save anyway</label>` : ''}</td>
     </tr>`).join('')}</tbody></table>`;
 }
 
+function togglePaymentUploadRow(idx, on) {
+  const item = (paymentUpload.items || [])[idx];
+  if (!item || item.status !== 'possibleDup') return;
+  item.include = !!on;
+  renderPaymentUploadPlan();
+}
+window.togglePaymentUploadRow = togglePaymentUploadRow;
+
 async function savePaymentUpload() {
-  const ready = (paymentUpload.items || []).filter(i => i.status === 'ready');
+  const ready = PaymentUpload.toSave(paymentUpload.items);
   if (!ready.length) return toast('No payment rows ready to save.');
   const btn = document.getElementById('puSaveBtn');
   btn.disabled = true;

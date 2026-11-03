@@ -86,6 +86,7 @@ Every module features 1-click **Excel Export** with formatted dates, INR currenc
 - A preview shows every row as Ready, Not found, No amount or Already saved before anything is saved.
 - On save, Paid + deductions settle the party's oldest bills first; the Paid Amount is recorded as the payment (with the deductions kept on it). Anything above the dues becomes an advance credit.
 - Total and blank rows are skipped. A row already saved for the same party, date and amount is not saved twice, so uploading the same file again is safe.
+- **Possible duplicate**: when the same party already has a payment entered by hand (Record Payment or follow-up) within 7 days for the same paid amount, or paid + deductions, the row is shown as *Possible duplicate* with that entry's date and ref, and is skipped. Tick **Save anyway** only if it is a separate payment.
 
 ## ↶ Reversing a payment
 

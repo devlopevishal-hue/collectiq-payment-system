@@ -119,3 +119,37 @@ test('findParty: parties saved under their full name are found by the Party colu
   // Marka code alone still works when that code is one party.
   assert.equal(U.findParty(list.slice(2), 'GSHR', 'KALPESH MASTER', '').id, 'c');
 });
+
+test('plan: a payment entered by hand a day earlier is a possible duplicate, skipped unless ticked', () => {
+  const m = party();
+  const { rows } = U.parseGrid([HEADER, ['', 'AKYT', '3% PARTY', 153006, 0, 0, 0, 2916, 150090, 79, 'BABLU SHERA MASTER']]);
+  const manual = { id: 'p1', markaId: 'm_7', date: '2026-10-27', amount: 150090, mode: 'RTGS', ref: 'UTR9' };
+  const items = U.plan(rows, { markas: [m], payments: [manual], date: '2026-10-28' });
+  assert.equal(items[0].status, 'possibleDup');
+  assert.match(items[0].note, /2026-10-27/);
+  assert.equal(U.toSave(items).length, 0);
+  items[0].include = true;
+  assert.equal(U.toSave(items).length, 1);
+});
+
+test('plan: hand entry for paid + deductions also matches; old entries and uploads do not', () => {
+  const m = party();
+  const { rows } = U.parseGrid([HEADER, ['', 'AKYT', '', 153006, 0, 0, 0, 2916, 150090, 79, 'BABLU SHERA MASTER']]);
+  const plan = pays => U.plan(rows, { markas: [m], payments: pays, date: '2026-10-28' })[0].status;
+  assert.equal(plan([{ markaId: 'm_7', date: '2026-10-26', amount: 153006 }]), 'possibleDup');
+  assert.equal(plan([{ markaId: 'm_7', date: '2026-10-10', amount: 150090 }]), 'ready');
+  assert.equal(plan([{ markaId: 'm_7', date: '2026-10-27', amount: 150090, source: 'bulk-upload' }]), 'ready');
+  assert.equal(plan([{ markaId: 'other', date: '2026-10-27', amount: 150090 }]), 'ready');
+  assert.equal(plan([{ markaId: 'm_7', date: '2026-10-27', amount: 99000 }]), 'ready');
+});
+
+test('plan: one hand entry flags only one of two equal rows', () => {
+  const m = party();
+  const { rows } = U.parseGrid([HEADER,
+    ['', 'AKYT', '', 0, 0, 0, 0, 0, 5000, 0, 'BABLU SHERA MASTER'],
+    ['', 'AKYT', '', 0, 0, 0, 0, 0, 5000, 0, 'BABLU SHERA MASTER']
+  ]);
+  rows[1].date = '2026-10-29';
+  const items = U.plan(rows, { markas: [m], payments: [{ markaId: 'm_7', date: '2026-10-27', amount: 5000 }], date: '2026-10-28' });
+  assert.deepEqual(items.map(i => i.status), ['possibleDup', 'ready']);
+});
