@@ -8558,17 +8558,28 @@ if (pdInput) pdInput.addEventListener('change', enforcePtpDate);
 const asInput = document.getElementById('actionStatus');
 if (asInput) asInput.addEventListener('change', toggleConditionalFields);
 
+// Close a pop-up and, once none is left open, unlock page scrolling again.
+// (Removing only 'open' left body.modal-open on, so after tapping outside a
+// pop-up the page could no longer scroll and the phone tab bar stayed hidden.)
+function closeModalEl(mb) {
+  if (mb.id) closeModal(mb.id);
+  else {
+    mb.classList.remove('open');
+    if (!document.querySelector('.modal-backdrop.open')) document.body.classList.remove('modal-open');
+  }
+}
+
 // Close modal on backdrop click
 document.querySelectorAll('.modal-backdrop').forEach(mb => {
   mb.addEventListener('click', (e) => {
-    if (e.target === mb) mb.classList.remove('open');
+    if (e.target === mb) closeModalEl(mb);
   });
 });
 
 // Close modal on Escape key
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    document.querySelectorAll('.modal-backdrop.open').forEach(mb => mb.classList.remove('open'));
+    document.querySelectorAll('.modal-backdrop.open').forEach(closeModalEl);
   }
 });
 
