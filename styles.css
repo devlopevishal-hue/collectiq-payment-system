@@ -2733,3 +2733,7 @@ body:has(#aiAssistant.active) .mobile-fab-container { display: none !important; 
   .ph-details > *:not(summary) { display: block !important; }
   .ph-hbar-fill, .ph-col-bar, .ph-grade, .ph-notes li { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+.pay-upload-table tr.pu-possibleDup .pu-badge { background: #fdf3e7; color: #8a5413; }
+.pay-upload-table tr.pu-possibleDup.pu-included td { color: inherit; }
+.pu-include { display: flex; align-items: center; gap: 6px; margin-top: 4px; font: 700 11px Manrope; color: #18332b; cursor: pointer; }
+.pu-include input { width: 15px; height: 15px; }

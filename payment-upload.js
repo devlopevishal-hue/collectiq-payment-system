@@ -136,25 +136,53 @@
     return (payments || []).some(p => p && String(p.markaId) === String(m.id) && p.date === date && Math.round(+p.amount || 0) === Math.round(paid));
   }
 
-  // What each row will do. status: ready | notFound | noAmount | duplicate
-  function plan(rows, { markas = [], payments = [], date = '' } = {}) {
+  function daysApart(a, b) {
+    const t = d => Date.parse(String(d).slice(0, 10) + 'T00:00:00Z');
+    return Math.abs(t(a) - t(b)) / 86400000;
+  }
+
+  // A payment entered by hand (not by an upload) for the same party within
+  // `windowDays` of the row's date, for the paid amount or paid + deductions.
+  // Each saved payment is matched to one row at most (`used`).
+  function manualMatch(payments, m, row, date, used, windowDays) {
+    const amounts = [Math.round(row.paid), Math.round(row.paid + row.deductions)];
+    return (payments || []).find(p => p && !used.has(p) && p.source !== 'bulk-upload' &&
+      String(p.markaId) === String(m.id) && p.date && daysApart(p.date, date) <= windowDays &&
+      amounts.some(a => Math.abs(Math.round(+p.amount || 0) - a) <= 1)) || null;
+  }
+
+  // What each row will do. status: ready | notFound | noAmount | duplicate | possibleDup
+  // possibleDup = probably already entered by hand; skipped unless `include` is set.
+  function plan(rows, { markas = [], payments = [], date = '', windowDays = 7, money = n => String(n) } = {}) {
     const seen = new Set();
+    const used = new Set();
     return (rows || []).map(row => {
       const payDate = row.date || date;
       const settle = row.paid + row.deductions;
       const m = findParty(markas, row.marka, row.master, row.party);
       let status = 'ready';
       let note = '';
+      let match = null;
       if (!m) { status = 'notFound'; note = 'Party not found in CollectIQ'; }
       else if (row.paid <= 0 && settle <= 0) { status = 'noAmount'; note = 'No paid amount'; }
       else {
         const key = `${m.id}|${payDate}|${Math.round(row.paid)}`;
         if (seen.has(key) || alreadySaved(payments, m, payDate, row.paid)) { status = 'duplicate'; note = 'Already saved for this date'; }
+        else if ((match = manualMatch(payments, m, row, payDate, used, windowDays))) {
+          used.add(match);
+          status = 'possibleDup';
+          note = `Entered by hand on ${match.date}: ${money(+match.amount || 0)} (${match.mode || 'payment'}${match.ref && match.ref !== 'N/A' ? ' ref ' + match.ref : ''})`;
+        }
         seen.add(key);
       }
       const outstanding = m ? (m.bills || []).reduce((s, b) => s + (b.balance || 0), 0) : 0;
-      return { row, party: m, markaId: m ? m.id : null, date: payDate, settle, outstanding, status, note };
+      return { row, party: m, markaId: m ? m.id : null, date: payDate, settle, outstanding, status, note, match, include: false };
     });
+  }
+
+  // Rows that will be saved: ready ones, and possible duplicates the user ticked.
+  function toSave(items) {
+    return (items || []).filter(i => i.status === 'ready' || (i.status === 'possibleDup' && i.include));
   }
 
   // Settle one planned row on its party (oldest bill first) and return the
@@ -263,7 +291,7 @@
   // Header row of the blank format the users fill in.
   const TEMPLATE_HEADERS = ['Party', 'Party Marka', 'Policy', 'Bill Amount', 'Disc Amount', 'RD Amount', 'Claim Amount', 'TDS Amount', 'Paid Amount', 'Days', 'Master'];
 
-  const api = { parseGrid, plan, apply, findParty, toIso, num, TEMPLATE_HEADERS };
+  const api = { parseGrid, plan, toSave, apply, findParty, toIso, num, TEMPLATE_HEADERS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.PaymentUpload = api;
 })(typeof window !== 'undefined' ? window : globalThis);
