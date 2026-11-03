@@ -1,4 +1,4 @@
-// CollectIQ mobile app shell (v6.37.0)
+// CollectIQ mobile app shell (v6.38.1)
 // On phones the page behaves like an installed app: a 5-tab bottom bar, a centre
 // quick-action button, and a "More" sheet that lists every other section.
 // Desktop is untouched; everything here is gated on the phone breakpoint.
@@ -177,7 +177,9 @@
       if (cells.length === 1) { tr.classList.add('m-row-empty'); return; }
       for (var i = 0; i < cells.length; i++) {
         var td = cells[i];
-        if (td.hasAttribute('data-label') || td.hasAttribute('data-m-label')) continue;
+        if (td.hasAttribute('data-m-label')) continue;
+        // Cells that already name themselves (Party status tables) keep their own label.
+        if (td.hasAttribute('data-label')) { td.setAttribute('data-m-label', td.getAttribute('data-label')); changed = true; continue; }
         var label = labels[i] || '';
         if (label && !/^actions?$/i.test(label)) td.setAttribute('data-m-label', label);
         else td.classList.add('m-cell-wide');
@@ -202,9 +204,10 @@
       pending = true;
       requestAnimationFrame(function () { pending = false; cardifyAll(); });
     });
-    document.querySelectorAll('main .view tbody').forEach(function (tb) {
-      mo.observe(tb, { childList: true });
-    });
+    // Watch the whole main area: some pages (Party status, reports) rebuild their
+    // tables from scratch, so a tbody seen at start-up is not the one on screen.
+    var main = document.querySelector('main');
+    if (main) mo.observe(main, { childList: true, subtree: true });
     cardifyAll();
   }
 

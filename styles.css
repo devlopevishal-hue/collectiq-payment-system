@@ -2713,17 +2713,21 @@ body:has(#aiAssistant.active) .mobile-fab-container { display: none !important; 
 .ph-last-fu { background: #f8faf9; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-size: 12px; }
 
 @media (max-width: 1100px) {
-  .ph-hero { grid-template-columns: 1fr 150px; }
+  .ph-hero { grid-template-columns: minmax(0, 1fr) 150px; }
   .ph-hero-parts { grid-column: 1 / -1; }
-  .ph-grid3 { grid-template-columns: 1fr 1fr; }
-  .ph-grid2 { grid-template-columns: 1fr; }
+  .ph-grid3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ph-grid2 { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 768px) {
-  .ph-hero { grid-template-columns: 1fr; }
-  .ph-tiles { grid-template-columns: 1fr 1fr; }
-  .ph-grid3 { grid-template-columns: 1fr; }
+  .ph-hero { grid-template-columns: minmax(0, 1fr); }
+  .ph-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ph-grid3 { grid-template-columns: minmax(0, 1fr); }
   .ph-hbar { grid-template-columns: 90px 1fr 80px; }
   .ph-notes li { grid-template-columns: 1fr; gap: 4px; }
+  /* Long firm names in the Firm / master list must not push the page wider than the phone. */
+  .ph-picker-row > .ph-field { flex: 1 1 100%; min-width: 0; }
+  .ph-picker-row .ph-field .filter-input { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
+  .ph-picker-row > .btn { align-self: flex-start; }
 }
 @media print {
   #phPicker { display: none !important; }
