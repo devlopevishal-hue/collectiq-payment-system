@@ -185,6 +185,17 @@ test('applyPaymentFollowup: full payment closes the follow-up; extra becomes adv
   assert.equal(r2.entry.next, '');
 });
 
+test('applyPaymentFollowup: "Full Payment" that leaves dues open keeps the party scheduled', () => {
+  const m = billedParty();
+  const r = FA.applyPaymentFollowup(m, [], pay({ payAmount: 40000, payType: 'Full Payment', nextDate: '2026-10-08' }));
+  assert.equal(r.entry.next, '2026-10-08');
+  assert.equal(m.nextDate, '2026-10-08');
+  assert.equal(r.entry.remark, 'Payment ₹40000 received (cheque ref: 123456); ₹10000 still due.');
+  const noDate = billedParty();
+  const r2 = FA.applyPaymentFollowup(noDate, [], pay({ payAmount: 40000, payType: 'Full Payment' }));
+  assert.equal(r2.entry.next, '2026-10-05');
+});
+
 test('applyPaymentFollowup: given allocations (form) are used and capped at the bill balance', () => {
   const m = billedParty();
   const r = FA.applyPaymentFollowup(m, [], pay({ payAmount: 25000, allocations: [{ billId: 2, amount: 25000 }] }));

@@ -266,11 +266,14 @@
       status = 'Advance Payment';
       next = '';
       finalRemark = finalRemark || `Payment ${money(payAmount)} received (${payMode} ref: ${payRef}). Advance credit balance: ${money(Math.abs(stillDue))}. Follow-up closed.`;
-    } else if (stillDue === 0 || payType === 'Full Payment') {
+    } else if (stillDue === 0) {
+      // Only a payment that clears every due closes the follow-up. "Full
+      // Payment" with dues still open (one bill paid in full, or a smaller
+      // amount than the total) keeps the party on the schedule.
       next = '';
       finalRemark = finalRemark || `Full payment ${money(payAmount)} received (${payMode} ref: ${payRef}). All dues cleared.`;
     } else {
-      next = text(input.nextDate) || input.defaultNext;
+      next = text(input.nextDate) || input.defaultNext || defaultNextDate(text(input.today) || text(input.date));
       finalRemark = finalRemark || `Payment ${money(payAmount)} received (${payMode} ref: ${payRef}); ${money(stillDue)} still due.`;
     }
 
