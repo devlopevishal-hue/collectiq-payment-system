@@ -67,7 +67,7 @@
     m.lastStatus = 'Payment Reversed';
     m.lastDate = today;
     m.remark = stillDue > 0 ? `${text} ${money(stillDue)} due again.` : text;
-    if (stillDue > 0 && !m.nextDate) m.nextDate = today;
+    if (stillDue > 0 && !m.nextDate && !m.casePpl) m.nextDate = today;
     return { ok: true, restored, linesRemoved: drop.size, stillDue };
   }
 
