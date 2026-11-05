@@ -32,7 +32,8 @@
     return 'upcoming';
   }
 
-  // Follow-up schedule tabs: GP locked counts as Overdue, no next date as Upcoming.
+  // Follow-up schedule tabs: no next date counts as Upcoming. The app passes the
+  // status from the next follow-up date only (GP lock is ignored for the tabs).
   function scheduleTab(status) {
     if (status === 'locked' || status === 'overdue') return 'overdue';
     if (status === 'today') return 'due';
