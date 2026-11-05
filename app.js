@@ -1194,6 +1194,12 @@ function statusOf(m) {
   return ListFilters.partyStatus({ locked: isLocked(m), nextDate: m.nextDate, daysPast: m.nextDate ? days(m.nextDate) : 0 });
 }
 
+// Follow-up schedule tab from the next follow-up date alone: a GP-locked party
+// whose next follow-up is in the future is Upcoming, not Overdue.
+function followupTabOf(m) {
+  return ListFilters.scheduleTab(ListFilters.partyStatus({ locked: false, nextDate: m.nextDate, daysPast: m.nextDate ? days(m.nextDate) : 0 }));
+}
+
 function matchesStatus(m, status) {
   return !status || status === 'all' || statusOf(m) === status;
 }
@@ -1886,7 +1892,7 @@ function schedule() {
   const active = filtered().filter(m => !m.casePpl);
   
   // Each party sits in exactly one tab, so Overdue + Due today + Upcoming = All.
-  const tabOf = new Map(active.map(m => [m, ListFilters.scheduleTab(statusOf(m))]));
+  const tabOf = new Map(active.map(m => [m, followupTabOf(m)]));
   const inTab = t => active.filter(m => tabOf.get(m) === t);
   const allCount = active.length;
   const dueCount = inTab('due').length;
