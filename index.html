@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://oxriijxeiyfubyhbohim.supabase.co" crossorigin>
   <!-- Fonts load without holding up the first screen (system font shows until then). -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
-  <link rel="stylesheet" href="styles.css?v=6.39.2">
-  <link rel="stylesheet" href="mobile-app.css?v=6.39.2">
+  <link rel="stylesheet" href="styles.css?v=6.40.0">
+  <link rel="stylesheet" href="mobile-app.css?v=6.40.0">
   <script>
     function toggleMobileMenu(e) {
       if (e) {
@@ -693,6 +693,7 @@
                   <th>LOGIN</th>
                   <th>ROLE</th>
                   <th>LINKED DOER</th>
+                  <th>DATA VISIBILITY</th>
                   <th>ACTION</th>
                 </tr>
               </thead>
@@ -1467,7 +1468,7 @@
 
   <!-- Edit User Access & Credentials Modal -->
   <div class="modal-backdrop" id="editUserModal">
-    <div class="modal" style="max-width:480px;">
+    <div class="modal" style="max-width:640px;">
       <button type="button" class="close" onclick="closeModal('editUserModal')">×</button>
       <p class="eyebrow">ACCESS</p>
       <h2 id="editUserModalTitle">Edit User Access</h2>
@@ -1491,6 +1492,25 @@
           <label style="display:block; font-weight:600; font-size:12px;">Linked Sales Person / Doer Name
             <input type="text" id="editUserFollowper" list="doersDatalist" style="width:100%; padding:9px 12px; border:1px solid #dbe5e0; border-radius:6px; margin-top:4px; font-family:inherit; font-size:13px;">
           </label>
+        </div>
+        <div id="editUserAccessContainer" style="border-top:1px solid #e3ebe7; padding-top:12px;">
+          <label style="display:block; font-weight:600; font-size:12px;">Data Visibility (which parties they see)
+            <select id="editUserAccessMode" onchange="onEditUserAccessModeChange()" style="width:100%; padding:9px 12px; border:1px solid #dbe5e0; border-radius:6px; margin-top:4px; font-family:inherit; font-size:13px;">
+              <option value="role">Default for role (Doer: own parties, CRR: own CRR parties, others: all)</option>
+              <option value="all">All parties</option>
+              <option value="custom">Only selected masters / doers / CRRs</option>
+            </select>
+          </label>
+          <div id="editUserAccessCustom" style="display:none; margin-top:10px;">
+            <p style="font-size:11px; color:#64748b; margin:0 0 8px;">A party is shown if its master, doer or CRR is ticked below. Help tickets and CRM complaints follow the same parties; ones they raised or work on always show.</p>
+            <input type="text" id="editUserAccessSearch" placeholder="Search names..." oninput="filterAccessLists(this.value)" style="width:100%; padding:7px 10px; border:1px solid #dbe5e0; border-radius:6px; font-family:inherit; font-size:12px; margin-bottom:8px;">
+            <div class="access-lists">
+              <div><b>Masters <span id="accessCount_masters"></span></b><div class="access-box" id="accessList_masters"></div></div>
+              <div><b>Doers <span id="accessCount_followpers"></span></b><div class="access-box" id="accessList_followpers"></div></div>
+              <div><b>CRRs <span id="accessCount_crrs"></span></b><div class="access-box" id="accessList_crrs"></div></div>
+            </div>
+            <p id="editUserAccessPreview" style="font-size:12px; color:#087454; font-weight:600; margin:8px 0 0;"></p>
+          </div>
         </div>
         <div class="modal-footer" style="margin-top:16px;">
           <button type="button" class="btn secondary" onclick="closeModal('editUserModal')">Cancel</button>
@@ -1701,29 +1721,30 @@ service cloud.firestore {
   <!-- SheetJS (Excel) is loaded after the app opens: see loadXlsx() in app.js. -->
   <!-- Firebase Compatibility Libraries for Real-time Cloud DB -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-  <script src="activity-log.js?v=6.39.2"></script>
-  <script src="party-check.js?v=6.39.2"></script>
-  <script src="list-filters.js?v=6.39.2"></script>
-  <script src="save-guard.js?v=6.39.2"></script>
-  <script src="db-config.js?v=6.39.2"></script>
-  <script src="supabase-store.js?v=6.39.2"></script>
-  <script src="auth.js?v=6.39.2"></script>
-  <script src="party-sync.js?v=6.39.2"></script>
-  <script src="followup-actions.js?v=6.39.2"></script>
-  <script src="ticket-actions.js?v=6.39.2"></script>
-  <script src="payment-upload.js?v=6.39.2"></script>
-  <script src="payment-reverse.js?v=6.39.2"></script>
-  <script src="app.js?v=6.39.2"></script>
-  <script src="party-health.js?v=6.39.2"></script>
-  <script src="party-health-view.js?v=6.39.2"></script>
-  <script src="ai-tools.js?v=6.39.2"></script>
-  <script src="ai-chat.js?v=6.39.2"></script>
-  <script src="mobile-app.js?v=6.39.2"></script>
+  <script src="activity-log.js?v=6.40.0"></script>
+  <script src="party-check.js?v=6.40.0"></script>
+  <script src="list-filters.js?v=6.40.0"></script>
+  <script src="save-guard.js?v=6.40.0"></script>
+  <script src="db-config.js?v=6.40.0"></script>
+  <script src="supabase-store.js?v=6.40.0"></script>
+  <script src="auth.js?v=6.40.0"></script>
+  <script src="data-access.js?v=6.40.0"></script>
+  <script src="party-sync.js?v=6.40.0"></script>
+  <script src="followup-actions.js?v=6.40.0"></script>
+  <script src="ticket-actions.js?v=6.40.0"></script>
+  <script src="payment-upload.js?v=6.40.0"></script>
+  <script src="payment-reverse.js?v=6.40.0"></script>
+  <script src="app.js?v=6.40.0"></script>
+  <script src="party-health.js?v=6.40.0"></script>
+  <script src="party-health-view.js?v=6.40.0"></script>
+  <script src="ai-tools.js?v=6.40.0"></script>
+  <script src="ai-chat.js?v=6.40.0"></script>
+  <script src="mobile-app.js?v=6.40.0"></script>
   <!-- Progressive Web App Service Worker Registration -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
-        navigator.serviceWorker.register('sw.js?v=6.39.2').then(function(reg) {
+        navigator.serviceWorker.register('sw.js?v=6.40.0').then(function(reg) {
           console.log('[PWA] Service Worker registered with scope:', reg.scope);
         }).catch(function(err) {
           console.warn('[PWA] Service Worker registration failed:', err);

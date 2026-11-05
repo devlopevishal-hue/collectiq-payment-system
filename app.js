@@ -314,7 +314,7 @@ function checkAuth() {
       document.getElementById('setupSection').style.display = 'none';
       if (document.getElementById('navUsers')) document.getElementById('navUsers').style.display = 'none';
       if (document.getElementById('resetBillsBtn')) document.getElementById('resetBillsBtn').style.display = 'none';
-      if (isCrm || isAccounts || isCrr) {
+      if (isCrm || isAccounts || isCrr || !lockedToOwnName()) {
         F.followper = 'all';
       } else {
         F.followper = currentUser.followperName || 'Unassigned';
@@ -445,7 +445,7 @@ async function handleLoginSubmit(e) {
 // After a login (or a saved login when the app opens): show the person's
 // screens, open the live database with their login, load the staff list.
 function openSignedInSession(user) {
-  currentUser = { email: user.email, role: user.role, followperName: user.followperName };
+  currentUser = { email: user.email, role: user.role, followperName: user.followperName, access: user.access || { mode: 'role' } };
   window.currentUser = currentUser;
   localSet('collectiq_current_user', JSON.stringify(currentUser));
   signedIn = true;
@@ -832,7 +832,7 @@ function load() {
     try { storedUsers = JSON.parse(localStorage.getItem('collectiq_users_v4') || '[]'); } catch (e) { storedUsers = []; }
     users = (Array.isArray(storedUsers) && storedUsers.length ? storedUsers : DEFAULT_USERS)
       .filter(u => u && u.email)
-      .map(u => ({ email: u.email, role: u.role || 'user', followperName: u.followperName || '', active: u.active !== false, hasLogin: !!u.hasLogin }));
+      .map(u => ({ email: u.email, role: u.role || 'user', followperName: u.followperName || '', active: u.active !== false, hasLogin: !!u.hasLogin, access: u.access || { mode: 'role' } }));
     localSet('collectiq_users_v4', JSON.stringify(users));
     window.users = users;
     checkAuth();
@@ -944,6 +944,27 @@ function ownerOf(m) {
     return masterOwner.trim();
   }
   return 'Unassigned';
+}
+
+// Data visibility (data-access.js): which parties this login may see, as set by
+// the admin per person on the Users screen.
+function myAccessRule() {
+  return DataAccess.ruleFor(currentUser);
+}
+const ACCESS_HELPERS = { ownerOf: m => ownerOf(m), crrOf: m => crrOf(m) };
+function canSeeParty(m) {
+  return DataAccess.canSee(myAccessRule(), m, ACCESS_HELPERS);
+}
+function canSeePartyId(id) {
+  const rule = myAccessRule();
+  if (rule.all) return true;
+  const m = markas.find(x => x.id === id);
+  return !!m && DataAccess.canSee(rule, m, ACCESS_HELPERS);
+}
+// A Doer on the role default: the followper filter is fixed to their own name
+// (with "All Team Markas" as the only other choice), as before.
+function lockedToOwnName() {
+  return !!(currentUser && currentUser.role === 'user' && myAccessRule().mode === 'role');
 }
 
 function allFollowpers() {
@@ -1205,27 +1226,13 @@ function matchesStatus(m, status) {
 }
 
 function filtered(list = activeMarkas()) {
-  if (currentUser) {
-    if (currentUser.role === 'user') {
-      const uName = (currentUser.followperName || '').toLowerCase().trim();
-      const hasSearch = (F.marka || '').trim().length > 0;
-      if (!hasSearch && F.followper !== 'all') {
-        list = list.filter(m => {
-          const o = (ownerOf(m) || '').toLowerCase().trim();
-          return o === uName || (uName && o && (o.includes(uName) || uName.includes(o)));
-        });
-      }
-    } else if (currentUser.role === 'crr') {
-      const uName = (currentUser.followperName || '').toLowerCase().trim();
-      const uEmail = (currentUser.email || '').toLowerCase().trim();
-      if (uName.includes('mahendra') || uName === 'all' || uEmail.includes('mahendra')) {
-        // Mahendra Bhai sees all masters
-      } else {
-        list = list.filter(m => {
-          const c = (crrOf(m) || '').toLowerCase().trim();
-          return c === uName || (uName && c && (c.includes(uName) || uName.includes(c)));
-        });
-      }
+  // Only the parties this login may see. A Doer on the role default can still
+  // search the whole list or pick "All Team Markas", as before.
+  const rule = myAccessRule();
+  if (!rule.all) {
+    const hasSearch = (F.marka || '').trim().length > 0;
+    if (rule.strict || (!hasSearch && F.followper !== 'all')) {
+      list = DataAccess.filterParties(rule, list, ACCESS_HELPERS);
     }
   }
   return list.filter(m => {
@@ -1297,7 +1304,7 @@ function filterChipsHtml() {
   if (F.minDue || F.maxDue) add(`Already due: ${F.minDue ? money(+F.minDue) : '0'} – ${F.maxDue ? money(+F.maxDue) : 'any'}`, 'minDue,maxDue');
   if (F.min || F.max) add(`Outstanding: ${F.min ? money(+F.min) : '0'} – ${F.max ? money(+F.max) : 'any'}`, 'min,max');
   if (F.minCount || F.maxCount) add(`Follow-ups: ${F.minCount || 0} – ${F.maxCount || 'any'}`, 'minCount,maxCount');
-  if (F.followper && F.followper !== 'all' && !(currentUser && currentUser.role === 'user')) add(`Followper: ${F.followper}`, 'followper');
+  if (F.followper && F.followper !== 'all' && !lockedToOwnName()) add(`Followper: ${F.followper}`, 'followper');
   if (F.master && F.master !== 'all') add(`Master: ${F.master}`, 'master');
   if (F.marka) add(`Search: ${F.marka}`, 'marka');
   if (!chips.length) return '';
@@ -1312,7 +1319,7 @@ function filters(containerId) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
-  const isUserRole = currentUser && currentUser.role === 'user';
+  const isUserRole = lockedToOwnName();
 
   // The chosen master / followper stays in its list even if no party has it now,
   // so the dropdown always shows the filter that is really applied.
@@ -1417,7 +1424,7 @@ window.setRange = setRange;
 // Removes one filter (chip ✕).
 function clearF(keys) {
   String(keys).split(',').forEach(k => {
-    if (k === 'followper') F[k] = (currentUser && currentUser.role === 'user') ? currentUser.followperName : 'all';
+    if (k === 'followper') F[k] = lockedToOwnName() ? currentUser.followperName : 'all';
     else F[k] = (k === 'status' || k === 'master') ? 'all' : '';
   });
   renderAll();
@@ -1444,7 +1451,7 @@ function colFilterActive(col) {
   if (c.date) return F.dateField === c.date && Boolean(F.from || F.to || F.year);
   return c.keys.split(',').some(k => {
     if (k === 'master' || k === 'status') return F[k] && F[k] !== 'all';
-    if (k === 'followper') return F[k] && F[k] !== 'all' && !(currentUser && currentUser.role === 'user');
+    if (k === 'followper') return F[k] && F[k] !== 'all' && !lockedToOwnName();
     return Boolean(F[k]);
   });
 }
@@ -1475,7 +1482,7 @@ function colFilterBody(col) {
   if (col === 'marka') return `<label><span>Search</span><input type="text" data-k="marka" placeholder="Party, master or remark" value="${escapeHtml(F.marka || '')}" oninput="setF(this)"></label>`;
   if (col === 'master') return `<label><span>Master</span><select data-k="master" onchange="setF(this)">${opt('all', 'All masters', F.master)}${[...new Set([...(F.master && F.master !== 'all' ? [F.master] : []), ...allMasters()])].map(m => opt(m, m, F.master)).join('')}</select></label>`;
   if (col === 'followper') {
-    const locked = currentUser && currentUser.role === 'user';
+    const locked = lockedToOwnName();
     return `<label><span>Followper</span><select data-k="followper" onchange="setF(this)" ${locked ? 'disabled' : ''}>${opt('all', 'All followpers', F.followper)}${[...new Set([...(F.followper && F.followper !== 'all' ? [F.followper] : []), ...allFollowpers()])].map(f => opt(f, f, F.followper)).join('')}</select></label>`;
   }
   if (col === 'status') return `<label><span>Status</span><select data-k="status" onchange="setF(this)">${opt('all', 'All statuses', F.status)}${Object.keys(FILTER_STATUSES).map(k => opt(k, FILTER_STATUSES[k], F.status)).join('')}</select></label>`;
@@ -1592,7 +1599,7 @@ function setF(el) {
 
 function clearFilters() {
   F = {
-    followper: (currentUser && currentUser.role === 'user') ? currentUser.followperName : 'all',
+    followper: lockedToOwnName() ? currentUser.followperName : 'all',
     master: 'all', marka: '', min: '', max: '', minCount: '', maxCount: '', from: '', to: '',
     dateField: F.dateField || 'next', year: '', status: 'all', minDue: '', maxDue: ''
   };
@@ -1614,12 +1621,13 @@ function renderFilterNote(id) {
   if (!el) return;
   const chips = filterChipsHtml();
   let scope = '';
-  if (currentUser && currentUser.role === 'user' && F.followper !== 'all') {
+  const rule = myAccessRule();
+  if (rule.mode === 'custom') {
+    scope = `Showing only your parties: ${escapeHtml(DataAccess.describe(currentUser.access, currentUser.role))} (set by admin).`;
+  } else if (lockedToOwnName() && F.followper !== 'all') {
     scope = `Showing only ${escapeHtml(currentUser.followperName || '')}'s parties (your login).`;
-  } else if (currentUser && currentUser.role === 'crr') {
-    const n = (currentUser.followperName || '').toLowerCase().trim();
-    const seesAll = n.includes('mahendra') || n === 'all' || (currentUser.email || '').toLowerCase().includes('mahendra');
-    if (!seesAll) scope = `Showing only parties where ${escapeHtml(currentUser.followperName || '')} is the CRR (your login).`;
+  } else if (currentUser && currentUser.role === 'crr' && !rule.all) {
+    scope = `Showing only parties where ${escapeHtml(currentUser.followperName || '')} is the CRR (your login).`;
   }
   el.innerHTML = (scope ? `<span class="dash-filter-scope">👤 ${scope}</span>` : '') +
     (chips ? `<span class="dash-filter-label">Filters on:</span>${chips}` : '');
@@ -3318,7 +3326,8 @@ function markaView() {
   // 2. Master-wise table
   const masterTbody = document.getElementById('masterTable');
   if (masterTbody) {
-    const masters = allMasters();
+    const strictAccess = myAccessRule().strict;
+    const masters = allMasters().filter(n => !strictAccess || markas.some(m => m.master === n && canSeeParty(m)));
     masterTbody.innerHTML = masters.map(masterName => {
       const masterMarkas = markas.filter(m => m.master === masterName);
       const activeMasterMarkas = masterMarkas.filter(m => totalOutstanding(m) > 0);
@@ -3358,6 +3367,23 @@ function isMyTicket(t) {
   if (currentUser.role === 'admin' || currentUser.role === 'superuser') return true;
   const me = currentUser.followperName;
   return ListFilters.sameName(t.requestedBy, me) || ListFilters.sameName(t.assignedHelper, me);
+}
+
+// Help tickets a login limited by the admin (data visibility) may see: those on
+// its parties, and any it raised, works on or resolved.
+function ticketVisible(t) {
+  if (!myAccessRule().strict) return true;
+  if (isMyTicket(t) || ListFilters.sameName(t.resolvedBy, currentUser.followperName)) return true;
+  return markas.some(m => ticketIsFor(t, m) && canSeeParty(m));
+}
+
+// CRM complaints the same way: those on its parties, and any it raised, was
+// escalated to or resolved.
+function escalationVisible(e) {
+  if (!myAccessRule().strict) return true;
+  const me = currentUser.followperName;
+  if ([e.followper, e.escalatedTo, e.resolvedBy].some(v => ListFilters.sameName(v, me))) return true;
+  return canSeePartyId(e.markaId);
 }
 
 // Dashboard: "payment received - check these help tickets", for the person who
@@ -3430,7 +3456,7 @@ function helpTicketsView() {
 
   // Filter out any corrupted duplicate tickets safely
   helpTickets = (helpTickets || []).filter(t => t && (!t.subject || !t.subject.startsWith('[Ticket Reassigned]')));
-  let list = [...(helpTickets || [])];
+  let list = (helpTickets || []).filter(ticketVisible);
 
   // Two-Way Visibility Filter: If filtered by 'mine', match requester, helper, resolver, or party owner flexibly
   if (curScope === 'mine' && currentUser) {
@@ -3906,7 +3932,7 @@ function crmEscalationsView() {
   }
 
   // Each complaint once, with the status of its saved escalation (see list-filters.js).
-  let allEscs = ListFilters.crmItems(markas, ownerOf);
+  let allEscs = ListFilters.crmItems(markas, ownerOf).filter(escalationVisible);
 
   // Strict User Data Security: Two-Way Visibility for who created it, who is assigned to solve it, who resolved it, or party owner
   if (isUserRole) {
@@ -4140,7 +4166,9 @@ function visitsView() {
   let allVisits = [];
   const todayIso = iso(today);
 
+  const visitRule = myAccessRule();
   markas.forEach(m => {
+    if (visitRule.strict && !canSeeParty(m)) return;
     (m.history || []).forEach((h, hIdx) => {
       const isVisit = (h.mode && (h.mode.toLowerCase().includes('person') || h.mode.toLowerCase().includes('visit')));
       if (isVisit) {
@@ -7637,7 +7665,7 @@ window.exportDailySummaryExcel = exportDailySummaryExcel;
 
 function exportHelpTicketsExcel() {
   const isUserRole = currentUser && currentUser.role === 'user';
-  let list = (helpTickets || []).slice();
+  let list = (helpTickets || []).filter(ticketVisible);
   if (isUserRole) {
     const uName = (currentUser.followperName || '').toLowerCase().trim();
     list = list.filter(t => 
@@ -7680,6 +7708,7 @@ function exportEscalationsExcel() {
   markas.forEach(m => {
     (m.escalations || []).forEach(e => {
       list.push({
+        markaId: m.id,
         date: e.date,
         marka: partyLabel(m),
         master: m.master,
@@ -7697,6 +7726,7 @@ function exportEscalationsExcel() {
     });
   });
 
+  list = list.filter(escalationVisible);
   if (isUserRole) {
     const uName = (currentUser.followperName || '').toLowerCase().trim();
     list = list.filter(e => 
@@ -7907,7 +7937,7 @@ window.exportMarkasExcel = exportMarkasExcel;
 
 function exportMastersExcel() {
   const masterStats = {};
-  activeMarkas().forEach(m => {
+  DataAccess.filterParties(myAccessRule(), activeMarkas(), ACCESS_HELPERS).forEach(m => {
     if (!masterStats[m.master]) masterStats[m.master] = { count: 0, balance: 0, alreadyDue: 0 };
     masterStats[m.master].count++;
     masterStats[m.master].balance += totalOutstanding(m);
@@ -7962,6 +7992,7 @@ function usersView() {
           <td>${login}</td>
           <td>${roleBadge}</td>
           <td><b style="color:#087454;">${escapeHtml(u.followperName || '—')}</b></td>
+          <td style="font-size:12px; max-width:260px;">${escapeHtml(DataAccess.describe(u.access, u.role))}</td>
           <td>
             <button type="button" data-email="${escapeHtml(u.email)}" onclick="openEditUser(this.dataset.email)" class="row-action" style="background:#087454;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;margin-right:4px;">Edit Access</button>
             ${u.hasLogin ? `<button type="button" data-email="${escapeHtml(u.email)}" onclick="openChangePassword(this.dataset.email)" class="row-action" style="padding:4px 8px;border-radius:4px;cursor:pointer;margin-right:4px;">${isMe ? 'Change Password' : 'Reset Password'}</button>` : ''}
@@ -8026,6 +8057,12 @@ function openEditUser(email) {
   document.getElementById('editUserRole').value = user.role || 'user';
   document.getElementById('editUserFollowper').value = user.followperName === 'all' ? '' : (user.followperName || '');
 
+  const access = DataAccess.normalize(user.access);
+  document.getElementById('editUserAccessMode').value = access.mode;
+  const search = document.getElementById('editUserAccessSearch');
+  if (search) search.value = '';
+  fillAccessLists(access);
+
   onEditUserRoleChange();
   openModal('editUserModal');
 }
@@ -8037,8 +8074,77 @@ function onEditUserRoleChange() {
   if (container) {
     container.style.display = (role === 'admin') ? 'none' : 'block';
   }
+  // Admins always see every party.
+  const accessBox = document.getElementById('editUserAccessContainer');
+  if (accessBox) accessBox.style.display = role === 'admin' ? 'none' : 'block';
+  onEditUserAccessModeChange();
 }
 window.onEditUserRoleChange = onEditUserRoleChange;
+
+// Data visibility: tick lists of masters, doers and CRRs. Names already saved
+// stay in the list (ticked) even if no party has them now.
+const ACCESS_KINDS = ['masters', 'followpers', 'crrs'];
+function fillAccessLists(access) {
+  const names = {
+    masters: allMasters(),
+    followpers: allFollowpers().filter(f => f !== 'Unassigned'),
+    crrs: allCrrs().filter(f => f !== 'Unassigned')
+  };
+  ACCESS_KINDS.forEach(kind => {
+    const box = document.getElementById('accessList_' + kind);
+    if (!box) return;
+    const picked = (access && access[kind]) || [];
+    const all = [...picked, ...names[kind].filter(n => !picked.some(p => ListFilters.sameName(p, n)))];
+    box.innerHTML = all.length
+      ? all.map(n => `<label data-name="${escapeHtml(n.toLowerCase())}"><input type="checkbox" value="${escapeHtml(n)}" ${picked.some(p => ListFilters.sameName(p, n)) ? 'checked' : ''} onchange="updateAccessPreview()"> ${escapeHtml(n)}</label>`).join('')
+      : '<div class="access-empty">None yet</div>';
+  });
+  updateAccessPreview();
+}
+
+function readAccessForm() {
+  const mode = document.getElementById('editUserAccessMode').value;
+  if (mode !== 'custom') return { mode };
+  const out = { mode };
+  ACCESS_KINDS.forEach(kind => {
+    out[kind] = Array.from(document.querySelectorAll(`#accessList_${kind} input:checked`)).map(i => i.value);
+  });
+  return DataAccess.normalize(out);
+}
+
+function onEditUserAccessModeChange() {
+  const mode = document.getElementById('editUserAccessMode');
+  const custom = document.getElementById('editUserAccessCustom');
+  if (mode && custom) custom.style.display = mode.value === 'custom' ? 'block' : 'none';
+  updateAccessPreview();
+}
+window.onEditUserAccessModeChange = onEditUserAccessModeChange;
+
+function filterAccessLists(q) {
+  const v = String(q || '').toLowerCase().trim();
+  ACCESS_KINDS.forEach(kind => {
+    document.querySelectorAll(`#accessList_${kind} label`).forEach(l => {
+      l.style.display = !v || (l.dataset.name || '').includes(v) ? '' : 'none';
+    });
+  });
+}
+window.filterAccessLists = filterAccessLists;
+
+// "They will see N parties" while ticking, from the parties with dues now.
+function updateAccessPreview() {
+  const el = document.getElementById('editUserAccessPreview');
+  if (!el || !document.getElementById('editUserAccessMode')) return;
+  const access = readAccessForm();
+  ACCESS_KINDS.forEach(kind => {
+    const c = document.getElementById('accessCount_' + kind);
+    if (c) c.textContent = access.mode === 'custom' && access[kind].length ? `(${access[kind].length})` : '';
+  });
+  if (access.mode !== 'custom') { el.textContent = ''; return; }
+  const rule = DataAccess.ruleFor({ role: document.getElementById('editUserRole').value, access });
+  const n = DataAccess.filterParties(rule, activeMarkas(), ACCESS_HELPERS).length;
+  el.textContent = `They will see ${n} of ${activeMarkas().length} parties with dues.`;
+}
+window.updateAccessPreview = updateAccessPreview;
 
 async function handleSaveEditUser(e) {
   if (e && typeof e.preventDefault === 'function') e.preventDefault();
@@ -8049,15 +8155,20 @@ async function handleSaveEditUser(e) {
   const user = (users || []).find(u => u.email.toLowerCase() === email);
   if (!user) return toast('User not found.');
   const followperName = role === 'admin' ? 'all' : (fName || email.split('@')[0]);
+  const access = role === 'admin' ? { mode: 'role' } : readAccessForm();
+  if (access.mode === 'custom' && !access.masters.length && !access.followpers.length && !access.crrs.length) {
+    return toast('❌ Tick at least one master, doer or CRR, or pick "All parties".', 6000);
+  }
 
   try {
-    await getStaffAuth().saveStaff({ email, role, followperName, active: user.active !== false });
+    await getStaffAuth().saveStaff({ email, role, followperName, active: user.active !== false, access });
   } catch (err) {
     return toast(`❌ Not saved: ${err.message}`, 8000);
   }
   if (currentUser && currentUser.email.toLowerCase() === email) {
     currentUser.role = role;
     currentUser.followperName = followperName;
+    currentUser.access = access;
     localSet('collectiq_current_user', JSON.stringify(currentUser));
     checkAuth();
   }

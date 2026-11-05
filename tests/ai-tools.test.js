@@ -77,6 +77,13 @@ test('scopeMarkas: doer named all or Unassigned gets an empty scope', () => {
   assert.deepEqual(T.scopeMarkas(ctx({ email: 'x@y', role: 'user', followperName: 'Unassigned' })), []);
 });
 
+test('scopeMarkas: follows the data visibility the admin set', () => {
+  const custom = { email: 'x@y', role: 'accounts', followperName: 'Account Team', access: { mode: 'custom', masters: ['KALPESH MASTER'], crrs: ['Nayan Bhai'] } };
+  assert.deepEqual(names(T.scopeMarkas(ctx(custom))), ['MAU', 'SAN', 'SANK']);
+  const doerAll = { ...SURENDRA, access: { mode: 'all' } };
+  assert.deepEqual(names(T.scopeMarkas(ctx(doerAll))), ['JGG', 'MAU', 'SAN', 'SANK', 'XYZ']);
+});
+
 test('scopeMarkas: admin sees every positive-balance party', () => {
   assert.deepEqual(names(T.scopeMarkas(ctx(ADMIN))), ['JGG', 'MAU', 'SAN', 'SANK', 'XYZ']);
 });

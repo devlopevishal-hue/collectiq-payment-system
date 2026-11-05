@@ -24,7 +24,8 @@
       role: row.role || 'user',
       followperName: row.followper_name || (row.role === 'admin' ? 'all' : ''),
       active: row.active !== false,
-      hasLogin: !!row.user_id
+      hasLogin: !!row.user_id,
+      access: row.data_access && typeof row.data_access === 'object' ? row.data_access : { mode: 'role' }
     };
   }
 
@@ -113,7 +114,13 @@
         followper_name: user.role === 'admin' ? 'all' : String(user.followperName || '').trim(),
         active: user.active !== false
       };
+      // Which parties they see (see data-access.js). Sent only when given, so
+      // a save without it never clears it.
+      if (user.access) row.data_access = user.access;
       const { error } = await client.from('cq_staff').upsert(row, { onConflict: 'email' });
+      if (error && /data_access/.test(error.message || '')) {
+        throw authError('db', 'Data visibility is not set up in the database yet. Run supabase/data-access.sql in the Supabase SQL Editor once.');
+      }
       if (error) throw authError('db', error.message);
     }
 
