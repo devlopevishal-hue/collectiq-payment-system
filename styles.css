@@ -2741,3 +2741,13 @@ body:has(#aiAssistant.active) .mobile-fab-container { display: none !important; 
 .pay-upload-table tr.pu-possibleDup.pu-included td { color: inherit; }
 .pu-include { display: flex; align-items: center; gap: 6px; margin-top: 4px; font: 700 11px Manrope; color: #18332b; cursor: pointer; }
 .pu-include input { width: 15px; height: 15px; }
+
+/* Users → Edit Access → Data visibility */
+.access-lists { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.access-lists b { display: block; font-size: 11px; color: #334155; margin-bottom: 4px; }
+.access-lists b span { color: #087454; font-weight: 700; }
+.access-box { max-height: 180px; overflow-y: auto; border: 1px solid #dbe5e0; border-radius: 6px; padding: 4px 6px; background: #fbfdfc; }
+.modal .access-box label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: #263c34; padding: 2px 0; cursor: pointer; word-break: break-word; }
+.modal .access-box label input { width: auto; margin: 0; padding: 0; flex: none; }
+.access-box .access-empty { font-size: 11px; color: #94a3b8; padding: 4px 0; }
+@media (max-width: 640px) { .access-lists { grid-template-columns: 1fr; } .access-box { max-height: 140px; } }

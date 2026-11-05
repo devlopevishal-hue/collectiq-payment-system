@@ -12,22 +12,11 @@ const PH_LEVELS = {
   0: { label: 'Good', cls: 'ph-l0' }
 };
 
-// Parties this login may see: a doer their own, a CRR their masters' parties.
+// Parties this login may see (data visibility, see data-access.js).
 function phVisibleParties() {
-  let list = (markas || []).filter(m => m && m.marka);
+  const list = (markas || []).filter(m => m && m.marka);
   if (!currentUser) return list;
-  const uName = (currentUser.followperName || '').toLowerCase().trim();
-  const near = v => {
-    const o = (v || '').toLowerCase().trim();
-    return o === uName || (uName && o && (o.includes(uName) || uName.includes(o)));
-  };
-  if (currentUser.role === 'user') return list.filter(m => near(ownerOf(m)));
-  if (currentUser.role === 'crr') {
-    const uEmail = (currentUser.email || '').toLowerCase();
-    if (uName.includes('mahendra') || uName === 'all' || uEmail.includes('mahendra')) return list;
-    return list.filter(m => near(crrOf(m)));
-  }
-  return list;
+  return DataAccess.filterParties(DataAccess.ruleFor(currentUser), list, { ownerOf, crrOf });
 }
 
 function phDate(d) { return `<span class="ph-nw">${fmt(d)}</span>`; }

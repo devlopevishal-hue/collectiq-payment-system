@@ -76,7 +76,7 @@ test('signs in with an email, the part before @, or the doer name', async () => 
   for (const login of ['surendra@collectiq.com', 'Surendra', ' surendra ']) {
     const c = fakeClient({ logins: LOGINS(), staff: STAFF });
     const user = await A.create(c).signIn(login, 'Secret#123');
-    assert.deepEqual(user, { email: 'surendra@collectiq.com', role: 'user', followperName: 'Surendra', active: true, hasLogin: true });
+    assert.deepEqual(user, { email: 'surendra@collectiq.com', role: 'user', followperName: 'Surendra', active: true, hasLogin: true, access: { mode: 'role' } });
   }
   const c = fakeClient({ logins: LOGINS(), staff: STAFF });
   assert.equal((await A.create(c).signIn('Ravi Kant Sharma', 'Ravi#4567')).email, 'ravi.sharma@collectiq.com');
@@ -132,6 +132,26 @@ test('saving a staff member never sends a password, and an admin is always "all"
   assert.equal(row.role, 'admin');
   assert.equal(row.followper_name, 'all');
   assert.equal(row.password, undefined);
+});
+
+test('data visibility is saved with the staff row, read back, and kept when not given', async () => {
+  const c = fakeClient({ logins: LOGINS(), staff: STAFF });
+  const auth = A.create(c);
+  const access = { mode: 'custom', masters: ['Kiran'], followpers: [], crrs: [] };
+  await auth.saveStaff({ email: 'surendra@collectiq.com', role: 'user', followperName: 'Surendra', access });
+  assert.deepEqual(c.staff.find(r => r.email === 'surendra@collectiq.com').data_access, access);
+  await auth.saveStaff({ email: 'surendra@collectiq.com', role: 'user', followperName: 'Surendra' });
+  assert.deepEqual(c.staff.find(r => r.email === 'surendra@collectiq.com').data_access, access);
+  const listed = (await auth.listStaff()).find(u => u.email === 'surendra@collectiq.com');
+  assert.deepEqual(listed.access, access);
+  assert.deepEqual(A.toUser({ email: 'x@y', role: 'user' }).access, { mode: 'role' });
+});
+
+test('a database without the data_access column gets a clear message', async () => {
+  const c = fakeClient({ logins: LOGINS(), staff: STAFF });
+  const real = c.from;
+  c.from = () => ({ ...real(), upsert: async () => ({ error: { message: "Could not find the 'data_access' column of 'cq_staff' in the schema cache" } }) });
+  await assert.rejects(A.create(c).saveStaff({ email: 'a@collectiq.com', role: 'user', access: { mode: 'all' } }), /supabase\/data-access\.sql/);
 });
 
 test('generated passwords are long enough and avoid look-alike characters', () => {

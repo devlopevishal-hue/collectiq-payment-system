@@ -7,6 +7,7 @@
 //         alreadyDueAmount, oldestDueDate, isLocked, getFmsTasks },
 //         assignees: [names a help ticket can be assigned to] }
 (function (root) {
+  const DataAccess = (typeof module !== 'undefined' && module.exports) ? require('./data-access.js') : root.DataAccess;
   const MAX_ROWS = 20;
 
   function norm(s) {
@@ -30,14 +31,9 @@
     return norm(ctx.user && ctx.user.role);
   }
 
+  // Which parties the login may see: the same rule as the app (data-access.js).
   function seesEverything(ctx) {
-    const r = role(ctx);
-    if (r === 'user') return false;
-    if (r === 'crr') {
-      const name = norm(ctx.user.followperName);
-      return name.includes('mahendra') || name === 'all' || norm(ctx.user.email).includes('mahendra');
-    }
-    return true;
+    return DataAccess.ruleFor(ctx.user).all;
   }
 
   // includeSettled: also keep parties with zero/negative balance (needed for
@@ -45,11 +41,10 @@
   function scopeMarkas(ctx, opts = {}) {
     const all = ctx.markas || [];
     const active = opts.includeSettled ? all : all.filter(m => ctx.h.totalOutstanding(m) > 0);
-    if (seesEverything(ctx)) return active;
-    const name = norm(ctx.user.followperName);
-    if (!name || name === 'all' || name === 'unassigned') return [];
-    const pick = role(ctx) === 'crr' ? ctx.h.crrOf : ctx.h.ownerOf;
-    return active.filter(m => nameMatches(pick(m), name));
+    const rule = DataAccess.ruleFor(ctx.user);
+    if (rule.all) return active;
+    if (!rule.followpers.length && !rule.crrs.length && !rule.masters.length) return [];
+    return DataAccess.filterParties(rule, active, ctx.h);
   }
 
   function findParty(ctx, name) {
