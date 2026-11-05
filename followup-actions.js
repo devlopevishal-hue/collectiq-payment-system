@@ -126,7 +126,7 @@
     marka.remark = entry.remark;
     marka.expected = entry.expected;
     marka.ptp = entry.promise;
-    marka.nextDate = entry.next;
+    marka.nextDate = marka.casePpl ? '' : entry.next;
     marka.owner = followper || text(input.ownerFallback) || 'Unassigned';
     if (!marka.history) marka.history = [];
     marka.history.push(entry);
@@ -187,7 +187,8 @@
     marka.remark = entry.remark;
     marka.expected = entry.expected;
     marka.ptp = entry.promise;
-    marka.nextDate = entry.next;
+    // A party in Case / PPL stays off the schedule until its follow-up is resumed.
+    marka.nextDate = marka.casePpl ? '' : entry.next;
     marka.owner = owner;
     if (!marka.history) marka.history = [];
     marka.history.push(entry);
@@ -424,6 +425,72 @@
     return { task, entry };
   }
 
+  // Status "Case / PPL": the party goes to the Case / PPL list and its
+  // follow-ups stop (no next date) until someone resumes them.
+  const CASE_STATUS = 'Case / PPL';
+  function applyCaseFollowup(marka, input) {
+    const mode = text(input.contactMode);
+    const remark = String(input.remark == null ? '' : input.remark);
+    if (!ISO_DATE.test(text(input.date))) return { error: 'Date must be in YYYY-MM-DD format.' };
+    if (mode && !CONTACT_MODES.includes(mode)) return { error: `Contact mode must be one of: ${CONTACT_MODES.join(', ')}` };
+    const followper = text(input.followper);
+    const contact = text(input.contactPerson);
+    const entry = {
+      type: 'followup',
+      date: input.date,
+      followper,
+      status: CASE_STATUS,
+      contact,
+      mode,
+      remark: remark || 'Moved to Case / PPL. Follow-ups stopped.',
+      expected: 0,
+      promise: '',
+      next: '',
+      claimNumber: '',
+      waComplaintNo: '',
+      escalatedTo: '',
+      ...visitFields(mode, contact, input.visit),
+      billIds: [],
+      amount: 0,
+      ref: '',
+      receiptImage: '',
+      allocations: []
+    };
+    marka.casePpl = { date: entry.date, by: followper || text(input.ownerFallback) || 'Admin', remark: text(remark) };
+    updateParty(marka, entry, text(input.ownerFallback) || followper || 'Unassigned');
+    const payload = {
+      markaId: marka.id, followDate: entry.date, followper, contactPerson: contact, contactMode: mode,
+      actionStatus: CASE_STATUS, expected: 0, promiseDate: '', nextDate: '', remark: entry.remark,
+      claimNumber: '', waComplaintNo: '', escalateTo: '', billIds: [], payRef: '', payMode: 'cheque', payType: 'Part Payment', payAmount: 0, allocations: []
+    };
+    return { entry, payload };
+  }
+
+  // Takes a party out of Case / PPL and puts it back on the follow-up schedule.
+  function resumeCaseFollowup(marka, { date, by, nextDate, remark }) {
+    if (!marka.casePpl) return { error: 'This party is not in Case / PPL.' };
+    const next = text(nextDate);
+    if (!ISO_DATE.test(next)) return { error: 'Next follow-up date must be in YYYY-MM-DD format.' };
+    if (ISO_DATE.test(text(date)) && next <= text(date)) return { error: 'Next follow-up date must be a future date (tomorrow or later).' };
+    delete marka.casePpl;
+    const note = text(remark);
+    const entry = {
+      type: 'note',
+      date,
+      followper: text(by) || 'Admin',
+      status: 'Follow-up Resumed',
+      remark: `Taken out of Case / PPL by ${text(by) || 'Admin'}. Next follow-up ${next}.${note ? ' Note: ' + note : ''}`,
+      next
+    };
+    marka.lastDate = date;
+    marka.lastStatus = entry.status;
+    marka.remark = entry.remark;
+    marka.nextDate = next;
+    if (!marka.history) marka.history = [];
+    marka.history.push(entry);
+    return { entry };
+  }
+
   // Next follow-up date for a party: 7 days before its due date, so calls start
   // before the bill falls due. Never earlier than `minDays` from today (an
   // already-close or overdue due date falls back to that).
@@ -434,7 +501,7 @@
     return target && target > min ? target : min;
   }
 
-  const api = { applyPtpFollowup, checkFollowupDates, defaultNextDate, DEFAULT_NEXT_DAYS, autoNextDate, DAYS_BEFORE_DUE, applyPaymentFollowup, applyComplaintFollowup, completeFmsTask, FMS_DEFINITIONS, CONTACT_MODES, PAY_MODES, COMPLAINT_STATUS };
+  const api = { applyCaseFollowup, resumeCaseFollowup, CASE_STATUS, applyPtpFollowup, checkFollowupDates, defaultNextDate, DEFAULT_NEXT_DAYS, autoNextDate, DAYS_BEFORE_DUE, applyPaymentFollowup, applyComplaintFollowup, completeFmsTask, FMS_DEFINITIONS, CONTACT_MODES, PAY_MODES, COMPLAINT_STATUS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.FollowupActions = api;
 })(typeof window !== 'undefined' ? window : globalThis);

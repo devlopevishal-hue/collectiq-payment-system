@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://oxriijxeiyfubyhbohim.supabase.co" crossorigin>
   <!-- Fonts load without holding up the first screen (system font shows until then). -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
-  <link rel="stylesheet" href="styles.css?v=6.38.2">
-  <link rel="stylesheet" href="mobile-app.css?v=6.38.2">
+  <link rel="stylesheet" href="styles.css?v=6.39.0">
+  <link rel="stylesheet" href="mobile-app.css?v=6.39.0">
   <script>
     function toggleMobileMenu(e) {
       if (e) {
@@ -108,6 +108,7 @@
       <button class="nav" data-view="crmEscalations"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg></i> CRM Escalations <b id="escalationBadge">0</b></button>
       <button class="nav" data-view="partyHealth"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg></i> Party Current Status</button>
       <button class="nav" data-view="gplock"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></i> GP lock list <b id="lockBadge">0</b></button>
+      <button class="nav" data-view="casePpl"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18"></path><path d="M5 7h14"></path><path d="M5 7l-3 7a4 4 0 0 0 6 0z"></path><path d="M19 7l-3 7a4 4 0 0 0 6 0z"></path></svg></i> Case / PPL <b id="caseBadge" style="background:#6b4b2a;">0</b></button>
       <button class="nav" data-view="analysis"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg></i> Analysis & reports</button>
       <button id="sideInstallAppBtn" class="nav pwa-install-nav" style="display:none;" onclick="triggerInstallPrompt()"><i><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg></i> Install App (PWA)</button>
     </nav>
@@ -224,6 +225,32 @@
           <tbody id="scheduleTable"></tbody>
         </table>
         <div id="schedulePagination" class="pagination-bar"></div>
+      </div>
+    </section>
+
+    <section id="casePpl" class="view">
+      <div class="section-top">
+        <div>
+          <p class="eyebrow">FOLLOW-UPS STOPPED</p>
+          <h2>Case / PPL parties</h2>
+        </div>
+      </div>
+      <div id="casePplMetrics" class="metrics mini" style="margin-bottom:16px;"></div>
+      <div class="panel table-panel">
+        <table>
+          <thead>
+            <tr>
+              <th>MARKA / MASTER</th>
+              <th>FIRST DUE DATE</th>
+              <th>OUTSTANDING</th>
+              <th>DOER / FOLLOWPER</th>
+              <th>MOVED TO CASE / PPL</th>
+              <th>REMARK</th>
+              <th>ACTIONS</th>
+            </tr>
+          </thead>
+          <tbody id="casePplTable"></tbody>
+        </table>
       </div>
     </section>
 
@@ -707,6 +734,7 @@
             <option value="Promise to Pay">Promise to Pay</option>
             <option value="WhatsApp Complaint / Claim Matter">WhatsApp Complaint / Claim Matter</option>
             <option value="Internal Help Ticket">Internal Help Ticket (Request Helper Assistance)</option>
+            <option value="Case / PPL">Case / PPL (stop follow-ups)</option>
           </select>
         </label>
         <label>Expected amount (₹)<input id="expected" type="number" min="0"></label>
@@ -1673,29 +1701,29 @@ service cloud.firestore {
   <!-- SheetJS (Excel) is loaded after the app opens: see loadXlsx() in app.js. -->
   <!-- Firebase Compatibility Libraries for Real-time Cloud DB -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-  <script src="activity-log.js?v=6.38.2"></script>
-  <script src="party-check.js?v=6.38.2"></script>
-  <script src="list-filters.js?v=6.38.2"></script>
-  <script src="save-guard.js?v=6.38.2"></script>
-  <script src="db-config.js?v=6.38.2"></script>
-  <script src="supabase-store.js?v=6.38.2"></script>
-  <script src="auth.js?v=6.38.2"></script>
-  <script src="party-sync.js?v=6.38.2"></script>
-  <script src="followup-actions.js?v=6.38.2"></script>
-  <script src="ticket-actions.js?v=6.38.2"></script>
-  <script src="payment-upload.js?v=6.38.2"></script>
-  <script src="payment-reverse.js?v=6.38.2"></script>
-  <script src="app.js?v=6.38.2"></script>
-  <script src="party-health.js?v=6.38.2"></script>
-  <script src="party-health-view.js?v=6.38.2"></script>
-  <script src="ai-tools.js?v=6.38.2"></script>
-  <script src="ai-chat.js?v=6.38.2"></script>
-  <script src="mobile-app.js?v=6.38.2"></script>
+  <script src="activity-log.js?v=6.39.0"></script>
+  <script src="party-check.js?v=6.39.0"></script>
+  <script src="list-filters.js?v=6.39.0"></script>
+  <script src="save-guard.js?v=6.39.0"></script>
+  <script src="db-config.js?v=6.39.0"></script>
+  <script src="supabase-store.js?v=6.39.0"></script>
+  <script src="auth.js?v=6.39.0"></script>
+  <script src="party-sync.js?v=6.39.0"></script>
+  <script src="followup-actions.js?v=6.39.0"></script>
+  <script src="ticket-actions.js?v=6.39.0"></script>
+  <script src="payment-upload.js?v=6.39.0"></script>
+  <script src="payment-reverse.js?v=6.39.0"></script>
+  <script src="app.js?v=6.39.0"></script>
+  <script src="party-health.js?v=6.39.0"></script>
+  <script src="party-health-view.js?v=6.39.0"></script>
+  <script src="ai-tools.js?v=6.39.0"></script>
+  <script src="ai-chat.js?v=6.39.0"></script>
+  <script src="mobile-app.js?v=6.39.0"></script>
   <!-- Progressive Web App Service Worker Registration -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
-        navigator.serviceWorker.register('sw.js?v=6.38.2').then(function(reg) {
+        navigator.serviceWorker.register('sw.js?v=6.39.0').then(function(reg) {
           console.log('[PWA] Service Worker registered with scope:', reg.scope);
         }).catch(function(err) {
           console.warn('[PWA] Service Worker registration failed:', err);

@@ -1,6 +1,6 @@
 {
   "name": "collectiq-payment-collection-system",
-  "version": "6.38.2",
+  "version": "6.39.0",
   "description": "Production Payment Collection & Follow-up Command Center",
   "main": "server.js",
   "scripts": {

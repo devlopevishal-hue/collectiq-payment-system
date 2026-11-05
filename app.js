@@ -874,6 +874,8 @@ function isLocked(m) {
 
 // Default next follow-up: 7 days before the oldest due date (at least `minDays` from today).
 function autoNextDate(m, minDays) {
+  // A party in Case / PPL gets no next date until its follow-up is resumed.
+  if (m && m.casePpl) return '';
   return FollowupActions.autoNextDate(oldestDueDate(m), iso(today), minDays);
 }
 
@@ -1852,7 +1854,8 @@ function schedule() {
   if (!container) return;
   
   filters('filterBar');
-  const active = filtered();
+  // Parties in Case / PPL are not followed up; they are listed in their own tab.
+  const active = filtered().filter(m => !m.casePpl);
   
   // Each party sits in exactly one tab, so Overdue + Due today + Upcoming = All.
   const tabOf = new Map(active.map(m => [m, ListFilters.scheduleTab(statusOf(m))]));
@@ -1972,6 +1975,67 @@ function schedule() {
   renderPaginationControls('schedulePagination', totalCount, 'schedule', 'changeSchedulePage');
   updateColFilterIcons();
 }
+
+// Case / PPL: parties whose follow-ups were stopped from Update Follow-up.
+function casePplView() {
+  const tbody = document.getElementById('casePplTable');
+  if (!tbody) return;
+  const list = filtered().filter(m => m.casePpl)
+    .sort((a, b) => String(b.casePpl.date || '').localeCompare(String(a.casePpl.date || '')));
+  const metricsEl = document.getElementById('casePplMetrics');
+  if (metricsEl) {
+    const amt = list.reduce((s, m) => s + totalOutstanding(m), 0);
+    metricsEl.innerHTML = [
+      ['CASE / PPL PARTIES', list.length.toLocaleString('en-IN'), 'Follow-ups stopped'],
+      ['OUTSTANDING IN CASE / PPL', money(amt), 'Not on the follow-up schedule']
+    ].map(x => `
+      <div class="metric">
+        <div class="metric-top"><span>${x[0]}</span></div>
+        <strong>${x[1]}</strong>
+        <small>${x[2]}</small>
+      </div>
+    `).join('');
+  }
+  tbody.innerHTML = list.length ? list.map(m => `
+    <tr class="case-row">
+      <td class="col-marka">
+        <span class="case-name">${partyNameHtml(m)}</span>
+        <span class="case-sub">${escapeHtml(m.master || '')}</span>
+      </td>
+      <td class="col-oldest" data-label="First Due Date"><span class="m-val">${fmt(oldestDueDate(m))}</span></td>
+      <td class="money col-balance" data-label="Outstanding"><span class="m-val font-bold">${money(totalOutstanding(m))}</span></td>
+      <td class="col-owner" data-label="Followper"><span class="m-val">${escapeHtml(ownerOf(m))}</span></td>
+      <td data-label="Moved On"><span class="m-val">${fmt(m.casePpl.date)}<br><small style="color:#788882;">by ${escapeHtml(m.casePpl.by || '')}</small></span></td>
+      <td data-label="Remark"><span class="m-val">${escapeHtml(m.casePpl.remark || '—')}</span></td>
+      <td class="col-actions">
+        <div class="m-card-actions-grid">
+          <button onclick="resumeCaseFollowup('${m.id}')" class="row-action btn-update-primary">Resume follow-up</button>
+          <button onclick="openBillDetails('${m.id}')" class="row-action">📄 Bills</button>
+        </div>
+      </td>
+    </tr>
+  `).join('') : '<tr><td colspan="7" style="text-align:center;color:#788882;padding:24px;">No parties in Case / PPL.</td></tr>';
+}
+
+// Puts a Case / PPL party back on the follow-up schedule.
+function resumeCaseFollowup(id) {
+  const m = markas.find(x => String(x.id) === String(id));
+  if (!m || !m.casePpl) return;
+  const suggested = FollowupActions.autoNextDate(oldestDueDate(m), iso(today), 1);
+  const next = window.prompt(`Resume follow-ups for ${m.marka}?\nNext follow-up date (YYYY-MM-DD):`, suggested);
+  if (next == null) return;
+  const r = FollowupActions.resumeCaseFollowup(m, {
+    date: iso(today),
+    by: (currentUser && currentUser.followperName) || ownerOf(m) || 'Admin',
+    nextDate: String(next).trim()
+  });
+  if (r.error) return toast(r.error);
+  save();
+  saveMarkaCloud(m);
+  renderAll();
+  toast(`✓ ${m.marka} is back on the follow-up schedule. Next follow-up ${fmt(m.nextDate)}.`);
+}
+window.resumeCaseFollowup = resumeCaseFollowup;
 
 function locks() {
   const container = document.getElementById('gplock');
@@ -4908,6 +4972,15 @@ function toggleConditionalFields() {
   const hGrp = document.getElementById('helpTicketGroup');
   if (hGrp) hGrp.style.display = isHelp ? '' : 'none';
 
+  // Case / PPL stops follow-ups, so it has no next date.
+  const isCase = val === FollowupActions.CASE_STATUS;
+  const nextInput = document.getElementById('nextDate');
+  if (nextInput) {
+    nextInput.required = !isCase;
+    const nextLabel = nextInput.closest('label');
+    if (nextLabel) nextLabel.style.display = isCase ? 'none' : '';
+  }
+
   const modeVal = document.getElementById('contactMode') ? document.getElementById('contactMode').value : '';
   const visitGrp = document.getElementById('visitDetailsGroup');
   if (visitGrp) {
@@ -5078,6 +5151,24 @@ async function saveFollowup(e) {
 
   if (isPtp && !promiseDate) {
     return toast('Promise date is required for PTP.');
+  }
+
+  if (statusVal === FollowupActions.CASE_STATUS) {
+    const r = FollowupActions.applyCaseFollowup(m, {
+      date: followDate, followper, contactPerson, contactMode, remark, ownerFallback: ownerOf(m),
+      visit: {
+        purpose: document.getElementById('visitPurpose')?.value || '',
+        personMet: document.getElementById('visitPersonMet')?.value || '',
+        notes: document.getElementById('visitNotes')?.value || ''
+      }
+    });
+    if (r.error) return toast(r.error);
+    const saving = persistFollowupChange({ marka: m, payload: r.payload });
+    closeModal('followupModal');
+    renderAll();
+    const msg = await saving;
+    toast(`${msg} ${m.marka} moved to Case / PPL; follow-ups stopped.`);
+    return;
   }
 
   // Only a payment that clears all dues closes the follow-up; otherwise a next date is needed.
@@ -5321,7 +5412,7 @@ async function saveFollowup(e) {
   m.remark = h.remark;
   m.expected = h.expected;
   m.ptp = h.promise;
-  m.nextDate = h.next;
+  m.nextDate = m.casePpl ? '' : h.next;
   
   if (isComplaint && escalateTo) {
     m.owner = escalateTo;
@@ -8205,6 +8296,7 @@ function switchView(id) {
   else if (id === 'schedule') schedule();
   else if (id === 'dashboard') dashboard();
   else if (id === 'gplock') locks();
+  else if (id === 'casePpl') casePplView();
   else if (id === 'analysis') analysis();
   else if (id === 'markas') markaView();
   else if (id === 'users' || id === 'userManagement') usersView();
@@ -8220,6 +8312,7 @@ function switchView(id) {
     crmEscalations: 'Customer Claims & CRM Escalations',
     partyHealth: 'Party current status & health report',
     gplock: 'GP lock control',
+    casePpl: 'Case / PPL parties (follow-ups stopped)',
     analysis: 'Analysis & reports',
     markas: 'Marka & Followper assignment',
     import: 'Outstanding report sync',
@@ -8236,6 +8329,7 @@ function switchView(id) {
     crmEscalations: 'CRM escalations',
     partyHealth: 'Party status',
     gplock: 'GP lock',
+    casePpl: 'Case / PPL',
     analysis: 'Reports',
     markas: 'Marka assignment',
     import: 'Outstanding sync',
@@ -8321,6 +8415,7 @@ function _executeRenderAll() {
   else if (cur === 'schedule') schedule();
   else if (cur === 'dashboard') dashboard();
   else if (cur === 'gplock') locks();
+  else if (cur === 'casePpl') casePplView();
   else if (cur === 'analysis') analysis();
   else if (cur === 'markas') markaView();
   else if (cur === 'rokad') rokad();
@@ -8347,12 +8442,14 @@ function _executeRenderAll() {
   let todayVis = 0;
   let openEscs = 0;
   let lockCount = 0;
+  let caseCount = 0;
 
   for (let i = 0; i < filteredList.length; i++) {
     const m = filteredList[i];
     const locked = isLocked(m);
     if (locked) lockCount++;
-    if (locked || (m.nextDate && days(m.nextDate) >= 0)) schedCount++;
+    if (m.casePpl) caseCount++;
+    else if (locked || (m.nextDate && days(m.nextDate) >= 0)) schedCount++;
 
     if (m.bills && m.bills.length) {
       const tasks = getFmsTasks(m);
@@ -8408,6 +8505,8 @@ function _executeRenderAll() {
 
   const lb = document.getElementById('lockBadge');
   if (lb) lb.textContent = lockCount;
+  const cb = document.getElementById('caseBadge');
+  if (cb) cb.textContent = caseCount;
   
   populateFollowperDropdowns();
 }

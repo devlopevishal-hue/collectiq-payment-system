@@ -276,3 +276,33 @@ test('applyPtpFollowup: an old promise date carried into the form is refused and
   assert.equal(m.history.length, 0);
   assert.equal(m.nextDate, '2026-10-19');
 });
+
+test('applyCaseFollowup: Case / PPL stops follow-ups and keeps the followper', () => {
+  const m = billedParty();
+  m.nextDate = '2026-10-05';
+  m.owner = 'Sajjan';
+  const r = FA.applyCaseFollowup(m, { date: '2026-10-03', followper: 'Anil', contactMode: 'Phone call', remark: 'Legal notice sent', ownerFallback: 'Sajjan' });
+  assert.equal(r.error, undefined);
+  assert.equal(m.nextDate, '');
+  assert.equal(m.lastStatus, 'Case / PPL');
+  assert.equal(m.owner, 'Sajjan');
+  assert.deepEqual(m.casePpl, { date: '2026-10-03', by: 'Anil', remark: 'Legal notice sent' });
+  assert.equal(m.history.at(-1).next, '');
+  assert.equal(r.payload.actionStatus, 'Case / PPL');
+});
+
+test('Case / PPL party stays off the schedule after a payment or promise, until resumed', () => {
+  const m = billedParty();
+  FA.applyCaseFollowup(m, { date: '2026-10-03', followper: 'Anil', contactMode: 'Phone call', remark: '' });
+  FA.applyPaymentFollowup(m, [], pay({ payAmount: 10000, nextDate: '2026-10-08' }));
+  assert.equal(m.nextDate, '');
+  FA.applyPtpFollowup(m, { today: '2026-10-03', date: '2026-10-03', promiseDate: '2026-10-10', contactMode: 'Phone call' });
+  assert.equal(m.nextDate, '');
+  assert.match(FA.resumeCaseFollowup(m, { date: '2026-10-03', by: 'Anil', nextDate: '2026-10-03' }).error, /future/);
+  const r = FA.resumeCaseFollowup(m, { date: '2026-10-03', by: 'Anil', nextDate: '2026-10-06' });
+  assert.equal(r.error, undefined);
+  assert.equal(m.casePpl, undefined);
+  assert.equal(m.nextDate, '2026-10-06');
+  assert.equal(m.lastStatus, 'Follow-up Resumed');
+  assert.ok(FA.resumeCaseFollowup(m, { date: '2026-10-03', nextDate: '2026-10-06' }).error);
+});
