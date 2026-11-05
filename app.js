@@ -80,6 +80,34 @@ function partyLabel(m) {
   return code && code.toUpperCase() !== name.toUpperCase() ? `${code} · ${name}` : name;
 }
 
+// The party a help ticket or CRM row belongs to: by id, else by name when
+// that name is one party only. Used to show the marka next to the party name.
+function ticketParty(t) {
+  if (!t) return null;
+  const list = markas || [];
+  if (t.markaId) {
+    const byId = list.find(m => String(m.id) === String(t.markaId));
+    if (byId) return byId;
+  }
+  const name = String(t.markaName || '').trim().toLowerCase();
+  if (!name) return null;
+  const hits = list.filter(m => String(m.marka || '').trim().toLowerCase() === name);
+  return hits.length === 1 ? hits[0] : null;
+}
+
+// "MARKA · Party name" for text (search, export, titles); just the name when
+// the ticket has no party or the party has no separate marka.
+function ticketPartyLabel(t, fallback) {
+  const m = ticketParty(t);
+  return m ? partyLabel(m) : ((t && t.markaName) || fallback || '');
+}
+
+// The same with the marka in bold, for tables and cards.
+function ticketPartyHtml(t, fallback) {
+  const m = ticketParty(t);
+  return m ? partyNameHtml(m) : escapeHtml((t && t.markaName) || fallback || '');
+}
+
 function partyNameHtml(m) {
   const name = (m && m.marka) || '';
   const code = (m && m.markaCode) || '';
@@ -3341,7 +3369,7 @@ function renderPaymentTicketsPanel() {
     ${shown.map(t => `
       <div class="pay-ticket-row">
         <div class="pay-ticket-main">
-          <b>${escapeHtml(t.markaName || 'General')}</b> <small>${escapeHtml(t.subject || 'Help ticket')}</small>
+          <b>${ticketPartyHtml(t, 'General')}</b> <small>${escapeHtml(t.subject || 'Help ticket')}</small>
           <div class="pay-ticket-meta">${money(t.paymentReceived.amount)} on ${fmt(t.paymentReceived.date)} · raised by ${escapeHtml(t.requestedBy || '—')} · helper ${escapeHtml(t.assignedHelper || '—')}</div>
         </div>
         <button type="button" class="row-action" data-id="${escapeHtml(String(t.id))}" onclick="openResolveTicketModal(this.dataset.id)">Open ticket</button>
@@ -3433,7 +3461,7 @@ function helpTicketsView() {
       statusMatch = st === 'resolved';
     }
     const priorityMatch = curPriority === 'all' || (t.priority || 'Normal').toLowerCase() === curPriority.toLowerCase();
-    const searchMatch = !q || (t.markaName || '').toLowerCase().includes(q) || (t.subject || '').toLowerCase().includes(q) || (t.remark || '').toLowerCase().includes(q);
+    const searchMatch = !q || ticketPartyLabel(t).toLowerCase().includes(q) || (t.subject || '').toLowerCase().includes(q) || (t.remark || '').toLowerCase().includes(q);
     return statusMatch && priorityMatch && searchMatch;
   });
 
@@ -3441,7 +3469,7 @@ function helpTicketsView() {
   const { col, dir } = SORTS.helpTickets || { col: 'date', dir: 'desc' };
   list.sort((a, b) => {
     let va = a[col] || '', vb = b[col] || '';
-    if (col === 'marka') { va = a.markaName; vb = b.markaName; }
+    if (col === 'marka') { va = ticketPartyLabel(a); vb = ticketPartyLabel(b); }
     return compareVal(va, vb, dir);
   });
   // Open tickets whose party has paid come first, so they are checked and closed.
@@ -3502,7 +3530,7 @@ function helpTicketsView() {
       return `
         <tr>
           <td>${fmt(t.date)}</td>
-          <td><span class="case-name">${escapeHtml(t.markaName || 'General')}</span>${paymentWaitingOn(t) ? `<div class="ht-pay-badge">💰 Payment received ${money(t.paymentReceived.amount)} · ${fmt(t.paymentReceived.date)}</div>` : ''}</td>
+          <td><span class="case-name">${ticketPartyHtml(t, 'General')}</span>${paymentWaitingOn(t) ? `<div class="ht-pay-badge">💰 Payment received ${money(t.paymentReceived.amount)} · ${fmt(t.paymentReceived.date)}</div>` : ''}</td>
           <td>
             <span style="background:${priBg}; color:${priColor}; font-weight:700; font-size:11px; padding:2px 8px; border-radius:4px; border:1px solid ${priColor}44;">
               ${escapeHtml(t.priority || 'Normal')}
@@ -3774,7 +3802,7 @@ function openResolveTicketModal(ticketId) {
   }
 
   document.getElementById('resolveTicketId').value = t.id;
-  document.getElementById('resolveTicketTitle').textContent = `Ticket: ${t.subject || 'Action'} · Party: ${t.markaName || 'General'} (Priority: ${t.priority || 'Normal'})`;
+  document.getElementById('resolveTicketTitle').textContent = `Ticket: ${t.subject || 'Action'} · Party: ${ticketPartyLabel(t, 'General')} (Priority: ${t.priority || 'Normal'})`;
   document.getElementById('resolveTicketDate').value = iso(today);
   
   const nextDateInput = document.getElementById('resolveTicketNextDate');
@@ -3900,14 +3928,14 @@ function crmEscalationsView() {
     } else if (curType !== 'all') {
       typeMatch = eType === curType.toLowerCase();
     }
-    const searchMatch = !q || (e.markaName || '').toLowerCase().includes(q) || (e.remark || '').toLowerCase().includes(q) || (e.claimNumber || '').toLowerCase().includes(q);
+    const searchMatch = !q || ticketPartyLabel(e).toLowerCase().includes(q) || (e.remark || '').toLowerCase().includes(q) || (e.claimNumber || '').toLowerCase().includes(q);
     return statusMatch && typeMatch && searchMatch;
   });
 
   const { col, dir } = SORTS.crmEscalations || { col: 'date', dir: 'desc' };
   filteredEscs.sort((a, b) => {
     let va = a[col] || '', vb = b[col] || '';
-    if (col === 'marka') { va = a.markaName; vb = b.markaName; }
+    if (col === 'marka') { va = ticketPartyLabel(a); vb = ticketPartyLabel(b); }
     return compareVal(va, vb, dir);
   });
   updateSortIcons('crmEscalations');
@@ -3955,7 +3983,7 @@ function crmEscalationsView() {
       return `
         <tr>
           <td>${fmt(e.date)}</td>
-          <td><span class="case-name">${escapeHtml(e.markaName)}</span></td>
+          <td><span class="case-name">${ticketPartyHtml(e)}</span></td>
           <td><span class="status ${badgeClass}">${escapeHtml(e.type)}</span></td>
           <td style="max-width:300px; font-size:12px;">
             <div style="font-weight:600; color:#182e25;">${escapeHtml(refText)}</div>
@@ -4480,8 +4508,8 @@ function openFollowup(markaId) {
   const markaIdEl = document.getElementById('markaId');
   if (markaIdEl) markaIdEl.value = m.id;
   document.getElementById('followTitle').textContent = isLocked(m) 
-    ? `⊘ GP LOCKED (${days(oldest)}d overdue) · Lock Date: ${fmt(gpDate)} · ${m.marka} · ${m.master} · Total: ${money(totalOutstanding(m))}`
-    : `${m.marka} · ${m.master} · Oldest due: ${fmt(oldest)} · Total: ${money(totalOutstanding(m))}`;
+    ? `⊘ GP LOCKED (${days(oldest)}d overdue) · Lock Date: ${fmt(gpDate)} · ${partyLabel(m)} · ${m.master} · Total: ${money(totalOutstanding(m))}`
+    : `${partyLabel(m)} · ${m.master} · Oldest due: ${fmt(oldest)} · Total: ${money(totalOutstanding(m))}`;
   document.getElementById('plannedDate').value = m.nextDate || '';
   document.getElementById('followDate').value = iso(today);
 
@@ -7616,7 +7644,7 @@ function exportHelpTicketsExcel() {
 
   const rows = list.map(t => ({
     date: t.date || '—',
-    marka: t.markaName || 'General',
+    marka: ticketPartyLabel(t, 'General'),
     priority: t.priority || 'Normal',
     subject: t.subject || '',
     remark: t.remark || '',

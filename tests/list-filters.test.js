@@ -87,3 +87,13 @@ test('followperMatches: exact name, but a user always sees the parties the login
   assert.equal(L.followperMatches('Surendra', 'all', null), true);
   assert.equal(L.followperMatches('Surendra', '', null), true);
 });
+
+test('crmItems: each row carries the party marka so the CRM list can show it', () => {
+  const party = {
+    id: 'm2', marka: 'Bhaskar Silk Mills', markaCode: 'BSM',
+    escalations: [{ id: 'e1', date: '2026-11-01', type: 'Claim Matter' }],
+    history: [{ date: '2026-11-03', status: 'WhatsApp Complaint', remark: 'short piece' }]
+  };
+  const rows = L.crmItems([party, { id: 'm3', marka: 'No Code', escalations: [{ id: 'e2', date: '2026-11-02' }] }], () => 'Owner');
+  assert.deepEqual(rows.map(r => r.markaCode), ['BSM', 'BSM', '']);
+});
